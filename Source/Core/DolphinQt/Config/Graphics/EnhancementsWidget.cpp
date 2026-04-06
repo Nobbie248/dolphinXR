@@ -46,6 +46,8 @@ EnhancementsWidget::EnhancementsWidget(GraphicsPane* gfx_pane)
   connect(gfx_pane, &GraphicsPane::UseGPUTextureDecodingChanged, this, [this] {
     m_arbitrary_mipmap_detection->setEnabled(!ReadSetting(Config::GFX_ENABLE_GPU_TEXTURE_DECODING));
   });
+  connect(&Settings::Instance(), &Settings::ConfigChanged, this,
+          &EnhancementsWidget::UpdateStereoscopyAvailability);
 }
 
 constexpr int ANISO_1x = std::to_underlying(AnisotropicFilteringMode::Force1x);
@@ -208,9 +210,9 @@ void EnhancementsWidget::CreateWidgets()
   ++row;
 
   // Stereoscopy
-  auto* stereoscopy_box = new QGroupBox(tr("Stereoscopy"));
+  m_stereoscopy_box = new QGroupBox(tr("Stereoscopy"));
   auto* stereoscopy_layout = new QGridLayout();
-  stereoscopy_box->setLayout(stereoscopy_layout);
+  m_stereoscopy_box->setLayout(stereoscopy_layout);
 
   m_3d_mode = new ConfigChoice({tr("Off"), tr("Side-by-Side"), tr("Top-and-Bottom"), tr("Anaglyph"),
                                 tr("HDMI 3D"), tr("Passive")},
@@ -246,7 +248,7 @@ void EnhancementsWidget::CreateWidgets()
     m_3d_per_eye_resolution->hide();
 
   main_layout->addWidget(enhancements_box);
-  main_layout->addWidget(stereoscopy_box);
+  main_layout->addWidget(m_stereoscopy_box);
   main_layout->addStretch();
 
   setLayout(main_layout);
@@ -351,12 +353,7 @@ void EnhancementsWidget::OnBackendChanged()
   m_configure_color_correction->setEnabled(g_backend_info.bSupportsPostProcessing);
   m_hdr->setEnabled(g_backend_info.bSupportsHDROutput);
 
-  // Stereoscopy
-  const bool supports_stereoscopy = g_backend_info.bSupportsGeometryShaders;
-  m_3d_mode->setEnabled(supports_stereoscopy);
-  m_3d_convergence->setEnabled(supports_stereoscopy);
-  m_3d_depth->setEnabled(supports_stereoscopy);
-  m_3d_swap_eyes->setEnabled(supports_stereoscopy);
+  UpdateStereoscopyAvailability();
 
   // PostProcessing
   const bool supports_postprocessing = g_backend_info.bSupportsPostProcessing;
@@ -376,6 +373,13 @@ void EnhancementsWidget::OnBackendChanged()
   }
 
   UpdateAntialiasingOptions();
+}
+
+void EnhancementsWidget::UpdateStereoscopyAvailability()
+{
+  const bool supports_stereoscopy = g_backend_info.bSupportsGeometryShaders;
+  const bool openxr_enabled = Config::Get(Config::GFX_VR_ENABLE_OPENXR);
+  m_stereoscopy_box->setEnabled(supports_stereoscopy && !openxr_enabled);
 }
 
 void EnhancementsWidget::ShaderChanged()
@@ -412,6 +416,7 @@ void EnhancementsWidget::OnConfigChanged()
   // being global.
   m_texture_filtering_combo->setEnabled(ReadSetting(Config::GFX_HACK_FAST_TEXTURE_SAMPLING));
   m_arbitrary_mipmap_detection->setEnabled(!ReadSetting(Config::GFX_ENABLE_GPU_TEXTURE_DECODING));
+  UpdateStereoscopyAvailability();
   UpdateAntialiasingOptions();
 
   // Needs to update after deleting a key for 3d settings.
@@ -539,7 +544,8 @@ void EnhancementsWidget::AddDescriptions()
       "emulation speed and sometimes causes issues.<br><br>Side-by-Side and Top-and-Bottom are "
       "used by most 3D TVs.<br>Anaglyph is used for Red-Cyan colored glasses.<br>HDMI 3D is "
       "used when the monitor supports 3D display resolutions.<br>Passive is another type of 3D "
-      "used by some TVs.<br><br><dolphin_emphasis>If unsure, select Off.</dolphin_emphasis>");
+      "used by some TVs."
+      "<br><br><dolphin_emphasis>If unsure, select Off.</dolphin_emphasis>");
   static const char TR_3D_DEPTH_DESCRIPTION[] = QT_TR_NOOP(
       "Controls the separation distance between the virtual cameras.<br><br>A higher "
       "value creates a stronger feeling of depth while a lower value is more comfortable.");

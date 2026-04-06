@@ -53,14 +53,19 @@ public:
   VkImage GetImage() const { return m_image; }
   VkImageView GetView() const { return m_view; }
   VkImageLayout GetLayout() const { return m_layout; }
-  VkFormat GetVkFormat() const { return GetVkFormatForHostTextureFormat(m_config.format); }
+  VkFormat GetVkFormat() const
+  {
+    return m_vk_format_override != VK_FORMAT_UNDEFINED ? m_vk_format_override
+                                                       : GetVkFormatForHostTextureFormat(m_config.format);
+  }
   bool IsAdopted() const { return m_alloc != VmaAllocation(VK_NULL_HANDLE); }
 
   static std::unique_ptr<VKTexture> Create(const TextureConfig& tex_config, std::string_view name);
   static std::unique_ptr<VKTexture>
   CreateAdopted(const TextureConfig& tex_config, VkImage image,
                 VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_2D_ARRAY,
-                VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED);
+                VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED,
+                VkFormat vk_format_override = VK_FORMAT_UNDEFINED);
 
   // Used when the render pass is changing the image layout, or to force it to
   // VK_IMAGE_LAYOUT_UNDEFINED, if the existing contents of the image is
@@ -77,6 +82,7 @@ private:
   VmaAllocation m_alloc;
   VkImage m_image;
   VkImageView m_view = VK_NULL_HANDLE;
+  VkFormat m_vk_format_override = VK_FORMAT_UNDEFINED;
   mutable VkImageLayout m_layout = VK_IMAGE_LAYOUT_UNDEFINED;
   mutable ComputeImageLayout m_compute_layout = ComputeImageLayout::Undefined;
   mutable bool m_written_since_last_layout_change = false;

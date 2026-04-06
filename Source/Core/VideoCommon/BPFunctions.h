@@ -170,7 +170,8 @@ void SetBlendMode();
 // Returns true if the EFB was triggered to clear
 bool ClearScreen(FramebufferManager* frame_buffer_manager, const MathUtil::Rectangle<int>& rc,
                  bool color_enable, bool alpha_enable, bool z_enable, PixelFormat pixel_format,
-                 u32 clear_color_ar, u32 clear_color_gb, u32 clear_z_value);
+                 u32 clear_color_ar, u32 clear_color_gb, u32 clear_z_value,
+                 bool frame_just_rendered);
 
 void OnPixelFormatChange(FramebufferManager* frame_buffer_manager, PixelFormat pixel_format,
                          DepthFormat z_format);

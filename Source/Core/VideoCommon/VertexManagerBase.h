@@ -15,6 +15,7 @@
 #include "VideoCommon/ShaderCache.h"
 #include "VideoCommon/VideoEvents.h"
 
+class AbstractShader;
 struct CustomPixelShaderContents;
 class CustomShaderCache;
 class DataReader;
@@ -105,6 +106,8 @@ public:
   virtual ~VertexManagerBase();
 
   virtual bool Initialize();
+  virtual void OnReplayFrameBegin() {}
+  virtual void OnReplayFrameEnd() {}
 
   PrimitiveType GetCurrentPrimitiveType() const { return m_current_primitive_type; }
   void AddIndices(OpcodeDecoder::Primitive primitive, u32 num_vertices);
@@ -249,6 +252,8 @@ private:
   bool m_allow_background_execution = true;
 
   std::unique_ptr<CustomShaderCache> m_custom_shader_cache;
+  std::unique_ptr<AbstractShader> m_pink_pixel_shader;
+  bool m_force_pink_ps = false;
   u64 m_ticks_elapsed = 0;
 
   Common::EventHook m_frame_end_event;

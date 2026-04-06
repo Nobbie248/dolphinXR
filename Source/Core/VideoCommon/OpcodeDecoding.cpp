@@ -24,6 +24,7 @@
 #include "VideoCommon/CommandProcessor.h"
 #include "VideoCommon/DataReader.h"
 #include "VideoCommon/Fifo.h"
+#include "VideoCommon/OpenXROpcodeReplay.h"
 #include "VideoCommon/Statistics.h"
 #include "VideoCommon/VertexLoaderBase.h"
 #include "VideoCommon/VertexLoaderManager.h"
@@ -227,6 +228,8 @@ public:
   OPCODE_CALLBACK(void OnCommand(const u8* data, u32 size))
   {
     ASSERT(size >= 1);
+    if (!m_in_display_list && VideoCommon::OpenXROpcodeReplay::IsReplayLogFrameActive())
+      VideoCommon::OpenXROpcodeReplay::CaptureCommand(is_preprocess, data, size);
     if constexpr (!is_preprocess)
     {
       // Display lists get added directly into the FIFO stream since this same callback is used to

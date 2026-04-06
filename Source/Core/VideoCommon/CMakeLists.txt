@@ -59,6 +59,8 @@ add_library(videocommon
   DriverDetails.h
   EFBInterface.cpp
   EFBInterface.h
+  ElementsGroupManager.cpp
+  ElementsGroupManager.h
   Fifo.cpp
   Fifo.h
   FramebufferManager.cpp
@@ -126,6 +128,8 @@ add_library(videocommon
   OnScreenUI.cpp
   OnScreenUI.h
   OnScreenUIKeyMap.h
+  OpenXROpcodeReplay.cpp
+  OpenXROpcodeReplay.h
   OpcodeDecoding.cpp
   OpcodeDecoding.h
   PerfQueryBase.cpp
@@ -148,6 +152,8 @@ add_library(videocommon
   Present.h
   RenderState.cpp
   RenderState.h
+  RuntimeElementMatcher.cpp
+  RuntimeElementMatcher.h
   Resources/CustomResourceManager.cpp
   Resources/CustomResourceManager.h
   Resources/InvalidTextures.cpp
@@ -170,6 +176,10 @@ add_library(videocommon
   ShaderCompileUtils.h
   ShaderGenCommon.cpp
   ShaderGenCommon.h
+  HideObjectEngine.cpp
+  HideObjectEngine.h
+  ShaderHunter.cpp
+  ShaderHunter.h
   Spirv.cpp
   Spirv.h
   Statistics.cpp
@@ -292,4 +302,13 @@ endif()
 if(MSVC)
   # Add precompiled header
   target_link_libraries(videocommon PRIVATE use_pch)
+endif()
+
+if(ENABLE_VR)
+  target_sources(videocommon PRIVATE
+    VR/OpenXRManager.cpp
+    VR/OpenXRManager.h
+  )
+  # Expose the OpenXR headers to all targets that depend on videocommon.
+  target_include_directories(videocommon PUBLIC "${CMAKE_SOURCE_DIR}/Externals/OpenXR/include")
 endif()

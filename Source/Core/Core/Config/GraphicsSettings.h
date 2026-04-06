@@ -18,6 +18,7 @@ enum class ColorCorrectionRegion : int;
 enum class TriState : int;
 enum class FrameDumpResolutionType : int;
 enum class VertexLoaderType : int;
+enum class OpenXROpcodeReplayMode : int;
 
 namespace Config
 {
@@ -56,6 +57,8 @@ extern const Info<bool> GFX_LOG_RENDER_TIME_TO_FILE;
 extern const Info<bool> GFX_OVERLAY_STATS;
 extern const Info<bool> GFX_OVERLAY_PROJ_STATS;
 extern const Info<bool> GFX_OVERLAY_SCISSOR_STATS;
+extern const Info<bool> GFX_OVERLAY_SHADER_FLAGS;
+extern const Info<bool> GFX_OVERLAY_SHADER_HUNTING;
 extern const Info<bool> GFX_DUMP_TEXTURES;
 extern const Info<bool> GFX_DUMP_MIP_TEXTURES;
 extern const Info<bool> GFX_DUMP_BASE_TEXTURES;
@@ -155,6 +158,61 @@ extern const Info<float> GFX_STEREO_DEPTH_PERCENTAGE;
 // Stereoscopy pseudo-limits for consistent behavior between enhancements tab and hotkeys.
 static constexpr float GFX_STEREO_DEPTH_MAXIMUM = 100;
 static constexpr float GFX_STEREO_CONVERGENCE_MAXIMUM = 200;
+
+// Graphics.VR
+
+extern const Info<bool> GFX_VR_ENABLE_OPENXR;
+extern const Info<float> GFX_VR_UNITS_PER_METER;
+extern const Info<float> GFX_VR_LEAN_BACK_ANGLE;
+extern const Info<float> GFX_VR_CAMERA_FORWARD;
+
+static constexpr float GFX_VR_UNITS_PER_METER_MIN = 0.1f;
+static constexpr float GFX_VR_UNITS_PER_METER_MAX = 500.0f;
+static constexpr float GFX_VR_UNITS_PER_METER_STEP = 0.1f;
+static constexpr float GFX_VR_LEAN_BACK_ANGLE_MIN = -45.0f;
+static constexpr float GFX_VR_LEAN_BACK_ANGLE_MAX = 45.0f;
+static constexpr float GFX_VR_LEAN_BACK_ANGLE_STEP = 0.1f;
+static constexpr float GFX_VR_CAMERA_FORWARD_MIN = -20.0f;
+static constexpr float GFX_VR_CAMERA_FORWARD_MAX = 20.0f;
+static constexpr float GFX_VR_CAMERA_FORWARD_STEP = 0.1f;
+
+extern const Info<bool> GFX_VR_VIRTUAL_SCREEN;
+extern const Info<float> GFX_VR_SCREEN_DISTANCE;
+extern const Info<float> GFX_VR_SCREEN_SIZE;
+extern const Info<float> GFX_VR_HEAD_LOCKED_CURVATURE;
+extern const Info<bool> GFX_VR_DONT_CLEAR_SCREEN;
+extern const Info<bool> GFX_VR_LOAD_CUSTOM_SHADERS;
+extern const Info<bool> GFX_VR_DISABLE_CPU_CULL;
+extern const Info<OpenXROpcodeReplayMode> GFX_VR_OPCODE_REPLAY;
+extern const Info<bool> GFX_VR_AUTO_VBI_FROM_HMD;
+extern const Info<bool> GFX_VR_AUTO_LAYER_SPREAD;
+extern const Info<float> GFX_VR_LAYER_OFFSET;
+extern const Info<float> GFX_VR_ELEMENT_DEPTH;
+extern const Info<bool> GFX_VR_REMOVE_BARS;
+extern const Info<float> GFX_VR_GAMMA;
+extern const Info<int> GFX_VR_CLEAR_EFB_COPIES;
+static constexpr int GFX_VR_CLEAR_EFB_MIN = 0;
+static constexpr int GFX_VR_CLEAR_EFB_MAX = 640;
+static constexpr int GFX_VR_CLEAR_EFB_STEP = 10;
+
+static constexpr float GFX_VR_SCREEN_DISTANCE_MIN = 0.5f;
+static constexpr float GFX_VR_SCREEN_DISTANCE_MAX = 10.0f;
+static constexpr float GFX_VR_SCREEN_DISTANCE_STEP = 0.1f;
+static constexpr float GFX_VR_SCREEN_SIZE_MIN = 0.5f;
+static constexpr float GFX_VR_SCREEN_SIZE_MAX = 5.0f;
+static constexpr float GFX_VR_SCREEN_SIZE_STEP = 0.1f;
+static constexpr float GFX_VR_HEAD_LOCKED_CURVATURE_MIN = 0.0f;
+static constexpr float GFX_VR_HEAD_LOCKED_CURVATURE_MAX = 5.0f;
+static constexpr float GFX_VR_HEAD_LOCKED_CURVATURE_STEP = 0.01f;
+static constexpr float GFX_VR_LAYER_OFFSET_MIN = 0.0001f;
+static constexpr float GFX_VR_LAYER_OFFSET_MAX = 0.01f;
+static constexpr float GFX_VR_LAYER_OFFSET_STEP = 0.0001f;
+static constexpr float GFX_VR_ELEMENT_DEPTH_MIN = 0.0f;
+static constexpr float GFX_VR_ELEMENT_DEPTH_MAX = 0.1f;
+static constexpr float GFX_VR_ELEMENT_DEPTH_STEP = 0.0001f;
+static constexpr float GFX_VR_GAMMA_MIN = 1.0f;
+static constexpr float GFX_VR_GAMMA_MAX = 3.0f;
+static constexpr float GFX_VR_GAMMA_STEP = 0.1f;
 
 // Graphics.Hacks
 

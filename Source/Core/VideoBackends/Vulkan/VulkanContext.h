@@ -63,8 +63,12 @@ public:
   static bool CheckValidationLayerAvailablility();
 
   // Helper method to create a Vulkan instance.
-  static VkInstance CreateVulkanInstance(WindowSystemType wstype, bool enable_debug_utils,
-                                         bool enable_validation_layer, u32* out_vk_api_version);
+  // extra_instance_extensions: additional extensions to enable (e.g. from OpenXR).
+  static VkInstance CreateVulkanInstance(
+      WindowSystemType wstype, bool enable_debug_utils, bool enable_validation_layer,
+      u32* out_vk_api_version,
+      const std::vector<std::string>& extra_instance_extensions = {},
+      u32 max_api_version = 0);
 
   // Returns a list of Vulkan-compatible GPUs.
   using GPUList = std::vector<VkPhysicalDevice>;
@@ -82,9 +86,11 @@ public:
   // Creates a Vulkan device context.
   // This assumes that PopulateBackendInfo and PopulateBackendInfoAdapters has already
   // been called for the specified VideoConfig.
-  static std::unique_ptr<VulkanContext> Create(VkInstance instance, VkPhysicalDevice gpu,
-                                               VkSurfaceKHR surface, bool enable_debug_utils,
-                                               bool enable_validation_layer, u32 api_version);
+  // extra_device_extensions: additional device extensions to enable (e.g. from OpenXR).
+  static std::unique_ptr<VulkanContext> Create(
+      VkInstance instance, VkPhysicalDevice gpu, VkSurfaceKHR surface, bool enable_debug_utils,
+      bool enable_validation_layer, u32 api_version,
+      const std::vector<std::string>& extra_device_extensions = {});
 
   // Enable/disable debug message runtime.
   bool EnableDebugUtils();
@@ -132,9 +138,10 @@ public:
 #endif
 
 private:
-  static bool SelectInstanceExtensions(std::vector<const char*>* extension_list,
-                                       WindowSystemType wstype, bool enable_debug_utils,
-                                       bool validation_layer_enabled);
+  static bool SelectInstanceExtensions(
+      std::vector<const char*>* extension_list, WindowSystemType wstype, bool enable_debug_utils,
+      bool validation_layer_enabled,
+      const std::vector<std::string>& extra_extensions = {});
   bool SelectDeviceExtensions(bool enable_surface);
   void WarnMissingDeviceFeatures();
   bool CreateDevice(VkSurfaceKHR surface, bool enable_validation_layer);
@@ -157,6 +164,7 @@ private:
   PhysicalDeviceInfo m_device_info;
 
   std::vector<std::string> m_device_extensions;
+  std::vector<std::string> m_extra_device_extensions;
 };
 
 extern std::unique_ptr<VulkanContext> g_vulkan_context;

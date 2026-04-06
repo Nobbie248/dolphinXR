@@ -179,6 +179,7 @@ union ShaderHostConfig
   BitField<27, 1, bool, u32> backend_dynamic_vertex_loader;
   BitField<28, 1, bool, u32> backend_vs_point_line_expand;
   BitField<29, 1, bool, u32> backend_gl_layer_in_fs;
+  BitField<30, 1, bool, u32> vr_stereo;  // OpenXR per-eye HMD projection active
 
   static ShaderHostConfig GetCurrent();
 };
@@ -290,6 +291,16 @@ void WriteSwitch(ShaderCode& out, APIType ApiType, std::string_view variable,
 #define I_STEREOPARAMS "cstereo"
 #define I_LINEPTPARAMS "clinept"
 #define I_TEXOFFSET "ctexoffset"
+#define I_EYE_PROJ "ceye_proj"
+#define I_LEGACY_EYE_PROJ_X "clegacy_eye_proj_x"
+#define I_LEGACY_EYE_PROJ_Y "clegacy_eye_proj_y"
+#define I_LEGACY_CENTER_PROJ "clegacy_center_proj"
+#define I_VR_EYE_Z "cvr_eye_z"
+#define I_VR_DEPTH "cvr_depth"
+#define I_VR_SCREEN "cvr_screen"
+#define I_HEAD_PROJ "cvr_head_proj"
+#define I_HEAD_PARAMS "cvr_head_params"
+#define I_VR_PIXELCENTER "cvr_pixelcenter"
 
 static const char s_shader_uniforms[] = "\tuint    components;\n"
                                         "\tuint    xfmem_dualTexInfo;\n"
@@ -324,10 +335,30 @@ static const char s_shader_uniforms[] = "\tuint    components;\n"
                                         "\t#define xfmem_color(i) (xfmem_pack1[(i)].z)\n"
                                         "\t#define xfmem_alpha(i) (xfmem_pack1[(i)].w)\n";
 
+// GS constant buffer layout (must match GeometryShaderConstants in ConstantManager.h):
+//   offset   0: float4 cstereo        (16 bytes)
+//   offset  16: float4 clinept        (16 bytes)
+//   offset  32: int4   ctexoffset     (16 bytes)
+//   offset  48: uint   vs_expand      ( 4 bytes) + 12 bytes implicit HLSL padding
+//   offset  64: float4 ceye_proj[4]   (64 bytes) — per-eye HMD projection rows (with head rot)
+//   offset 128: float4 cvr_eye_z[2]   (32 bytes) — per-eye z-axis for depth/w recomputation
+//   offset 160: float4 cvr_depth      (16 bytes) - {P[2][2], P[2][3], depth_scale, depth_offset}
+//   offset 176: float4 cvr_screen     (16 bytes) - {half_w, half_h, distance, ortho_layer}
+//   offset 192: float4 cvr_head_proj[4] (64 bytes) — unrotated per-eye projection (head-locked)
 static const char s_geometry_shader_uniforms[] = "\tfloat4 " I_STEREOPARAMS ";\n"
                                                  "\tfloat4 " I_LINEPTPARAMS ";\n"
                                                  "\tint4 " I_TEXOFFSET ";\n"
-                                                 "\tuint vs_expand;\n";
+                                                 "\tuint vs_expand;\n"
+                                                 "\tfloat4 " I_EYE_PROJ "[4];\n"
+                                                 "\tfloat4 " I_LEGACY_EYE_PROJ_X "[2];\n"
+                                                 "\tfloat4 " I_LEGACY_EYE_PROJ_Y "[2];\n"
+                                                 "\tfloat4 " I_LEGACY_CENTER_PROJ "[2];\n"
+                                                 "\tfloat4 " I_VR_EYE_Z "[2];\n"
+                                                 "\tfloat4 " I_VR_DEPTH ";\n"
+                                                 "\tfloat4 " I_VR_SCREEN ";\n"
+                                                 "\tfloat4 " I_HEAD_PROJ "[4];\n"
+                                                 "\tfloat4 " I_HEAD_PARAMS ";\n"
+                                                 "\tfloat4 " I_VR_PIXELCENTER ";\n";
 
 constexpr std::string_view CUSTOM_PIXELSHADER_COLOR_FUNC = "customShaderColor";
 

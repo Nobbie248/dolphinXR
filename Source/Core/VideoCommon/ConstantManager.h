@@ -119,4 +119,41 @@ struct alignas(16) GeometryShaderConstants
   int4 texoffset;
   VSExpand vs_expand;  // Used by VS point/line expansion in ubershaders
   u32 pad[3];
+  // Per-eye HMD projection rows for OpenXR VR (ceye_proj in shaders).
+  // [0],[1] = left eye rows 0,1; [2],[3] = right eye rows 0,1.
+  // Row 0 computes x_clip = dot(row, viewPos); row 1 computes y_clip.
+  // Head rotation and eye position are baked into these rows.
+  std::array<float4, 4> eye_projection{};
+  // Legacy OpenXR projected-space adjustment for Vulkan fallback.
+  // X and Y are stored separately as {camera_shift, off_axis, scale, 0} per eye.
+  std::array<float4, 2> legacy_eye_projection_x{};
+  std::array<float4, 2> legacy_eye_projection_y{};
+  // Center-eye game projection rows used to recover the original perspective NDC for
+  // Vulkan screen/head-locked overrides before applying their VR placement path.
+  std::array<float4, 2> legacy_center_projection{};
+  // Per-eye z-axis row for depth/w recomputation (cvr_eye_z in shaders).
+  // z_eye = dot(eye_z_row[eye], viewPos) gives the eye-space depth with
+  // head rotation and eye position baked in.
+  std::array<float4, 2> eye_z_row{};
+  // OpenXR GS depth params:
+  //   x,y = game's projection depth encoding {P[2][2], P[2][3]}
+  //   z,w = VS-equivalent depth remap {depth_scale, depth_offset}
+  // Used to recompute and remap:
+  //   z_clip_raw = P[2][2] * z_eye + P[2][3]
+  //   z_clip = w * f.pos.w - z * z_clip_raw   (plus API clip-control conversion in shader)
+  float4 depth_params{};
+  // Virtual screen params for placing 2D (ortho) content in VR:
+  //   x = half-width in game units,  y = half-height in game units
+  //   z = distance in game units,    w = ortho draw layer index (for depth separation)
+  float4 vr_screen{};
+  // Unrotated per-eye projection rows for head-locked VR content (cvr_head_proj in shaders).
+  // Same layout as eye_projection but WITHOUT head rotation baked in.
+  // Used for HUD-like elements that follow head movements.
+  std::array<float4, 4> head_projection{};
+  // Head-locked virtual screen tuning params (cvr_head_params in shaders).
+  // x = curvature amount (0 = flat)
+  // yzw = reserved.
+  float4 head_locked_params{};
+  // Copy of the VS viewport-sign and pixel-center correction for GS-built VR positions.
+  float4 pixel_center_correction{};
 };

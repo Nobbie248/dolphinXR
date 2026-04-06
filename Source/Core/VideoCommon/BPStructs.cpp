@@ -26,6 +26,7 @@
 #include "VideoCommon/Fifo.h"
 #include "VideoCommon/FramebufferManager.h"
 #include "VideoCommon/GeometryShaderManager.h"
+#include "VideoCommon/OpenXROpcodeReplay.h"
 #include "VideoCommon/OpcodeDecoding.h"
 #include "VideoCommon/PerfQueryBase.h"
 #include "VideoCommon/PixelEngine.h"
@@ -348,7 +349,11 @@ static void BPWritten(PixelShaderManager& pixel_shader_manager, XFStateManager& 
       // render multiple sub-frames and arrange the XFB copies in next to each-other in main memory
       // so they form a single completed XFB.
       // See https://dolphin-emu.org/blog/2017/11/19/hybridxfb/ for examples and more detail.
-      system.GetVideoEvents().after_frame_event.Trigger(system);
+      if (!VideoCommon::OpenXROpcodeReplay::IsReplaying())
+      {
+        VideoCommon::OpenXROpcodeReplay::NotifyFrameBoundary();
+        system.GetVideoEvents().after_frame_event.Trigger(system);
+      }
 
       // Note: Theoretically, in the future we could track the VI configuration and try to detect
       //       when an XFB is the last XFB copy of a frame. Not only would we get a clean "end of
@@ -356,7 +361,12 @@ static void BPWritten(PixelShaderManager& pixel_shader_manager, XFStateManager& 
       //       Might also clean up some issues with games doing XFB copies they don't intend to
       //       display.
 
-      if (g_ActiveConfig.bImmediateXFB)
+      if (VideoCommon::OpenXROpcodeReplay::IsReplaying())
+      {
+        VideoCommon::OpenXROpcodeReplay::RecordReplayImmediateSwap(destAddr, destStride / 2,
+                                                                   destStride, height, true);
+      }
+      else if (g_ActiveConfig.bImmediateXFB)
       {
         // below div two to convert from bytes to pixels - it expects width, not stride
         g_presenter->ImmediateSwap(destAddr, destStride / 2, destStride, height);
@@ -382,7 +392,7 @@ static void BPWritten(PixelShaderManager& pixel_shader_manager, XFStateManager& 
       const auto color_gb = bpmem.clearcolorGB;
       const auto z_value = bpmem.clearZValue;
       ClearScreen(g_framebuffer_manager.get(), srcRect, color_enable, alpha_enable, z_enable,
-                  pixel_format, color_ar, color_gb, z_value);
+                  pixel_format, color_ar, color_gb, z_value, PE_copy.copy_to_xfb != 0);
 
       // Scissor rect must be restored.
       BPFunctions::SetScissorAndViewport(g_framebuffer_manager.get(), bpmem.scissorTL,

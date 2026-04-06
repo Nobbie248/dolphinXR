@@ -54,6 +54,9 @@ const Info<bool> GFX_LOG_RENDER_TIME_TO_FILE{{System::GFX, "Settings", "LogRende
 const Info<bool> GFX_OVERLAY_STATS{{System::GFX, "Settings", "OverlayStats"}, false};
 const Info<bool> GFX_OVERLAY_PROJ_STATS{{System::GFX, "Settings", "OverlayProjStats"}, false};
 const Info<bool> GFX_OVERLAY_SCISSOR_STATS{{System::GFX, "Settings", "OverlayScissorStats"}, false};
+const Info<bool> GFX_OVERLAY_SHADER_FLAGS{{System::GFX, "Settings", "OverlayShaderFlags"}, false};
+const Info<bool> GFX_OVERLAY_SHADER_HUNTING{{System::GFX, "Settings", "OverlayShaderHunting"},
+                                            false};
 const Info<bool> GFX_DUMP_TEXTURES{{System::GFX, "Settings", "DumpTextures"}, false};
 const Info<bool> GFX_DUMP_MIP_TEXTURES{{System::GFX, "Settings", "DumpMipTextures"}, true};
 const Info<bool> GFX_DUMP_BASE_TEXTURES{{System::GFX, "Settings", "DumpBaseTextures"}, true};
@@ -180,6 +183,28 @@ const Info<bool> GFX_STEREO_EFB_MONO_DEPTH{{System::GFX, "Stereoscopy", "StereoE
 const Info<float> GFX_STEREO_DEPTH_PERCENTAGE{{System::GFX, "Stereoscopy", "StereoDepthPercentage"},
                                               100};
 
+// Graphics.VR
+
+const Info<bool> GFX_VR_ENABLE_OPENXR{{System::GFX, "VR", "EnableOpenXR"}, false};
+const Info<float> GFX_VR_UNITS_PER_METER{{System::GFX, "VR", "UnitsPerMeter"}, 1.0f};
+const Info<float> GFX_VR_LEAN_BACK_ANGLE{{System::GFX, "VR", "LeanBackAngle"}, 0.0f};
+const Info<float> GFX_VR_CAMERA_FORWARD{{System::GFX, "VR", "CameraForward"}, 0.0f};
+const Info<bool> GFX_VR_VIRTUAL_SCREEN{{System::GFX, "VR", "VirtualScreen"}, true};
+const Info<float> GFX_VR_SCREEN_DISTANCE{{System::GFX, "VR", "ScreenDistance"}, 1.5f};
+const Info<float> GFX_VR_SCREEN_SIZE{{System::GFX, "VR", "ScreenSize"}, 1.5f};
+const Info<float> GFX_VR_HEAD_LOCKED_CURVATURE{{System::GFX, "VR", "HeadLockedCurvature"}, 0.0f};
+const Info<bool> GFX_VR_DONT_CLEAR_SCREEN{{System::GFX, "VR", "DontClearScreen"}, false};
+const Info<bool> GFX_VR_LOAD_CUSTOM_SHADERS{{System::GFX, "VR", "LoadCustomShaders"}, false};
+const Info<bool> GFX_VR_DISABLE_CPU_CULL{{System::GFX, "VR", "DisableCPUCull"}, false};
+const Info<OpenXROpcodeReplayMode> GFX_VR_OPCODE_REPLAY{
+    {System::GFX, "VR", "OpcodeReplay"}, OpenXROpcodeReplayMode::Off};
+const Info<bool> GFX_VR_AUTO_VBI_FROM_HMD{{System::GFX, "VR", "AutoVBIFromHMD"}, false};
+const Info<bool> GFX_VR_AUTO_LAYER_SPREAD{{System::GFX, "VR", "AutoLayerSpread"}, true};
+const Info<float> GFX_VR_LAYER_OFFSET{{System::GFX, "VR", "LayerOffset"}, 0.002f};
+const Info<float> GFX_VR_ELEMENT_DEPTH{{System::GFX, "VR", "ElementDepth"}, 0.001f};
+const Info<bool> GFX_VR_REMOVE_BARS{{System::GFX, "VR", "RemoveCinematicBars"}, true};
+const Info<float> GFX_VR_GAMMA{{System::GFX, "VR", "Gamma"}, 1.0f};
+const Info<int> GFX_VR_CLEAR_EFB_COPIES{{System::GFX, "VR", "ClearEFBCopies"}, 0};
 // Graphics.Hacks
 
 const Info<bool> GFX_HACK_EFB_ACCESS_ENABLE{{System::GFX, "Hacks", "EFBAccessEnable"}, false};

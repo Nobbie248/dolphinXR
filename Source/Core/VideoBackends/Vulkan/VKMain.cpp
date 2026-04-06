@@ -19,6 +19,11 @@
 #include "VideoCommon/TextureCacheBase.h"
 #include "VideoCommon/VideoConfig.h"
 
+#ifdef ENABLE_VR
+#include "VideoBackends/Vulkan/VulkanOpenXR.h"
+#include "VideoCommon/VR/OpenXRManager.h"
+#endif
+
 #if defined(VK_USE_PLATFORM_METAL_EXT)
 #include <objc/message.h>
 #endif
@@ -104,13 +109,33 @@ bool VideoBackend::Initialize(const WindowSystemInfo& wsi)
     enable_validation_layer = false;
   }
 
+#ifdef ENABLE_VR
+  // Pre-query OpenXR-required Vulkan extensions BEFORE creating VkInstance/VkDevice.
+  // The OpenXR runtime (e.g. SteamVR) needs specific Vulkan extensions enabled on
+  // both the instance and device; without them xrCreateSession will crash.
+  Vulkan::VulkanExtensionRequirements vr_ext_requirements;
+  bool vr_extensions_queried = false;
+  if (g_Config.stereo_mode == StereoMode::OpenXR)
+  {
+    vr_extensions_queried = Vulkan::VulkanOpenXR::PreQueryVulkanExtensions(vr_ext_requirements);
+    if (!vr_extensions_queried)
+      WARN_LOG_FMT(VIDEO, "OpenXR: Pre-query of Vulkan extensions failed; VR will not work.");
+  }
+#endif
+
   // Create Vulkan instance, needed before we can create a surface, or enumerate devices.
   // We use this instance to fill in backend info, then re-use it for the actual device.
   bool enable_surface = wsi.type != WindowSystemType::Headless;
   bool enable_debug_utils = ShouldEnableDebugUtils(enable_validation_layer);
   u32 vk_api_version = 0;
   VkInstance instance = VulkanContext::CreateVulkanInstance(
-      wsi.type, enable_debug_utils, enable_validation_layer, &vk_api_version);
+      wsi.type, enable_debug_utils, enable_validation_layer, &vk_api_version
+#ifdef ENABLE_VR
+      ,
+      vr_extensions_queried ? vr_ext_requirements.instance_extensions : std::vector<std::string>{},
+      vr_extensions_queried ? vr_ext_requirements.max_api_version : 0
+#endif
+  );
   if (instance == VK_NULL_HANDLE)
   {
     PanicAlertFmt("Failed to create Vulkan instance.");
@@ -166,9 +191,14 @@ bool VideoBackend::Initialize(const WindowSystemInfo& wsi)
   }
 
   // Now we can create the Vulkan device. VulkanContext takes ownership of the instance and surface.
-  g_vulkan_context =
-      VulkanContext::Create(instance, gpu_list[selected_adapter_index], surface, enable_debug_utils,
-                            enable_validation_layer, vk_api_version);
+  g_vulkan_context = VulkanContext::Create(
+      instance, gpu_list[selected_adapter_index], surface, enable_debug_utils,
+      enable_validation_layer, vk_api_version
+#ifdef ENABLE_VR
+      ,
+      vr_extensions_queried ? vr_ext_requirements.device_extensions : std::vector<std::string>{}
+#endif
+  );
   if (!g_vulkan_context)
   {
     PanicAlertFmt("Failed to create Vulkan device");
@@ -209,8 +239,21 @@ bool VideoBackend::Initialize(const WindowSystemInfo& wsi)
     }
   }
 
+  // OpenXR eye-image ownership/release is currently synchronized against the main submit path.
+  // Force single-threaded Vulkan submission in that mode to avoid runtime-owned swapchain hazards.
+  bool use_threaded_submission = g_Config.bBackendMultithreading;
+#ifdef ENABLE_VR
+  if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR && use_threaded_submission)
+  {
+    WARN_LOG_FMT(VIDEO,
+                 "OpenXR Vulkan: Disabling Backend Multithreading for this session to avoid "
+                 "threaded submission device-loss issues.");
+    use_threaded_submission = false;
+  }
+#endif
+
   // Create command buffers. We do this separately because the other classes depend on it.
-  g_command_buffer_mgr = std::make_unique<CommandBufferManager>(g_Config.bBackendMultithreading);
+  g_command_buffer_mgr = std::make_unique<CommandBufferManager>(use_threaded_submission);
   size_t swapchain_image_count =
       surface != VK_NULL_HANDLE ? swap_chain->GetSwapChainImageCount() : 0;
   if (!g_command_buffer_mgr->Initialize(swapchain_image_count))
@@ -227,6 +270,27 @@ bool VideoBackend::Initialize(const WindowSystemInfo& wsi)
     return false;
   }
 
+#ifdef ENABLE_VR
+  // OpenXR init must happen after ObjectCache, CommandBufferManager, and StateTracker
+  // are ready — VKFramebuffer::Create() needs render passes from ObjectCache, and
+  // VKTexture needs CommandBufferManager for deferred destruction.
+  INFO_LOG_FMT(VIDEO, "VR: stereo_mode={} (OpenXR={})",
+               static_cast<int>(g_ActiveConfig.stereo_mode),
+               g_ActiveConfig.stereo_mode == StereoMode::OpenXR ? "YES" : "NO");
+  if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR)
+  {
+    auto openxr = std::make_unique<Vulkan::VulkanOpenXR>();
+    if (!openxr->Initialize())
+    {
+      WARN_LOG_FMT(VIDEO, "OpenXR initialization failed; continuing without VR.");
+    }
+    else
+    {
+      Vulkan::g_openxr_vk = std::move(openxr);
+    }
+  }
+#endif
+
   auto gfx = std::make_unique<VKGfx>(std::move(swap_chain), wsi.render_surface_scale);
   auto vertex_manager = std::make_unique<VertexManager>();
   auto perf_query = std::make_unique<PerfQuery>();
@@ -240,6 +304,15 @@ void VideoBackend::Shutdown()
 {
   if (g_vulkan_context)
     vkDeviceWaitIdle(g_vulkan_context->GetDevice());
+
+#ifdef ENABLE_VR
+  // Shut down VR before the Vulkan device is destroyed.
+  // g_openxr_vk first (releases VKTexture/VKFramebuffer wrappers),
+  // then g_openxr (calls xrDestroySwapchain/Session/Instance — releases runtime Vulkan refs).
+  // Both must happen before g_vulkan_context is destroyed.
+  Vulkan::g_openxr_vk.reset();
+  VR::g_openxr.reset();
+#endif
 
   if (g_object_cache)
     g_object_cache->Shutdown();

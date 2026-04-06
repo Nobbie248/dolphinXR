@@ -53,6 +53,12 @@ public:
   GetPipelineAsync(const VideoCommon::GXUberPipelineUid& uid,
                    const CustomShaderInstance& custom_shaders,
                    const AbstractPipelineConfig& pipeline_config);
+  const AbstractPipeline* GetPipelineSync(const VideoCommon::GXPipelineUid& uid,
+                                          const CustomShaderInstance& custom_shaders,
+                                          const AbstractPipelineConfig& pipeline_config);
+  const AbstractPipeline* GetPipelineSync(const VideoCommon::GXUberPipelineUid& uid,
+                                          const CustomShaderInstance& custom_shaders,
+                                          const AbstractPipelineConfig& pipeline_config);
 
 private:
   // Configuration bits.

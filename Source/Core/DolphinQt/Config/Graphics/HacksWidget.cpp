@@ -16,6 +16,7 @@
 #include "DolphinQt/Config/ConfigControls/ConfigSlider.h"
 #include "DolphinQt/Config/GameConfigWidget.h"
 #include "DolphinQt/Config/Graphics/GraphicsPane.h"
+#include "DolphinQt/Settings.h"
 
 #include "VideoCommon/VideoConfig.h"
 
@@ -26,6 +27,14 @@ HacksWidget::HacksWidget(GraphicsPane* gfx_pane) : m_game_layer{gfx_pane->GetCon
   AddDescriptions();
 
   connect(gfx_pane, &GraphicsPane::BackendChanged, this, &HacksWidget::OnBackendChanged);
+  const auto update_openxr_immediate_xfb = [this] {
+    if (Config::Get(Config::GFX_VR_ENABLE_OPENXR) && !Config::Get(Config::GFX_HACK_IMMEDIATE_XFB))
+      Config::SetBaseOrCurrent(Config::GFX_HACK_IMMEDIATE_XFB, true);
+
+    UpdateSkipPresentingDuplicateFramesEnabled();
+  };
+  connect(&Settings::Instance(), &Settings::ConfigChanged, this, update_openxr_immediate_xfb);
+  update_openxr_immediate_xfb();
   OnBackendChanged(QString::fromStdString(Config::Get(Config::MAIN_GFX_BACKEND)));
   connect(m_gpu_texture_decoding, &QCheckBox::toggled,
           [gfx_pane] { emit gfx_pane->UseGPUTextureDecodingChanged(); });

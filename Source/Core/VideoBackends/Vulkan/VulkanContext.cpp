@@ -200,7 +200,7 @@ bool VulkanContext::CheckValidationLayerAvailablility()
   return supports_debug_utils && supports_validation_layers;
 }
 
-static u32 getAPIVersion()
+static u32 getAPIVersion(u32 max_api_version = 0)
 {
   u32 supported_version;
   u32 used_version = VK_API_VERSION_1_0;
@@ -211,6 +211,10 @@ static u32 getAPIVersion()
       used_version = VK_API_VERSION_1_2;
     else if (supported_version >= VK_API_VERSION_1_1)
       used_version = VK_API_VERSION_1_1;
+
+    if (max_api_version != 0 && used_version > max_api_version)
+      used_version = max_api_version;
+
     WARN_LOG_FMT(HOST_GPU, "Using Vulkan 1.{}, supported: {}.{}", VK_VERSION_MINOR(used_version),
                  VK_VERSION_MAJOR(supported_version), VK_VERSION_MINOR(supported_version));
   }
@@ -221,13 +225,14 @@ static u32 getAPIVersion()
   return used_version;
 }
 
-VkInstance VulkanContext::CreateVulkanInstance(WindowSystemType wstype, bool enable_debug_utils,
-                                               bool enable_validation_layer,
-                                               u32* out_vk_api_version)
+VkInstance VulkanContext::CreateVulkanInstance(
+    WindowSystemType wstype, bool enable_debug_utils, bool enable_validation_layer,
+    u32* out_vk_api_version, const std::vector<std::string>& extra_instance_extensions,
+    u32 max_api_version)
 {
   std::vector<const char*> enabled_extensions;
   if (!SelectInstanceExtensions(&enabled_extensions, wstype, enable_debug_utils,
-                                enable_validation_layer))
+                                enable_validation_layer, extra_instance_extensions))
     return VK_NULL_HANDLE;
 
   VkApplicationInfo app_info = {};
@@ -237,7 +242,7 @@ VkInstance VulkanContext::CreateVulkanInstance(WindowSystemType wstype, bool ena
   app_info.applicationVersion = VK_MAKE_VERSION(5, 0, 0);
   app_info.pEngineName = "Dolphin Emulator";
   app_info.engineVersion = VK_MAKE_VERSION(5, 0, 0);
-  app_info.apiVersion = getAPIVersion();
+  app_info.apiVersion = getAPIVersion(max_api_version);
 
   *out_vk_api_version = app_info.apiVersion;
 
@@ -269,9 +274,9 @@ VkInstance VulkanContext::CreateVulkanInstance(WindowSystemType wstype, bool ena
   return instance;
 }
 
-bool VulkanContext::SelectInstanceExtensions(std::vector<const char*>* extension_list,
-                                             WindowSystemType wstype, bool enable_debug_utils,
-                                             bool validation_layer_enabled)
+bool VulkanContext::SelectInstanceExtensions(
+    std::vector<const char*>* extension_list, WindowSystemType wstype, bool enable_debug_utils,
+    bool validation_layer_enabled, const std::vector<std::string>& extra_extensions)
 {
   u32 extension_count = 0;
   VkResult res = vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, nullptr);
@@ -389,6 +394,15 @@ bool VulkanContext::SelectInstanceExtensions(std::vector<const char*>* extension
   else if (enable_debug_utils)
   {
     WARN_LOG_FMT(VIDEO, "Vulkan: Debug utils requested, but extension is not available.");
+  }
+
+  // Add any extra extensions requested by external systems (e.g. OpenXR).
+  for (const auto& ext : extra_extensions)
+  {
+    if (!AddExtension(ext.c_str(), false))
+    {
+      WARN_LOG_FMT(VIDEO, "Vulkan: Requested extra instance extension {} not available.", ext);
+    }
   }
 
   return true;
@@ -584,12 +598,13 @@ void VulkanContext::PopulateBackendInfoMultisampleModes(BackendInfo* backend_inf
     backend_info->AAModes.emplace_back(64);
 }
 
-std::unique_ptr<VulkanContext> VulkanContext::Create(VkInstance instance, VkPhysicalDevice gpu,
-                                                     VkSurfaceKHR surface, bool enable_debug_utils,
-                                                     bool enable_validation_layer,
-                                                     u32 vk_api_version)
+std::unique_ptr<VulkanContext> VulkanContext::Create(
+    VkInstance instance, VkPhysicalDevice gpu, VkSurfaceKHR surface, bool enable_debug_utils,
+    bool enable_validation_layer, u32 vk_api_version,
+    const std::vector<std::string>& extra_device_extensions)
 {
   std::unique_ptr<VulkanContext> context = std::make_unique<VulkanContext>(instance, gpu);
+  context->m_extra_device_extensions = extra_device_extensions;
 
   // Initialize DriverDetails so that we can check for bugs to disable features if needed.
   context->InitDriverDetails();
@@ -672,6 +687,15 @@ bool VulkanContext::SelectDeviceExtensions(bool enable_surface)
     g_backend_info.bSupportsUnrestrictedDepthRange =
         AddExtension(VK_EXT_DEPTH_CLAMP_CONTROL_EXTENSION_NAME, false) &&
         AddExtension(VK_EXT_DEPTH_RANGE_UNRESTRICTED_EXTENSION_NAME, false);
+  }
+
+  // Add any extra extensions requested by external systems (e.g. OpenXR).
+  for (const auto& ext : m_extra_device_extensions)
+  {
+    if (!AddExtension(ext.c_str(), false))
+    {
+      WARN_LOG_FMT(VIDEO, "Vulkan: Requested extra device extension {} not available.", ext);
+    }
   }
 
   return true;

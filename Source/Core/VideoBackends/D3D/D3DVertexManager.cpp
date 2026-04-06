@@ -119,6 +119,20 @@ bool VertexManager::Initialize()
   return true;
 }
 
+void VertexManager::OnReplayFrameBegin()
+{
+  InvalidateConstants();
+  InvalidatePipelineObject();
+  SetRasterizationStateChanged();
+  SetDepthStateChanged();
+  SetBlendingStateChanged();
+}
+
+void VertexManager::OnReplayFrameEnd()
+{
+  InvalidateConstants();
+}
+
 void VertexManager::UploadUtilityUniforms(const void* uniforms, u32 uniforms_size)
 {
   // Just use the one buffer for all three.

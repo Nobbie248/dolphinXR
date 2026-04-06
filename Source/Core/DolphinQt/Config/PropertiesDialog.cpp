@@ -13,12 +13,16 @@
 #include "DiscIO/Volume.h"
 
 #include "DolphinQt/Config/ARCodeWidget.h"
+#include "DolphinQt/Config/ElementsGroupOverrideWidget.h"
 #include "DolphinQt/Config/FilesystemWidget.h"
 #include "DolphinQt/Config/GameConfigWidget.h"
 #include "DolphinQt/Config/GeckoCodeWidget.h"
 #include "DolphinQt/Config/GraphicsModListWidget.h"
+#include "DolphinQt/Config/VRConfigWidget.h"
 #include "DolphinQt/Config/InfoWidget.h"
 #include "DolphinQt/Config/PatchesWidget.h"
+#include "DolphinQt/Config/HideObjectWidget.h"
+#include "DolphinQt/Config/ShaderOverrideWidget.h"
 #include "DolphinQt/Config/VerifyWidget.h"
 #include "DolphinQt/QtUtils/WrapInScrollArea.h"
 
@@ -38,6 +42,7 @@ PropertiesDialog::PropertiesDialog(QWidget* parent, const UICommon::GameFile& ga
       new GeckoCodeWidget(game.GetGameID(), game.GetGameTDBID(), game.GetRevision());
   auto* const patches = new PatchesWidget(game);
   auto* const game_config = new GameConfigWidget(game);
+  auto* const vr_config = new VRConfigWidget(game.GetGameID());
   auto* const graphics_mod_list = new GraphicsModListWidget(game);
 
   connect(gecko, &GeckoCodeWidget::OpenGeneralSettings, this,
@@ -59,10 +64,20 @@ PropertiesDialog::PropertiesDialog(QWidget* parent, const UICommon::GameFile& ga
   // Note: Intentional selective use of AddWrappedPane for a sensible dialog "minimumSize".
   AddWrappedPane(info, tr("Info"));
   AddPane(game_config, tr("Game Config"));
+  AddPane(vr_config, tr("VR Config"));
   AddPane(patches, tr("Patches"));
   AddPane(ar, tr("AR Codes"));
   AddPane(gecko, tr("Gecko Codes"));
   AddWrappedPane(graphics_mod_list, tr("Graphics Mods"));
+
+  auto* const shader_overrides = new ShaderOverrideWidget(game.GetGameID());
+  AddPane(shader_overrides, tr("Shader Overrides"));
+
+  auto* const element_group_overrides = new ElementsGroupOverrideWidget(game.GetGameID());
+  AddPane(element_group_overrides, tr("Elements Group Overrides"));
+
+  auto* const hide_objects = new HideObjectWidget(game.GetGameID());
+  AddPane(hide_objects, tr("Hide Objects"));
 
   if (game.GetPlatform() != DiscIO::Platform::ELFOrDOL)
   {

@@ -3,14 +3,61 @@
 
 #include "VideoCommon/GeometryShaderManager.h"
 
+#include <array>
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+
 #include "Common/ChunkFile.h"
 #include "Common/CommonTypes.h"
+#include "Core/System.h"
 #include "VideoCommon/BPMemory.h"
+#include "VideoCommon/FreeLookCamera.h"
 #include "VideoCommon/RenderState.h"
+#include "VideoCommon/VertexShaderManager.h"
 #include "VideoCommon/VideoConfig.h"
 #include "VideoCommon/XFMemory.h"
 
+#ifdef ENABLE_VR
+#include "VideoCommon/VR/OpenXRManager.h"
+#endif
+
 static constexpr int LINE_PT_TEX_OFFSETS[8] = {0, 16, 8, 4, 2, 1, 1, 1};
+
+namespace
+{
+void ApplyRowTransform(std::array<std::array<float, 4>, 4>* rows, const Common::Matrix44& matrix)
+{
+  for (auto& row : *rows)
+  {
+    const std::array<float, 4> src = row;
+    row[0] = src[0] * matrix.data[0] + src[1] * matrix.data[4] + src[2] * matrix.data[8] +
+             src[3] * matrix.data[12];
+    row[1] = src[0] * matrix.data[1] + src[1] * matrix.data[5] + src[2] * matrix.data[9] +
+             src[3] * matrix.data[13];
+    row[2] = src[0] * matrix.data[2] + src[1] * matrix.data[6] + src[2] * matrix.data[10] +
+             src[3] * matrix.data[14];
+    row[3] = src[0] * matrix.data[3] + src[1] * matrix.data[7] + src[2] * matrix.data[11] +
+             src[3] * matrix.data[15];
+  }
+}
+
+void ApplyRowTransform(std::array<std::array<float, 4>, 2>* rows, const Common::Matrix44& matrix)
+{
+  for (auto& row : *rows)
+  {
+    const std::array<float, 4> src = row;
+    row[0] = src[0] * matrix.data[0] + src[1] * matrix.data[4] + src[2] * matrix.data[8] +
+             src[3] * matrix.data[12];
+    row[1] = src[0] * matrix.data[1] + src[1] * matrix.data[5] + src[2] * matrix.data[9] +
+             src[3] * matrix.data[13];
+    row[2] = src[0] * matrix.data[2] + src[1] * matrix.data[6] + src[2] * matrix.data[10] +
+             src[3] * matrix.data[14];
+    row[3] = src[0] * matrix.data[3] + src[1] * matrix.data[7] + src[2] * matrix.data[11] +
+             src[3] * matrix.data[15];
+  }
+}
+}  // namespace
 
 void GeometryShaderManager::Init()
 {
@@ -46,24 +93,210 @@ void GeometryShaderManager::SetVSExpand(VSExpand expand)
 
 void GeometryShaderManager::SetConstants(PrimitiveType prim)
 {
-  if (m_projection_changed && g_ActiveConfig.stereo_mode != StereoMode::Off)
+  if (g_ActiveConfig.stereo_mode != StereoMode::Off)
   {
-    m_projection_changed = false;
+#ifdef ENABLE_VR
+    const bool openxr_mode = (g_ActiveConfig.stereo_mode == StereoMode::OpenXR);
+#else
+    const bool openxr_mode = false;
+#endif
 
-    if (xfmem.projection.type == ProjectionType::Perspective)
+    if (m_projection_changed || openxr_mode)
     {
-      const float offset = g_ActiveConfig.stereo_depth;
-      constants.stereoparams[0] = g_ActiveConfig.bStereoSwapEyes ? offset : -offset;
-      constants.stereoparams[1] = g_ActiveConfig.bStereoSwapEyes ? -offset : offset;
-    }
-    else
-    {
-      constants.stereoparams[0] = constants.stereoparams[1] = 0;
-    }
+      m_projection_changed = false;
 
-    constants.stereoparams[2] = g_ActiveConfig.stereo_convergence;
+#ifdef ENABLE_VR
+      if (openxr_mode)
+      {
+        auto& system = Core::System::GetInstance();
+        auto& vertex_shader_manager = system.GetVertexShaderManager();
+        const bool perspective = xfmem.projection.type == ProjectionType::Perspective;
+        constants.stereoparams = {0.0f, 0.0f, 0.0f, 0.0f};
+        constants.eye_projection = {};
+        constants.legacy_eye_projection_x = {};
+        constants.legacy_eye_projection_y = {};
+        constants.legacy_center_projection = {};
+        constants.eye_z_row = {};
+        constants.depth_params = {};
+        constants.vr_screen = {};
+        constants.head_projection = {};
+        constants.head_locked_params = {};
+        constants.pixel_center_correction = {};
+        const float upm_override = vr_units_per_meter_override;
+        vr_units_per_meter_override = -1.0f;  // consume
 
-    dirty = true;
+        if (VR::g_openxr && VR::g_openxr->IsSessionRunning())
+        {
+          const float upm = std::max(upm_override > 0.0f ? upm_override :
+                                                          g_ActiveConfig.vr_units_per_meter,
+                                     0.0001f);
+
+          // Per-eye projection rows — needed by BOTH perspective and ortho VR paths.
+          std::array<std::array<float, 4>, 4> eye_projection_rows{};
+          std::array<std::array<float, 4>, 2> eye_z_rows{};
+          VR::g_openxr->GetEyeProjectionRows(upm, eye_projection_rows, eye_z_rows);
+
+          // OpenXR stereo path bypasses the classic cproj path, so apply freelook here too.
+          if (perspective && g_freelook_camera.IsActive())
+          {
+            const Common::Matrix44 freelook_view = g_freelook_camera.GetView();
+            ApplyRowTransform(&eye_projection_rows, freelook_view);
+            ApplyRowTransform(&eye_z_rows, freelook_view);
+          }
+
+          constants.eye_projection[0] = eye_projection_rows[0];
+          constants.eye_projection[1] = eye_projection_rows[1];
+          constants.eye_projection[2] = eye_projection_rows[2];
+          constants.eye_projection[3] = eye_projection_rows[3];
+          constants.eye_z_row[0] = eye_z_rows[0];
+          constants.eye_z_row[1] = eye_z_rows[1];
+
+          if (perspective && g_backend_info.api_type == APIType::Vulkan)
+          {
+            const Common::Vec2 fov_multiplier = g_freelook_camera.IsActive() ?
+                                                    g_freelook_camera.GetFieldOfViewMultiplier() :
+                                                    Common::Vec2{1.0f, 1.0f};
+            const float game_projection_x_scale =
+                xfmem.projection.rawProjection[0] * g_ActiveConfig.fAspectRatioHackW *
+                fov_multiplier.x;
+            const float game_projection_x_offset =
+                xfmem.projection.rawProjection[1] * g_ActiveConfig.fAspectRatioHackW *
+                fov_multiplier.x;
+            const float game_projection_y_scale =
+                xfmem.projection.rawProjection[2] * g_ActiveConfig.fAspectRatioHackH *
+                fov_multiplier.y;
+            const float game_projection_y_offset =
+                xfmem.projection.rawProjection[3] * g_ActiveConfig.fAspectRatioHackH *
+                fov_multiplier.y;
+            constants.legacy_center_projection[0] = {game_projection_x_scale, 0.0f,
+                                                     game_projection_x_offset, 0.0f};
+            constants.legacy_center_projection[1] = {0.0f, game_projection_y_scale,
+                                                     game_projection_y_offset, 0.0f};
+            std::array<std::array<float, 4>, 2> legacy_eye_projection_x_rows{};
+            std::array<std::array<float, 4>, 2> legacy_eye_projection_y_rows{};
+            VR::g_openxr->GetLegacyProjectionAdjustments(
+                upm, game_projection_x_scale, game_projection_x_offset, game_projection_y_scale,
+                game_projection_y_offset, legacy_eye_projection_x_rows,
+                legacy_eye_projection_y_rows);
+            // The Vulkan projected-space fallback consumes eye indices opposite to the
+            // OpenXR per-eye rows used by the full path, so swap them here.
+            constants.legacy_eye_projection_x[0] = legacy_eye_projection_x_rows[1];
+            constants.legacy_eye_projection_x[1] = legacy_eye_projection_x_rows[0];
+            constants.legacy_eye_projection_y[0] = legacy_eye_projection_y_rows[1];
+            constants.legacy_eye_projection_y[1] = legacy_eye_projection_y_rows[0];
+            constants.stereoparams[1] = 1.0f;
+          }
+
+          // Unrotated per-eye projection rows for head-locked content.
+          std::array<std::array<float, 4>, 4> head_proj_rows{};
+          VR::g_openxr->GetRawEyeProjectionRows(upm, head_proj_rows);
+          constants.head_projection[0] = head_proj_rows[0];
+          constants.head_projection[1] = head_proj_rows[1];
+          constants.head_projection[2] = head_proj_rows[2];
+          constants.head_projection[3] = head_proj_rows[3];
+          constants.head_locked_params = {g_ActiveConfig.vr_head_locked_curvature, 0.0f, 0.0f,
+                                          0.0f};
+          constants.pixel_center_correction = vertex_shader_manager.constants.pixelcentercorrection;
+
+          // Virtual screen params (for ortho draws: menus, FMV, HUD).
+          const float dist = upm * g_ActiveConfig.vr_screen_distance;
+          const float half_h = upm * g_ActiveConfig.vr_screen_size * 0.5f;
+          const float half_w = half_h * (16.0f / 9.0f);
+          // Layer index: use manual override if set, otherwise auto counter.
+          const int layer = (vr_ortho_layer_override >= 0) ? vr_ortho_layer_override
+                                                           : vr_ortho_draw_counter;
+          vr_ortho_layer_override = -1;  // consume
+          constants.vr_screen = {half_w, half_h, dist, static_cast<float>(layer)};
+
+          if (perspective)
+          {
+            // Detect if the game's projection flips the X axis (e.g. mirror mode in
+            // Mario Kart).  The VR GS path replaces the game's projection entirely with
+            // the VR eye projection, which always has a positive X scale.  If the game's
+            // projection has a negative X scale, triangle winding reverses and the game
+            // adjusts its cull mode accordingly — but our VR projection doesn't reproduce
+            // the flip, so the cull mode becomes wrong and back-faces are shown instead of
+            // front-faces.  Pass the sign to the GS so it can negate the output X when
+            // needed, restoring correct winding AND the intended mirrored view.
+            const float proj_x_sign =
+                (xfmem.projection.rawProjection[0] < 0.0f) ? -1.0f : 1.0f;
+            constants.stereoparams[0] = proj_x_sign;
+
+            float depth_scale = 1.0f;
+            float depth_offset = 0.0f;
+            if (VertexShaderManager::UseVertexDepthRange())
+            {
+              if (g_backend_info.bSupportsReversedDepthRange)
+              {
+                depth_scale = std::fabs(xfmem.viewport.zRange) / 16777215.0f;
+                if (xfmem.viewport.zRange < 0.0f)
+                  depth_offset = xfmem.viewport.farZ / 16777215.0f;
+                else
+                  depth_offset = 1.0f - xfmem.viewport.farZ / 16777215.0f;
+              }
+              else
+              {
+                depth_scale = xfmem.viewport.zRange / 16777215.0f;
+                depth_offset = 1.0f - xfmem.viewport.farZ / 16777215.0f;
+              }
+            }
+            constants.depth_params = {xfmem.projection.rawProjection[4],
+                                      xfmem.projection.rawProjection[5],
+                                      depth_scale, depth_offset};
+
+            // Perspective flag consumed in the OpenXR GS path.
+            constants.stereoparams[3] = 1.0f;
+          }
+          else if (g_ActiveConfig.vr_virtual_screen)
+          {
+            // Orthographic VR flag — signals GS to use virtual screen path.
+            constants.stereoparams[3] = -1.0f;
+          }
+
+        }
+
+        // Per-draw VR stereo override (screen/fullscreen handling from shader overrides)
+        if (!std::isnan(vr_stereo_override))
+        {
+          constants.stereoparams[3] = vr_stereo_override;
+          vr_stereo_override = std::numeric_limits<float>::quiet_NaN();
+        }
+
+        // For ortho/screen draws, pass depth params via depth_params
+        // (depth_params is otherwise unused for non-perspective draws).
+        // .x = layer offset (between draw calls), .y = element depth (within draw call)
+        if (constants.stereoparams[3] < -0.5f)
+        {
+          constants.depth_params[0] = g_ActiveConfig.vr_layer_offset;
+          // Per-override element depth if set, otherwise global
+          constants.depth_params[1] = (vr_element_depth_override >= 0.0f)
+                                          ? vr_element_depth_override
+                                          : g_ActiveConfig.vr_element_depth;
+          vr_element_depth_override = -1.0f;  // consume
+        }
+
+        dirty = true;
+      }
+      else
+#endif
+      if (xfmem.projection.type == ProjectionType::Perspective)
+      {
+        const float offset = g_ActiveConfig.stereo_depth;
+        constants.stereoparams[0] = g_ActiveConfig.bStereoSwapEyes ? offset : -offset;
+        constants.stereoparams[1] = g_ActiveConfig.bStereoSwapEyes ? -offset : offset;
+        constants.stereoparams[2] = g_ActiveConfig.stereo_convergence;
+        constants.stereoparams[3] = 0.0f;
+        dirty = true;
+      }
+      else
+      {
+        constants.stereoparams[0] = 0.0f;
+        constants.stereoparams[1] = 0.0f;
+        constants.stereoparams[2] = 0.0f;
+        constants.stereoparams[3] = 0.0f;
+        dirty = true;
+      }
+    }
   }
 
   if (g_ActiveConfig.UseVSForLinePointExpand())

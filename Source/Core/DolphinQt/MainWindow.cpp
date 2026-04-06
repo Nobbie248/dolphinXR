@@ -211,11 +211,27 @@ static std::vector<std::string> StringListToStdVector(QStringList list)
   return result;
 }
 
+static QString GetMainWindowTitle()
+{
+  QString title = QString::fromStdString(Common::GetScmRevStr());
+
+  if (title.startsWith(QStringLiteral("Dolphin ")))
+    title.replace(0, QStringLiteral("Dolphin").size(), QStringLiteral("Dolphin-OpenXR"));
+
+  if (title.endsWith(QStringLiteral("-dirty")))
+  {
+    title.chop(QStringLiteral("-dirty").size());
+    title.append(QStringLiteral(" -dirty"));
+  }
+
+  return title;
+}
+
 MainWindow::MainWindow(Core::System& system, std::unique_ptr<BootParameters> boot_parameters,
                        const std::string& movie_path)
     : QMainWindow(nullptr), m_system(system)
 {
-  setWindowTitle(QString::fromStdString(Common::GetScmRevStr()));
+  setWindowTitle(GetMainWindowTitle());
   setWindowIcon(Resources::GetAppIcon());
   setUnifiedTitleAndToolBarOnMac(true);
   setAcceptDrops(true);
@@ -694,6 +710,7 @@ void MainWindow::ConnectToolBar()
   connect(m_tool_bar, &ToolBar::SettingsPressed, this, &MainWindow::ShowSettingsWindow);
   connect(m_tool_bar, &ToolBar::ControllersPressed, this, &MainWindow::ShowControllersWindow);
   connect(m_tool_bar, &ToolBar::GraphicsPressed, this, &MainWindow::ShowGraphicsWindow);
+  connect(m_tool_bar, &ToolBar::VRPressed, this, &MainWindow::ShowVRWindow);
 
   connect(m_tool_bar, &ToolBar::StepPressed, m_code_widget, &CodeWidget::Step);
   connect(m_tool_bar, &ToolBar::StepOverPressed, m_code_widget, &CodeWidget::StepOver);
@@ -1277,7 +1294,7 @@ void MainWindow::HideRenderWidget(bool reinit, bool is_exit)
     m_rendering_to_main = false;
     m_stack->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     disconnect(Host::GetInstance(), &Host::RequestTitle, this, &MainWindow::setWindowTitle);
-    setWindowTitle(QString::fromStdString(Common::GetScmRevStr()));
+    setWindowTitle(GetMainWindowTitle());
   }
 
   // The following code works around a driver bug that would lead to Dolphin crashing when changing
@@ -1402,6 +1419,12 @@ void MainWindow::ShowGraphicsWindow()
 {
   ShowSettingsWindow();
   m_settings_window->SelectPane(SettingsWindowPaneIndex::Graphics);
+}
+
+void MainWindow::ShowVRWindow()
+{
+  ShowSettingsWindow();
+  m_settings_window->SelectPane(SettingsWindowPaneIndex::VR);
 }
 
 void MainWindow::ShowNetPlaySetupDialog()
@@ -2024,7 +2047,8 @@ void MainWindow::ShowTASInput()
 
   for (int i = 0; i < num_wii_controllers; i++)
   {
-    if (Config::Get(Config::GetInfoForWiimoteSource(i)) == WiimoteSource::Emulated &&
+    const WiimoteSource source = Config::Get(Config::GetInfoForWiimoteSource(i));
+    if ((source == WiimoteSource::Emulated || source == WiimoteSource::OpenXR) &&
         (!Core::IsRunning(m_system) || m_system.IsWii()))
     {
       m_wii_tas_input_windows[i]->show();

@@ -27,13 +27,17 @@
 #include "VideoCommon/OnScreenDisplay.h"
 #include "VideoCommon/PerformanceMetrics.h"
 #include "VideoCommon/Present.h"
+#include "VideoCommon/ShaderHunter.h"
 #include "VideoCommon/Statistics.h"
 #include "VideoCommon/VertexManagerBase.h"
 #include "VideoCommon/VideoConfig.h"
 
 #include <inttypes.h>
+#include <algorithm>
 #include <mutex>
+#include <string>
 
+#include <fmt/format.h>
 #include <imgui.h>
 #include <implot.h>
 
@@ -327,6 +331,133 @@ void OnScreenUI::DrawDebugText()
 
   if (g_ActiveConfig.bOverlayScissorStats)
     g_stats.DisplayScissor();
+
+  float shader_overlay_y = 8.0f * m_backbuffer_scale;
+  const float shader_overlay_x = 8.0f * m_backbuffer_scale;
+  const float shader_overlay_spacing = 4.0f * m_backbuffer_scale;
+
+  if (g_ActiveConfig.bOverlayShaderFlags)
+  {
+    const auto flag_statuses = ShaderHunter::GetInstance().GetFlagStatusesForOSD();
+    if (!flag_statuses.empty())
+    {
+      ImGui::SetNextWindowPos(ImVec2(shader_overlay_x, shader_overlay_y), ImGuiCond_Always);
+      ImGui::SetNextWindowBgAlpha(0.35f);
+      if (ImGui::Begin("Shader Flags", nullptr,
+                       ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoInputs |
+                           ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
+                           ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoNav |
+                           ImGuiWindowFlags_AlwaysAutoResize |
+                           ImGuiWindowFlags_NoFocusOnAppearing))
+      {
+        ImGui::TextUnformatted("Shader Flags");
+        for (const auto& status : flag_statuses)
+        {
+          const ImVec4 color = status.is_active ? ImVec4(0.45f, 0.95f, 0.45f, 1.0f) :
+                                                  ImVec4(0.65f, 0.65f, 0.65f, 1.0f);
+          ImGui::TextColored(color, "%s: %s", status.flag_name.c_str(),
+                             status.is_active ? "active" : "inactive");
+
+          for (const auto& shader_name : status.impacted_shader_names)
+          {
+            ImGui::TextColored(ImVec4(0.85f, 0.85f, 0.85f, 1.0f), "  - %s",
+                               shader_name.c_str());
+          }
+        }
+      }
+      shader_overlay_y += ImGui::GetWindowHeight() + shader_overlay_spacing;
+      ImGui::End();
+    }
+  }
+
+  if (g_ActiveConfig.bOverlayShaderHunting)
+  {
+    const auto status = ShaderHunter::GetInstance().GetHuntingStatusForOSD();
+    ImGui::SetNextWindowPos(ImVec2(shader_overlay_x, shader_overlay_y), ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(0.35f);
+    if (ImGui::Begin("Shader Hunting", nullptr,
+                     ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoInputs |
+                         ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
+                         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoNav |
+                         ImGuiWindowFlags_AlwaysAutoResize |
+                         ImGuiWindowFlags_NoFocusOnAppearing))
+    {
+      const char* option_text =
+          status.option == ShaderHunter::HuntingOption::Pink ? "Pink" : "Skip";
+      const char* type_text = status.active_type == ShaderHunter::ShaderType::Vertex   ? "VS" :
+                              status.active_type == ShaderHunter::ShaderType::Geometry ? "GS" :
+                                                                                         "PS";
+      ImGui::Text("Shader Hunting: %s (%s)", status.enabled ? "ON" : "OFF", option_text);
+
+      if (status.selected_position >= 0 && status.selected_total > 0 && status.selected_hash != ~0ULL)
+      {
+        ImGui::Text("Selected: %s %d/%d  0x%016llX", type_text, status.selected_position + 1,
+                    status.selected_total,
+                    static_cast<unsigned long long>(status.selected_hash));
+      }
+      else
+      {
+        ImGui::Text("Selected: (none)");
+      }
+
+      if (status.element_mode)
+      {
+        if (status.selected_element >= 0 && status.element_total > 0)
+          ImGui::Text("Draw Call: %d / %d", status.selected_element + 1, status.element_total);
+        else
+          ImGui::Text("Draw Call: - / %d", status.element_total);
+
+        if (status.element_start >= 0 && status.element_end >= 0)
+          ImGui::Text("Range: %d - %d", status.element_start + 1, status.element_end + 1);
+        else
+          ImGui::TextUnformatted("Range: (single draw call)");
+      }
+      else
+      {
+        ImGui::TextUnformatted("Draw Call Filter: OFF");
+      }
+
+      if (status.selected_texture_hash == 0 && status.texture_filters.empty())
+      {
+        ImGui::TextUnformatted("Texture Hashes: (none)");
+      }
+      else
+      {
+        if (status.selected_texture_hash != 0)
+        {
+          const bool also_added =
+              std::find(status.texture_filters.begin(), status.texture_filters.end(),
+                        status.selected_texture_hash) != status.texture_filters.end();
+          ImGui::TextColored(ImVec4(0.95f, 0.80f, 0.30f, 1.0f), "Current Texture: %016llX%s",
+                             static_cast<unsigned long long>(status.selected_texture_hash),
+                             also_added ? "  [selected + added]" : "  [selected]");
+        }
+
+        if (!status.texture_filters.empty())
+        {
+          ImGui::TextUnformatted("Added Texture Hashes:");
+
+          constexpr size_t max_hashes_to_show = 4;
+          for (size_t i = 0; i < status.texture_filters.size() && i < max_hashes_to_show; i++)
+          {
+            const u64 texture_hash = status.texture_filters[i];
+            const bool is_selected = texture_hash == status.selected_texture_hash;
+            ImGui::TextColored(is_selected ? ImVec4(0.95f, 0.85f, 0.35f, 1.0f) :
+                                            ImVec4(0.45f, 0.95f, 0.45f, 1.0f),
+                               "  %016llX%s", static_cast<unsigned long long>(texture_hash),
+                               is_selected ? "  [selected + added]" : "  [added]");
+          }
+          if (status.texture_filters.size() > max_hashes_to_show)
+          {
+            ImGui::TextUnformatted(
+                fmt::format("  ... (+{})", status.texture_filters.size() - max_hashes_to_show)
+                    .c_str());
+          }
+        }
+      }
+    }
+    ImGui::End();
+  }
 
   const std::string profile_output = Common::Profiler::ToString();
   if (!profile_output.empty())

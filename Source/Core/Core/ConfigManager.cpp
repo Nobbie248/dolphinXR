@@ -4,14 +4,14 @@
 #include "Core/ConfigManager.h"
 
 #include <algorithm>
+#include <fstream>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <variant>
-
-#include <Core/Core.h>
 
 #include <fmt/format.h>
 
@@ -29,6 +29,7 @@
 #include "Core/AchievementManager.h"
 #include "Core/Boot/Boot.h"
 #include "Core/Config/DefaultLocale.h"
+#include "Core/Config/GraphicsSettings.h"
 #include "Core/Config/MainSettings.h"
 #include "Core/Config/SYSCONFSettings.h"
 #include "Core/ConfigLoaders/GameConfigLoader.h"
@@ -57,6 +58,121 @@
 #include "DiscIO/Enums.h"
 #include "DiscIO/Volume.h"
 #include "DiscIO/VolumeWad.h"
+
+namespace
+{
+constexpr std::string_view VR_SECTION_NAME = "Graphics.VR";
+constexpr std::string_view LEGACY_VR_SECTION_NAME = "GFX.VR";
+
+using VRSettingMap = std::map<std::string, std::string, Common::CaseInsensitiveLess>;
+
+static std::string GetVRGameINIPath(std::string_view game_id)
+{
+  return File::GetUserPath(D_GAMESETTINGSVR_IDX) + std::string(game_id) + ".ini";
+}
+
+static bool IsVRSectionHeader(std::string_view line)
+{
+  if (line.size() < 3 || line.front() != '[' || line.back() != ']')
+    return false;
+
+  const std::string_view section_name = line.substr(1, line.size() - 2);
+  return Common::CaseInsensitiveEquals(section_name, VR_SECTION_NAME) ||
+         Common::CaseInsensitiveEquals(section_name, LEGACY_VR_SECTION_NAME);
+}
+
+static VRSettingMap LoadVRSettingsFromINI(std::string_view game_id)
+{
+  VRSettingMap values;
+
+  if (game_id.empty() || game_id == DEFAULT_GAME_ID)
+    return values;
+
+  std::ifstream file(GetVRGameINIPath(game_id));
+  if (!file.is_open())
+    return values;
+
+  bool in_vr_section = false;
+  std::string line;
+  while (std::getline(file, line))
+  {
+    if (!line.empty() && line.back() == '\r')
+      line.pop_back();
+
+    const std::string_view trimmed = StripWhitespace(line);
+    if (trimmed.empty())
+      continue;
+
+    if (!trimmed.empty() && trimmed.front() == '[')
+    {
+      if (IsVRSectionHeader(trimmed))
+      {
+        in_vr_section = true;
+        continue;
+      }
+
+      if (in_vr_section)
+        break;
+    }
+
+    if (!in_vr_section)
+      continue;
+
+    if (trimmed.front() == '#' || trimmed.front() == ';' || trimmed.front() == '$' ||
+        trimmed.front() == '*')
+    {
+      continue;
+    }
+
+    std::string key;
+    std::string value;
+    Common::IniFile::ParseLine(trimmed, &key, &value);
+    if (!key.empty())
+      values.insert_or_assign(std::move(key), std::move(value));
+  }
+
+  return values;
+}
+
+template <typename T>
+static void ApplyVRSetting(const VRSettingMap& values, const char* key, const Config::Info<T>& info)
+{
+  const auto it = values.find(key);
+  if (it == values.end())
+  {
+    Config::DeleteKey(Config::LayerType::CurrentRun, info);
+    return;
+  }
+
+  T parsed_value{};
+  if (TryParse(it->second, &parsed_value))
+    Config::SetCurrent(info, parsed_value);
+  else
+    Config::DeleteKey(Config::LayerType::CurrentRun, info);
+}
+
+static void ApplyGameVRConfigOverrides(std::string_view game_id)
+{
+  const Config::ConfigChangeCallbackGuard guard;
+  const VRSettingMap values = LoadVRSettingsFromINI(game_id);
+
+  ApplyVRSetting(values, "EnableOpenXR", Config::GFX_VR_ENABLE_OPENXR);
+  ApplyVRSetting(values, "UnitsPerMeter", Config::GFX_VR_UNITS_PER_METER);
+  ApplyVRSetting(values, "LeanBackAngle", Config::GFX_VR_LEAN_BACK_ANGLE);
+  ApplyVRSetting(values, "CameraForward", Config::GFX_VR_CAMERA_FORWARD);
+  ApplyVRSetting(values, "VirtualScreen", Config::GFX_VR_VIRTUAL_SCREEN);
+  ApplyVRSetting(values, "ScreenDistance", Config::GFX_VR_SCREEN_DISTANCE);
+  ApplyVRSetting(values, "ScreenSize", Config::GFX_VR_SCREEN_SIZE);
+  ApplyVRSetting(values, "DontClearScreen", Config::GFX_VR_DONT_CLEAR_SCREEN);
+  ApplyVRSetting(values, "LoadCustomShaders", Config::GFX_VR_LOAD_CUSTOM_SHADERS);
+  ApplyVRSetting(values, "DisableCPUCull", Config::GFX_VR_DISABLE_CPU_CULL);
+  ApplyVRSetting(values, "AutoVBIFromHMD", Config::GFX_VR_AUTO_VBI_FROM_HMD);
+  ApplyVRSetting(values, "AutoLayerSpread", Config::GFX_VR_AUTO_LAYER_SPREAD);
+  ApplyVRSetting(values, "LayerOffset", Config::GFX_VR_LAYER_OFFSET);
+  ApplyVRSetting(values, "ElementDepth", Config::GFX_VR_ELEMENT_DEPTH);
+  ApplyVRSetting(values, "ClearEFBCopies", Config::GFX_VR_CLEAR_EFB_COPIES);
+}
+}  // namespace
 
 SConfig* SConfig::m_Instance;
 
@@ -253,9 +369,16 @@ void SConfig::SetRunningGameMetadata(const std::string& game_id, const std::stri
 
   Config::AddLayer(ConfigLoaders::GenerateGlobalGameConfigLoader(game_id, revision));
   Config::AddLayer(ConfigLoaders::GenerateLocalGameConfigLoader(game_id, revision));
+  ApplyGameVRConfigOverrides(game_id);
 
   if (is_running_or_starting)
     DolphinAnalytics::Instance().ReportGameStart();
+}
+
+void SConfig::ReloadGameVRConfigOverrides()
+{
+  std::lock_guard<std::recursive_mutex> lock(m_metadata_lock);
+  ApplyGameVRConfigOverrides(m_game_id);
 }
 
 void SConfig::OnESTitleChanged()

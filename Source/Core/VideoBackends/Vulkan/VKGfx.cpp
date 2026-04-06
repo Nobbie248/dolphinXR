@@ -96,7 +96,26 @@ VKGfx::CreateFramebuffer(AbstractTexture* color_attachment, AbstractTexture* dep
 
 void VKGfx::SetPipeline(const AbstractPipeline* pipeline)
 {
+  m_current_pipeline = pipeline;
   StateTracker::GetInstance()->SetPipeline(static_cast<const VKPipeline*>(pipeline));
+}
+
+void VKGfx::SetForcePixelShader(const AbstractShader* shader)
+{
+  if (!shader || !m_current_pipeline)
+    return;
+
+  if (m_forced_pipeline_base != m_current_pipeline || m_forced_pipeline_shader != shader ||
+      !m_forced_pipeline)
+  {
+    auto config = m_current_pipeline->m_config;
+    config.pixel_shader = shader;
+    m_forced_pipeline = CreatePipeline(config);
+    m_forced_pipeline_base = m_current_pipeline;
+    m_forced_pipeline_shader = shader;
+  }
+
+  StateTracker::GetInstance()->SetPipeline(static_cast<const VKPipeline*>(m_forced_pipeline.get()));
 }
 
 void VKGfx::ClearRegion(const MathUtil::Rectangle<int>& target_rc, bool color_enable,

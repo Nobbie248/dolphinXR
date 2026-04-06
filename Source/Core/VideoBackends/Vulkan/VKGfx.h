@@ -61,6 +61,7 @@ public:
                    bool z_enable, u32 color, u32 z) override;
 
   void SetPipeline(const AbstractPipeline* pipeline) override;
+  void SetForcePixelShader(const AbstractShader* shader) override;
   void SetFramebuffer(AbstractFramebuffer* framebuffer) override;
   void SetAndDiscardFramebuffer(AbstractFramebuffer* framebuffer) override;
   void SetAndClearFramebuffer(AbstractFramebuffer* framebuffer, const ClearColor& color_value = {},
@@ -98,6 +99,10 @@ private:
 
   std::unique_ptr<SwapChain> m_swap_chain;
   float m_backbuffer_scale;
+  const AbstractPipeline* m_current_pipeline = nullptr;
+  const AbstractPipeline* m_forced_pipeline_base = nullptr;
+  const AbstractShader* m_forced_pipeline_shader = nullptr;
+  std::unique_ptr<AbstractPipeline> m_forced_pipeline;
 
   // Keep a copy of sampler states to avoid cache lookups every draw
   std::array<SamplerState, VideoCommon::MAX_PIXEL_SHADER_SAMPLERS> m_sampler_states = {};

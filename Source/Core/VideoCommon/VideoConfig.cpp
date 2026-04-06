@@ -25,6 +25,7 @@
 #include "VideoCommon/Fifo.h"
 #include "VideoCommon/FramebufferManager.h"
 #include "VideoCommon/FreeLookCamera.h"
+#include "VideoCommon/GeometryShaderManager.h"
 #include "VideoCommon/GraphicsModSystem/Runtime/GraphicsModManager.h"
 #include "VideoCommon/OnScreenDisplay.h"
 #include "VideoCommon/PixelShaderManager.h"
@@ -112,6 +113,8 @@ void VideoConfig::Refresh()
   bOverlayStats = Config::Get(Config::GFX_OVERLAY_STATS);
   bOverlayProjStats = Config::Get(Config::GFX_OVERLAY_PROJ_STATS);
   bOverlayScissorStats = Config::Get(Config::GFX_OVERLAY_SCISSOR_STATS);
+  bOverlayShaderFlags = Config::Get(Config::GFX_OVERLAY_SHADER_FLAGS);
+  bOverlayShaderHunting = Config::Get(Config::GFX_OVERLAY_SHADER_HUNTING);
   bDumpTextures = Config::Get(Config::GFX_DUMP_TEXTURES);
   bDumpMipmapTextures = Config::Get(Config::GFX_DUMP_MIP_TEXTURES);
   bDumpBaseTextures = Config::Get(Config::GFX_DUMP_BASE_TEXTURES);
@@ -161,6 +164,17 @@ void VideoConfig::Refresh()
   color_correction.fHDRPaperWhiteNits = Config::Get(Config::GFX_CC_HDR_PAPER_WHITE_NITS);
 
   stereo_mode = Config::Get(Config::GFX_STEREO_MODE);
+  const bool vr_openxr_enabled = Config::Get(Config::GFX_VR_ENABLE_OPENXR);
+  if (vr_openxr_enabled)
+  {
+    // OpenXR mode is now driven by a dedicated VR setting.
+    stereo_mode = StereoMode::OpenXR;
+  }
+  else if (stereo_mode == StereoMode::OpenXR)
+  {
+    // Prevent stale legacy config values from forcing OpenXR.
+    stereo_mode = StereoMode::Off;
+  }
   stereo_per_eye_resolution_full = Config::Get(Config::GFX_STEREO_PER_EYE_RESOLUTION_FULL);
   stereo_depth = Config::Get(Config::GFX_STEREO_DEPTH) *
                  Config::Get(Config::GFX_STEREO_DEPTH_PERCENTAGE) * 0.00001f;
@@ -168,7 +182,42 @@ void VideoConfig::Refresh()
                        Config::Get(Config::GFX_STEREO_CONVERGENCE_PERCENTAGE) * 0.01f;
   bStereoSwapEyes = Config::Get(Config::GFX_STEREO_SWAP_EYES);
   bStereoEFBMonoDepth = Config::Get(Config::GFX_STEREO_EFB_MONO_DEPTH);
-
+  vr_units_per_meter = std::clamp(Config::Get(Config::GFX_VR_UNITS_PER_METER),
+                                  Config::GFX_VR_UNITS_PER_METER_MIN,
+                                  Config::GFX_VR_UNITS_PER_METER_MAX);
+  vr_lean_back_angle = std::clamp(Config::Get(Config::GFX_VR_LEAN_BACK_ANGLE),
+                                  Config::GFX_VR_LEAN_BACK_ANGLE_MIN,
+                                  Config::GFX_VR_LEAN_BACK_ANGLE_MAX);
+  vr_camera_forward = std::clamp(Config::Get(Config::GFX_VR_CAMERA_FORWARD),
+                                 Config::GFX_VR_CAMERA_FORWARD_MIN,
+                                 Config::GFX_VR_CAMERA_FORWARD_MAX);
+  vr_virtual_screen = Config::Get(Config::GFX_VR_VIRTUAL_SCREEN);
+  vr_screen_distance = std::clamp(Config::Get(Config::GFX_VR_SCREEN_DISTANCE),
+                                  Config::GFX_VR_SCREEN_DISTANCE_MIN,
+                                  Config::GFX_VR_SCREEN_DISTANCE_MAX);
+  vr_screen_size = std::clamp(Config::Get(Config::GFX_VR_SCREEN_SIZE),
+                              Config::GFX_VR_SCREEN_SIZE_MIN,
+                              Config::GFX_VR_SCREEN_SIZE_MAX);
+  vr_head_locked_curvature = std::clamp(Config::Get(Config::GFX_VR_HEAD_LOCKED_CURVATURE),
+                                        Config::GFX_VR_HEAD_LOCKED_CURVATURE_MIN,
+                                        Config::GFX_VR_HEAD_LOCKED_CURVATURE_MAX);
+  vr_dont_clear_screen = Config::Get(Config::GFX_VR_DONT_CLEAR_SCREEN);
+  vr_load_custom_shaders = Config::Get(Config::GFX_VR_LOAD_CUSTOM_SHADERS);
+  vr_disable_cpu_cull = Config::Get(Config::GFX_VR_DISABLE_CPU_CULL);
+  vr_opcode_replay_mode = Config::Get(Config::GFX_VR_OPCODE_REPLAY);
+  vr_auto_layer_spread = Config::Get(Config::GFX_VR_AUTO_LAYER_SPREAD);
+  vr_remove_bars = Config::Get(Config::GFX_VR_REMOVE_BARS);
+  vr_gamma = std::clamp(Config::Get(Config::GFX_VR_GAMMA),
+                        Config::GFX_VR_GAMMA_MIN, Config::GFX_VR_GAMMA_MAX);
+  vr_layer_offset = std::clamp(Config::Get(Config::GFX_VR_LAYER_OFFSET),
+                                Config::GFX_VR_LAYER_OFFSET_MIN,
+                                Config::GFX_VR_LAYER_OFFSET_MAX);
+  vr_element_depth = std::clamp(Config::Get(Config::GFX_VR_ELEMENT_DEPTH),
+                                Config::GFX_VR_ELEMENT_DEPTH_MIN,
+                                Config::GFX_VR_ELEMENT_DEPTH_MAX);
+  vr_clear_efb_min_width = std::clamp(Config::Get(Config::GFX_VR_CLEAR_EFB_COPIES),
+                                      Config::GFX_VR_CLEAR_EFB_MIN,
+                                      Config::GFX_VR_CLEAR_EFB_MAX);
   bEFBAccessEnable = Config::Get(Config::GFX_HACK_EFB_ACCESS_ENABLE);
   bEFBAccessDeferInvalidation = Config::Get(Config::GFX_HACK_EFB_DEFER_INVALIDATION);
   bBBoxEnable = Config::Get(Config::GFX_HACK_BBOX_ENABLE);
@@ -303,9 +352,19 @@ void CheckForConfigChanges()
   const bool old_widescreen_hack = g_ActiveConfig.bWidescreenHack;
   const auto old_post_processing_shader = g_ActiveConfig.sPostProcessingShader;
   const auto old_hdr = g_ActiveConfig.bHDR;
+  const float old_vr_units_per_meter = g_ActiveConfig.vr_units_per_meter;
+  const float old_vr_screen_distance = g_ActiveConfig.vr_screen_distance;
+  const float old_vr_screen_size = g_ActiveConfig.vr_screen_size;
+  const float old_vr_head_locked_curvature = g_ActiveConfig.vr_head_locked_curvature;
 
   UpdateActiveConfig();
   g_vertex_manager->OnConfigChange();
+
+  if (old_vr_units_per_meter != g_ActiveConfig.vr_units_per_meter ||
+      old_vr_screen_distance != g_ActiveConfig.vr_screen_distance ||
+      old_vr_screen_size != g_ActiveConfig.vr_screen_size ||
+      old_vr_head_locked_curvature != g_ActiveConfig.vr_head_locked_curvature)
+    Core::System::GetInstance().GetGeometryShaderManager().SetProjectionChanged();
 
   g_freelook_camera.RefreshConfig();
 

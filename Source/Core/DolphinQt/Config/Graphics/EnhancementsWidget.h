@@ -11,6 +11,7 @@ class ConfigComplexChoice;
 class ConfigStringChoice;
 class ConfigFloatSlider;
 class GraphicsPane;
+class QGroupBox;
 class QPushButton;
 class QLabel;
 class ToolTipPushButton;
@@ -37,6 +38,7 @@ private:
   void AddDescriptions();
 
   void OnBackendChanged();
+  void UpdateStereoscopyAvailability();
   void UpdateAntialiasingOptions();
   void LoadPostProcessingShaders();
   void ShaderChanged();
@@ -63,6 +65,7 @@ private:
   ConfigBool* m_hdr;
 
   // Stereoscopy
+  QGroupBox* m_stereoscopy_box;
   ConfigChoice* m_3d_mode;
   ConfigFloatSlider* m_3d_depth;
   QLabel* m_3d_depth_value;

@@ -37,7 +37,15 @@ enum class StereoMode : int
   TAB,
   Anaglyph,
   QuadBuffer,
-  Passive
+  Passive,
+  OpenXR  // Head-mounted display via the OpenXR runtime (Windows only)
+};
+
+enum class OpenXROpcodeReplayMode : int
+{
+  Off = 0,
+  Replay60To90 = 1,
+  Replay30To90 = 2,
 };
 
 enum class ShaderCompilationMode : int
@@ -255,6 +263,8 @@ struct VideoConfig final
   bool bOverlayStats = false;
   bool bOverlayProjStats = false;
   bool bOverlayScissorStats = false;
+  bool bOverlayShaderFlags = false;
+  bool bOverlayShaderHunting = false;
   bool bTexFmtOverlayEnable = false;
   bool bTexFmtOverlayCenter = false;
   bool bLogRenderTimeToFile = false;
@@ -314,7 +324,23 @@ struct VideoConfig final
   float stereo_convergence = 0;
   bool bStereoSwapEyes = false;
   bool bStereoEFBMonoDepth = false;
-
+  float vr_units_per_meter = 1.0f;
+  float vr_lean_back_angle = 0.0f;
+  float vr_camera_forward = 0.0f;
+  bool vr_virtual_screen = true;
+  float vr_screen_distance = 1.5f;
+  float vr_screen_size = 1.5f;
+  float vr_head_locked_curvature = 0.0f;
+  bool vr_dont_clear_screen = false;
+  bool vr_load_custom_shaders = false;
+  bool vr_disable_cpu_cull = false;
+  OpenXROpcodeReplayMode vr_opcode_replay_mode = OpenXROpcodeReplayMode::Off;
+  bool vr_auto_layer_spread = true;
+  bool vr_remove_bars = true;       // Expand scissor/viewport to remove cinematic letterbox bars
+  float vr_gamma = 1.0f;  // Gamma for VR eye output (1.0=off, 2.2=sRGB, adjustable per headset)
+  float vr_layer_offset = 0.002f;
+  float vr_element_depth = 0.001f;
+  int vr_clear_efb_min_width = 0;  // 0=disabled, >0=clear EFB copies wider than this
   // D3D only config, mostly to be merged into the above
   int iAdapter = 0;
 

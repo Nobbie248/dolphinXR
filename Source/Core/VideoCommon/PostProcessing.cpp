@@ -598,9 +598,11 @@ void PostProcessing::BlitFromTexture(const MathUtil::Rectangle<int>& dst,
     g_vertex_manager->UploadUtilityUniforms(uniform_staging_buffer->data(),
                                             static_cast<u32>(uniform_staging_buffer->size()));
 
-    g_gfx->SetViewportAndScissor(
-        g_gfx->ConvertFramebufferRectangle(dst, g_gfx->GetCurrentFramebuffer()));
+    const auto vp_rect =
+        g_gfx->ConvertFramebufferRectangle(dst, g_gfx->GetCurrentFramebuffer());
+    g_gfx->SetViewportAndScissor(vp_rect);
     g_gfx->SetPipeline(final_pipeline);
+
     g_gfx->Draw(0, 3);
   }
 }

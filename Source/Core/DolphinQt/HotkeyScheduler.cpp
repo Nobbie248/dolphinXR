@@ -22,6 +22,7 @@
 #include "Core/Config/GraphicsSettings.h"
 #include "Core/Config/MainSettings.h"
 #include "Core/Config/UISettings.h"
+#include "Core/ConfigManager.h"
 #include "Core/Core.h"
 #include "Core/FreeLookManager.h"
 #include "Core/HotkeyManager.h"
@@ -40,9 +41,15 @@
 #include "InputCommon/ControllerInterface/ControllerInterface.h"
 
 #include "VideoCommon/OnScreenDisplay.h"
+#include "VideoCommon/ShaderHunter.h"
 #include "VideoCommon/VideoConfig.h"
+#ifdef ENABLE_VR
+#include "VideoCommon/VR/OpenXRManager.h"
+#endif
 
 constexpr const char* DUBOIS_ALGORITHM_SHADER = "dubois";
+constexpr float HOTKEY_VR_UNITS_PER_METER_MIN = 0.01f;
+constexpr float HOTKEY_VR_UNITS_PER_METER_MAX = 1000.0f;
 
 HotkeyScheduler::HotkeyScheduler() : m_stop_requested(false)
 {
@@ -482,6 +489,312 @@ void HotkeyScheduler::Run()
 
       if (IsHotkey(HK_TOGGLE_TEXTURES))
         Config::SetCurrent(Config::GFX_HIRES_TEXTURES, !Config::Get(Config::GFX_HIRES_TEXTURES));
+
+      // VR
+      auto ToggleVRSetting = [](const auto& setting, const char* label) {
+        const bool new_value = !Config::Get(setting);
+        Config::SetCurrent(setting, new_value);
+        OSD::AddMessage(fmt::format("{}: {}", label, new_value ? "Enabled" : "Disabled"));
+      };
+
+      auto AdjustVRFloatSetting = [](const auto& setting, const float delta, const float min_value,
+                                     const float max_value, const char* label, const int precision) {
+        const float current = Config::Get(setting);
+        const float new_value = std::clamp(current + delta, min_value, max_value);
+        Config::SetCurrent(setting, new_value);
+        OSD::AddMessage(fmt::format("{}: {:.{}f}", label, new_value, precision));
+      };
+
+      if (IsHotkey(HK_VR_TOGGLE_OPENXR))
+        ToggleVRSetting(Config::GFX_VR_ENABLE_OPENXR, "OpenXR");
+
+      if (IsHotkey(HK_VR_RESET_POSITION))
+      {
+#ifdef ENABLE_VR
+        if (VR::g_openxr)
+        {
+          VR::g_openxr->RequestRecenter();
+          OSD::AddMessage("VR Position: Recenter requested");
+        }
+        else
+        {
+          OSD::AddMessage("VR Position: OpenXR is not active");
+        }
+#else
+        OSD::AddMessage("VR Position: VR backend not enabled");
+#endif
+      }
+
+      if (IsHotkey(HK_VR_DECREASE_UNITS_PER_METER))
+      {
+        AdjustVRFloatSetting(Config::GFX_VR_UNITS_PER_METER, -Config::GFX_VR_UNITS_PER_METER_STEP,
+                             HOTKEY_VR_UNITS_PER_METER_MIN, HOTKEY_VR_UNITS_PER_METER_MAX,
+                             "Units Per Meter", 2);
+      }
+      if (IsHotkey(HK_VR_INCREASE_UNITS_PER_METER))
+      {
+        AdjustVRFloatSetting(Config::GFX_VR_UNITS_PER_METER, Config::GFX_VR_UNITS_PER_METER_STEP,
+                             HOTKEY_VR_UNITS_PER_METER_MIN, HOTKEY_VR_UNITS_PER_METER_MAX,
+                             "Units Per Meter", 2);
+      }
+
+      if (IsHotkey(HK_VR_DECREASE_LEAN_BACK_ANGLE))
+      {
+        AdjustVRFloatSetting(Config::GFX_VR_LEAN_BACK_ANGLE, -Config::GFX_VR_LEAN_BACK_ANGLE_STEP,
+                             Config::GFX_VR_LEAN_BACK_ANGLE_MIN,
+                             Config::GFX_VR_LEAN_BACK_ANGLE_MAX, "Lean Back Angle", 1);
+      }
+      if (IsHotkey(HK_VR_INCREASE_LEAN_BACK_ANGLE))
+      {
+        AdjustVRFloatSetting(Config::GFX_VR_LEAN_BACK_ANGLE, Config::GFX_VR_LEAN_BACK_ANGLE_STEP,
+                             Config::GFX_VR_LEAN_BACK_ANGLE_MIN,
+                             Config::GFX_VR_LEAN_BACK_ANGLE_MAX, "Lean Back Angle", 1);
+      }
+
+      if (IsHotkey(HK_VR_DECREASE_CAMERA_FORWARD))
+      {
+        AdjustVRFloatSetting(Config::GFX_VR_CAMERA_FORWARD, -Config::GFX_VR_CAMERA_FORWARD_STEP,
+                             Config::GFX_VR_CAMERA_FORWARD_MIN, Config::GFX_VR_CAMERA_FORWARD_MAX,
+                             "Camera Forward", 2);
+      }
+      if (IsHotkey(HK_VR_INCREASE_CAMERA_FORWARD))
+      {
+        AdjustVRFloatSetting(Config::GFX_VR_CAMERA_FORWARD, Config::GFX_VR_CAMERA_FORWARD_STEP,
+                             Config::GFX_VR_CAMERA_FORWARD_MIN, Config::GFX_VR_CAMERA_FORWARD_MAX,
+                             "Camera Forward", 2);
+      }
+
+      if (IsHotkey(HK_VR_TOGGLE_VIRTUAL_SCREEN))
+        ToggleVRSetting(Config::GFX_VR_VIRTUAL_SCREEN, "Virtual Screen");
+
+      if (IsHotkey(HK_VR_DECREASE_SCREEN_DISTANCE))
+      {
+        AdjustVRFloatSetting(Config::GFX_VR_SCREEN_DISTANCE, -Config::GFX_VR_SCREEN_DISTANCE_STEP,
+                             Config::GFX_VR_SCREEN_DISTANCE_MIN,
+                             Config::GFX_VR_SCREEN_DISTANCE_MAX, "Screen Distance", 2);
+      }
+      if (IsHotkey(HK_VR_INCREASE_SCREEN_DISTANCE))
+      {
+        AdjustVRFloatSetting(Config::GFX_VR_SCREEN_DISTANCE, Config::GFX_VR_SCREEN_DISTANCE_STEP,
+                             Config::GFX_VR_SCREEN_DISTANCE_MIN,
+                             Config::GFX_VR_SCREEN_DISTANCE_MAX, "Screen Distance", 2);
+      }
+
+      if (IsHotkey(HK_VR_DECREASE_SCREEN_SIZE))
+      {
+        AdjustVRFloatSetting(Config::GFX_VR_SCREEN_SIZE, -Config::GFX_VR_SCREEN_SIZE_STEP,
+                             Config::GFX_VR_SCREEN_SIZE_MIN, Config::GFX_VR_SCREEN_SIZE_MAX,
+                             "Screen Size", 2);
+      }
+      if (IsHotkey(HK_VR_INCREASE_SCREEN_SIZE))
+      {
+        AdjustVRFloatSetting(Config::GFX_VR_SCREEN_SIZE, Config::GFX_VR_SCREEN_SIZE_STEP,
+                             Config::GFX_VR_SCREEN_SIZE_MIN, Config::GFX_VR_SCREEN_SIZE_MAX,
+                             "Screen Size", 2);
+      }
+
+      if (IsHotkey(HK_VR_DECREASE_SCREEN_CURVATURE))
+      {
+        AdjustVRFloatSetting(Config::GFX_VR_HEAD_LOCKED_CURVATURE,
+                             -Config::GFX_VR_HEAD_LOCKED_CURVATURE_STEP,
+                             Config::GFX_VR_HEAD_LOCKED_CURVATURE_MIN,
+                             Config::GFX_VR_HEAD_LOCKED_CURVATURE_MAX, "Screen Curvature", 2);
+      }
+      if (IsHotkey(HK_VR_INCREASE_SCREEN_CURVATURE))
+      {
+        AdjustVRFloatSetting(Config::GFX_VR_HEAD_LOCKED_CURVATURE,
+                             Config::GFX_VR_HEAD_LOCKED_CURVATURE_STEP,
+                             Config::GFX_VR_HEAD_LOCKED_CURVATURE_MIN,
+                             Config::GFX_VR_HEAD_LOCKED_CURVATURE_MAX, "Screen Curvature", 2);
+      }
+
+      if (IsHotkey(HK_VR_TOGGLE_DONT_CLEAR_SCREEN))
+        ToggleVRSetting(Config::GFX_VR_DONT_CLEAR_SCREEN, "Don't Clear Screen");
+
+      if (IsHotkey(HK_VR_TOGGLE_FORCE_VBI))
+        ToggleVRSetting(Config::GFX_VR_AUTO_VBI_FROM_HMD, "Force VBI");
+
+      if (IsHotkey(HK_VR_TOGGLE_REMOVE_CINEMATIC_BARS))
+        ToggleVRSetting(Config::GFX_VR_REMOVE_BARS, "Remove Cinematic Bars");
+
+      // VR Shader Hunting
+      auto& shader_hunter = ShaderHunter::GetInstance();
+      static ShaderHunter::HandlingType shader_hotkey_handling = ShaderHunter::HandlingType::Skip;
+      auto ShaderTypeLabel = [](ShaderHunter::ShaderType type) {
+        switch (type)
+        {
+        case ShaderHunter::ShaderType::Pixel:
+          return "Pixel";
+        case ShaderHunter::ShaderType::Vertex:
+          return "Vertex";
+        case ShaderHunter::ShaderType::Geometry:
+          return "Geometry";
+        default:
+          return "Unknown";
+        }
+      };
+      auto HandlingTypeLabel = [](ShaderHunter::HandlingType type) {
+        switch (type)
+        {
+        case ShaderHunter::HandlingType::Skip:
+          return "Skip";
+        case ShaderHunter::HandlingType::Screen:
+          return "Screen";
+        case ShaderHunter::HandlingType::HeadLocked:
+          return "Head Locked";
+        case ShaderHunter::HandlingType::Fullscreen:
+          return "Fullscreen";
+        case ShaderHunter::HandlingType::FullscreenMono:
+          return "Fullscreen";
+        case ShaderHunter::HandlingType::Flag:
+          return "Flag";
+        case ShaderHunter::HandlingType::UnitsPerMeter:
+          return "Units Per Meter";
+        default:
+          return "Unknown";
+        }
+      };
+      auto ShowSelectedShader = [&shader_hunter, ShaderTypeLabel]() {
+        const int pos = shader_hunter.GetSelectedPosition();
+        const int total = shader_hunter.GetTotalCount();
+        const u64 hash = shader_hunter.GetSelectedHash();
+        if (pos < 0 || total <= 0 || hash == ~0ULL)
+        {
+          OSD::AddMessage(fmt::format("Shader: {} (none)",
+                                      ShaderTypeLabel(shader_hunter.GetActiveType())));
+          return;
+        }
+
+        OSD::AddMessage(fmt::format("Shader: {} {:08x} ({}/{})",
+                                    ShaderTypeLabel(shader_hunter.GetActiveType()),
+                                    static_cast<u32>(hash), pos + 1, total));
+      };
+
+      if (IsHotkey(HK_VR_SHADER_TOGGLE_HUNTING))
+      {
+        const bool enabled = !shader_hunter.IsEnabled();
+        shader_hunter.SetEnabled(enabled);
+        OSD::AddMessage(fmt::format("Shader Hunting: {}", enabled ? "Enabled" : "Disabled"));
+      }
+
+      if (IsHotkey(HK_VR_SHADER_CYCLE_HUNTING_OPTION))
+      {
+        const auto new_option = shader_hunter.GetHuntingOption() == ShaderHunter::HuntingOption::Skip ?
+                                    ShaderHunter::HuntingOption::Pink :
+                                    ShaderHunter::HuntingOption::Skip;
+        shader_hunter.SetHuntingOption(new_option);
+        OSD::AddMessage(fmt::format("Hunting Option: {}",
+                                    new_option == ShaderHunter::HuntingOption::Pink ? "Pink" :
+                                                                                       "Skip"));
+      }
+
+      if (IsHotkey(HK_VR_SHADER_CYCLE_TYPE))
+      {
+        const int next_type =
+            (static_cast<int>(shader_hunter.GetActiveType()) + 1) %
+            static_cast<int>(ShaderHunter::ShaderType::Count);
+        shader_hunter.SetActiveType(static_cast<ShaderHunter::ShaderType>(next_type));
+        OSD::AddMessage(
+            fmt::format("Shader Type: {}", ShaderTypeLabel(shader_hunter.GetActiveType())));
+      }
+
+      if (IsHotkey(HK_VR_SHADER_CYCLE_HANDLING))
+      {
+        switch (shader_hotkey_handling)
+        {
+        case ShaderHunter::HandlingType::Skip:
+          shader_hotkey_handling = ShaderHunter::HandlingType::Screen;
+          break;
+        case ShaderHunter::HandlingType::Screen:
+          shader_hotkey_handling = ShaderHunter::HandlingType::HeadLocked;
+          break;
+        case ShaderHunter::HandlingType::HeadLocked:
+          shader_hotkey_handling = ShaderHunter::HandlingType::Fullscreen;
+          break;
+        case ShaderHunter::HandlingType::Fullscreen:
+          shader_hotkey_handling = ShaderHunter::HandlingType::Flag;
+          break;
+        case ShaderHunter::HandlingType::FullscreenMono:
+          shader_hotkey_handling = ShaderHunter::HandlingType::Flag;
+          break;
+        case ShaderHunter::HandlingType::Flag:
+          shader_hotkey_handling = ShaderHunter::HandlingType::UnitsPerMeter;
+          break;
+        case ShaderHunter::HandlingType::UnitsPerMeter:
+        default:
+          shader_hotkey_handling = ShaderHunter::HandlingType::Skip;
+          break;
+        }
+        OSD::AddMessage(
+            fmt::format("Override Handling: {}", HandlingTypeLabel(shader_hotkey_handling)));
+      }
+
+      if (IsHotkey(HK_VR_SHADER_PREV))
+      {
+        shader_hunter.PrevShader();
+        ShowSelectedShader();
+      }
+      if (IsHotkey(HK_VR_SHADER_NEXT))
+      {
+        shader_hunter.NextShader();
+        ShowSelectedShader();
+      }
+
+      if (IsHotkey(HK_VR_SHADER_PREV_TEXTURE_HASH))
+      {
+        shader_hunter.PrevTextureHash();
+        const u64 texture_hash = shader_hunter.GetSelectedTextureHash();
+        if (texture_hash == 0)
+          OSD::AddMessage("Texture Hash: (none)");
+        else
+          OSD::AddMessage(
+              fmt::format("Texture Hash: {:016x}", static_cast<unsigned long long>(texture_hash)));
+      }
+      if (IsHotkey(HK_VR_SHADER_NEXT_TEXTURE_HASH))
+      {
+        shader_hunter.NextTextureHash();
+        const u64 texture_hash = shader_hunter.GetSelectedTextureHash();
+        if (texture_hash == 0)
+          OSD::AddMessage("Texture Hash: (none)");
+        else
+          OSD::AddMessage(
+              fmt::format("Texture Hash: {:016x}", static_cast<unsigned long long>(texture_hash)));
+      }
+
+      if (IsHotkey(HK_VR_SHADER_TOGGLE_TEXTURE_HASH))
+      {
+        const bool enabled = shader_hunter.ToggleSelectedTextureHashFilter();
+        const u64 texture_hash = shader_hunter.GetSelectedTextureHash();
+        if (texture_hash == 0)
+        {
+          OSD::AddMessage("Texture Hash: (none)");
+        }
+        else
+        {
+          OSD::AddMessage(
+              fmt::format("Texture Hash {}: {:016x}", enabled ? "added" : "removed",
+                          static_cast<unsigned long long>(texture_hash)));
+        }
+      }
+
+      if (IsHotkey(HK_VR_SHADER_SAVE_OVERRIDE))
+      {
+        const std::string game_id = SConfig::GetInstance().GetGameID();
+        if (game_id.empty())
+        {
+          OSD::AddMessage("Save Shader Override: no game is running");
+        }
+        else if (shader_hunter.SaveSelectedShaderOverride(game_id, shader_hotkey_handling))
+        {
+          Settings::Instance().NotifyShaderOverridesChanged();
+          OSD::AddMessage(fmt::format("Saved {} shader override to {}.ini",
+                                      HandlingTypeLabel(shader_hotkey_handling), game_id));
+        }
+        else
+        {
+          OSD::AddMessage("Save Shader Override: no shader selected");
+        }
+      }
 
       Core::SetIsThrottlerTempDisabled(IsHotkey(HK_TOGGLE_THROTTLE, true));
 

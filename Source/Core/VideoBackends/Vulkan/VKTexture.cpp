@@ -134,10 +134,12 @@ std::unique_ptr<VKTexture> VKTexture::Create(const TextureConfig& tex_config, st
 }
 
 std::unique_ptr<VKTexture> VKTexture::CreateAdopted(const TextureConfig& tex_config, VkImage image,
-                                                    VkImageViewType view_type, VkImageLayout layout)
+                                                    VkImageViewType view_type, VkImageLayout layout,
+                                                    VkFormat vk_format_override)
 {
   std::unique_ptr<VKTexture> texture = std::make_unique<VKTexture>(
       tex_config, VmaAllocation(VK_NULL_HANDLE), image, "", layout, ComputeImageLayout::Undefined);
+  texture->m_vk_format_override = vk_format_override;
   if (!texture->CreateView(view_type))
     return nullptr;
 

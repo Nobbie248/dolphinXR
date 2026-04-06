@@ -123,6 +123,28 @@ private:
   std::tuple<MathUtil::Rectangle<int>, MathUtil::Rectangle<int>>
   ConvertStereoRectangle(const MathUtil::Rectangle<int>& rc) const;
 
+#ifdef ENABLE_VR
+  enum class OpenXRFrameOwner
+  {
+    None,
+    Real,
+    Replay,
+  };
+
+  bool StartOpenXRFrameNow(double* wait_frame_ms = nullptr, double* locate_views_ms = nullptr,
+                           bool do_locate_views = true);
+  bool PrepareOpenXRFrame(OpenXRFrameOwner owner);
+  void PrepareNextOpenXRFrame();
+  void BlitCurrentSourceToOpenXREyes(const AbstractTexture* source_texture,
+                                     const MathUtil::Rectangle<int>& source_rc);
+  bool SubmitOpenXRFrameFromCurrentSource(const AbstractTexture* source_texture,
+                                          const MathUtil::Rectangle<int>& source_rc,
+                                          bool blit_source);
+  bool PresentReplayOpenXRFrame();
+  void FinishReplayOpenXRFrameWithoutSource();
+  void MaybeRunOpenXROpcodeReplayFrames();
+#endif
+
   std::mutex m_swap_mutex;
 
   // Backbuffer (window) size and render area
@@ -184,6 +206,12 @@ private:
   TimePoint m_next_swap_estimated_time{Clock::now()};
 
   std::atomic_bool m_immediate_swap_happened_this_field{};
+
+#ifdef ENABLE_VR
+  OpenXRFrameOwner m_openxr_frame_owner = OpenXRFrameOwner::None;
+  double m_last_openxr_wait_frame_ms = 0.0;
+  double m_last_openxr_locate_views_ms = 0.0;
+#endif
 };
 
 }  // namespace VideoCommon

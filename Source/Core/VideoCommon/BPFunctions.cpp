@@ -17,9 +17,11 @@
 #include "VideoCommon/BPMemory.h"
 #include "VideoCommon/EFBInterface.h"
 #include "VideoCommon/FramebufferManager.h"
+#include "VideoCommon/OpenXROpcodeReplay.h"
 #include "VideoCommon/VertexManagerBase.h"
 #include "VideoCommon/VertexShaderManager.h"
 #include "VideoCommon/VideoCommon.h"
+#include "VideoCommon/ShaderHunter.h"
 #include "VideoCommon/VideoConfig.h"
 #include "VideoCommon/XFMemory.h"
 
@@ -181,6 +183,62 @@ void SetScissorAndViewport(FramebufferManager* frame_buffer_manager, ScissorPos 
                            ScissorPos scissor_bottom_right, ScissorOffset scissor_offset,
                            Viewport viewport)
 {
+  // VR: Expand scissor and viewport to full active area for perspective draws.
+  // Games like Metroid Prime 3 use a restricted scissor rect during cinematics to create
+  // letterbox bars (e.g. Y=33-414 out of 448). Since the bars are just undrawn EFB clear
+  // color (not geometry), Shader Hunter can't find them. In VR, the restricted scissor also
+  // clips the GS-reprojected VR geometry. Fix: expand to full range for perspective draws.
+  if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
+      g_ActiveConfig.vr_remove_bars &&
+      xfmem.projection.type == ProjectionType::Perspective)
+  {
+    const int y_off = scissor_offset.y << 1;
+    const int efb_top = static_cast<int>(scissor_top_left.y) - y_off;
+    const int efb_bot = static_cast<int>(scissor_bottom_right.y) - y_off;
+
+    // Derive the game's active height from the viewport center: the viewport yOrig sits at
+    // the center of the active area, so active_height = 2 * center_y.
+    // This avoids using EFB_HEIGHT (528) when the game only uses 448 active lines.
+    const float center_y = viewport.yOrig - static_cast<float>(y_off);
+    const int active_height = static_cast<int>(center_y * 2.0f);
+
+    // Expand if the scissor Y doesn't cover the full active area (any trimming at all)
+    if (active_height > 0 && (efb_top > 0 || efb_bot < active_height - 1))
+    {
+      // Expand scissor Y to cover the full active area
+      scissor_top_left.y = static_cast<u32>(y_off);
+      scissor_bottom_right.y = static_cast<u32>(y_off + active_height - 1);
+
+      // Expand viewport ht so NDC [-1,+1] maps to the full active area.
+      // Keep yOrig (center) the same, just scale ht to half the active height.
+      const float sign = (viewport.ht < 0) ? -1.0f : 1.0f;
+      viewport.ht = sign * center_y;
+    }
+  }
+  // VR: Expand scissor for orthographic VR draws.
+  // The GS ortho VR path reprojects vertex positions from game ortho space to HMD clip space.
+  // Game-side scissor rects (e.g. roulette window clipping in Mario Kart DD) remain in EFB
+  // coordinates and will incorrectly clip the VR-reprojected content. Expand both X and Y
+  // to the full active area so all VR virtual-screen content is visible.
+  else if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
+           xfmem.projection.type == ProjectionType::Orthographic)
+  {
+    const int x_off = scissor_offset.x << 1;
+    const int y_off = scissor_offset.y << 1;
+    const float center_x = viewport.xOrig - static_cast<float>(x_off);
+    const float center_y = viewport.yOrig - static_cast<float>(y_off);
+    const int active_width = static_cast<int>(center_x * 2.0f);
+    const int active_height = static_cast<int>(center_y * 2.0f);
+
+    if (active_width > 0 && active_height > 0)
+    {
+      scissor_top_left.x = static_cast<u32>(x_off);
+      scissor_top_left.y = static_cast<u32>(y_off);
+      scissor_bottom_right.x = static_cast<u32>(x_off + active_width - 1);
+      scissor_bottom_right.y = static_cast<u32>(y_off + active_height - 1);
+    }
+  }
+
   const auto result = BPFunctions::ComputeScissorRects(scissor_top_left, scissor_bottom_right,
                                                        scissor_offset, viewport);
   auto native_rc = result.Best();
@@ -193,12 +251,19 @@ void SetScissorAndViewport(FramebufferManager* frame_buffer_manager, ScissorPos 
   float raw_y = (viewport.yOrig - native_rc.y_off) + viewport.ht;
   float raw_width = 2.0f * viewport.wd;
   float raw_height = -2.0f * viewport.ht;
+
   if (g_ActiveConfig.UseVertexRounding())
   {
     // Round the viewport to match full 1x IR pixels as well.
     // This eliminates a line in the archery mode in Wii Sports Resort at 3x IR and higher.
-    raw_x = std::round(raw_x);
-    raw_y = std::round(raw_y);
+    //
+    // In OpenXR VR, rounding x/y can shift the viewport origin enough to clip stereo geometry
+    // and 2D passes. Keep size rounding but preserve origin there.
+    if (g_ActiveConfig.stereo_mode != StereoMode::OpenXR)
+    {
+      raw_x = std::round(raw_x);
+      raw_y = std::round(raw_y);
+    }
     raw_width = std::round(raw_width);
     raw_height = std::round(raw_height);
   }
@@ -305,7 +370,8 @@ void SetBlendMode()
 */
 bool ClearScreen(FramebufferManager* frame_buffer_manager, const MathUtil::Rectangle<int>& rc,
                  bool color_enable, bool alpha_enable, bool z_enable, PixelFormat pixel_format,
-                 u32 clear_color_ar, u32 clear_color_gb, u32 clear_z_value)
+                 u32 clear_color_ar, u32 clear_color_gb, u32 clear_z_value,
+                 bool frame_just_rendered)
 {
   // (1): Disable unused color channels
   if (pixel_format == PixelFormat::RGB8_Z24 || pixel_format == PixelFormat::RGB565_Z16 ||
@@ -319,6 +385,10 @@ bool ClearScreen(FramebufferManager* frame_buffer_manager, const MathUtil::Recta
     u32 color = (clear_color_ar << 16) | clear_color_gb;
     u32 z = clear_z_value;
 
+    VideoCommon::OpenXROpcodeReplay::ApplyReplayClearState(frame_just_rendered, &color_enable,
+                                                           &alpha_enable, &z_enable,
+                                                           &pixel_format, &color, &z);
+
     // (2) drop additional accuracy
     if (pixel_format == PixelFormat::RGBA6_Z24)
     {
@@ -329,6 +399,17 @@ bool ClearScreen(FramebufferManager* frame_buffer_manager, const MathUtil::Recta
       color = RGBA8ToRGB565ToRGBA8(color);
       z = Z24ToZ16ToZ24(z);
     }
+
+    // VR Draw Debug: log EFB clears so we can see if cinematic bars are ClearEFB operations
+    if (ShaderHunter::GetInstance().IsDebugLogging()) [[unlikely]]
+    {
+      INFO_LOG_FMT(VIDEO,
+                   "VR_CLEAR: rect({},{} {}x{}) color={:08x} z={:06x} "
+                   "col={} alpha={} z_en={}",
+                   rc.left, rc.top, rc.GetWidth(), rc.GetHeight(), color, z, color_enable,
+                   alpha_enable, z_enable);
+    }
+
     frame_buffer_manager->ClearEFB(rc, color_enable, alpha_enable, z_enable, color, z,
                                    pixel_format);
     return true;

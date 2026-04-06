@@ -26,10 +26,15 @@
 #include "VideoCommon/XFMemory.h"
 #include "VideoCommon/XFStateManager.h"
 
+#ifdef ENABLE_VR
+#include "VideoCommon/VR/OpenXRManager.h"
+#endif
+
 void VertexShaderManager::Init()
 {
   // Initialize state tracking variables
   m_projection_graphics_mod_change = false;
+  m_apply_openxr_legacy_view = true;
 
   constants = {};
 
@@ -38,7 +43,7 @@ void VertexShaderManager::Init()
   dirty = true;
 }
 
-Common::Matrix44 VertexShaderManager::LoadProjectionMatrix()
+Common::Matrix44 VertexShaderManager::LoadProjectionMatrix(bool apply_openxr_legacy_view)
 {
   const auto& rawProjection = xfmem.projection.rawProjection;
 
@@ -111,21 +116,49 @@ Common::Matrix44 VertexShaderManager::LoadProjectionMatrix()
 
   auto corrected_matrix = Common::Matrix44::FromArray(m_projection_matrix);
 
-  if (g_freelook_camera.IsActive() && xfmem.projection.type == ProjectionType::Perspective)
-    corrected_matrix *= g_freelook_camera.GetView();
+  if (xfmem.projection.type == ProjectionType::Perspective)
+  {
+#ifdef ENABLE_VR
+    if (apply_openxr_legacy_view && g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
+        g_backend_info.api_type == APIType::Vulkan && VR::g_openxr && VR::g_openxr->IsSessionRunning())
+    {
+      Common::Matrix44 openxr_view;
+      if (VR::g_openxr->GetLegacyViewMatrix(g_ActiveConfig.vr_units_per_meter, &openxr_view))
+      {
+        if (rawProjection[0] < 0.0f)
+        {
+          // Mirror-mode games flip the final Vulkan OpenXR output X in the GS compatibility
+          // path. Mirror the upstream head-tracked view around X as well so yaw/roll motion
+          // stays aligned with the mirrored scene.
+          Common::Matrix44 mirror_x = Common::Matrix44::Identity();
+          mirror_x.data[0] = -1.0f;
+          openxr_view = mirror_x * openxr_view * mirror_x;
+        }
+        corrected_matrix *= openxr_view;
+      }
+    }
+#endif
+
+    if (g_freelook_camera.IsActive())
+      corrected_matrix *= g_freelook_camera.GetView();
+  }
 
   g_freelook_camera.GetController()->SetClean();
 
   return corrected_matrix;
 }
 
-void VertexShaderManager::SetProjectionMatrix(XFStateManager& xf_state_manager)
+void VertexShaderManager::SetProjectionMatrix(XFStateManager& xf_state_manager,
+                                              bool apply_openxr_legacy_view, bool force)
 {
-  if (xf_state_manager.DidProjectionChange() || g_freelook_camera.GetController()->IsDirty())
+  m_apply_openxr_legacy_view = apply_openxr_legacy_view;
+  if (force || xf_state_manager.DidProjectionChange() || g_freelook_camera.GetController()->IsDirty())
   {
-    xf_state_manager.ResetProjection();
-    auto corrected_matrix = LoadProjectionMatrix();
+    if (!force)
+      xf_state_manager.ResetProjection();
+    auto corrected_matrix = LoadProjectionMatrix(apply_openxr_legacy_view);
     memcpy(constants.projection.data(), corrected_matrix.data.data(), 4 * sizeof(float4));
+    dirty = true;
   }
 }
 
@@ -344,7 +377,8 @@ void VertexShaderManager::SetConstants(const std::vector<std::string>& textures,
     // NOTE: If we ever emulate antialiasing, the sample locations set by
     // BP registers 0x01-0x04 need to be considered here.
     const float pixel_center_correction = 7.0f / 12.0f - 0.5f;
-    const bool bUseVertexRounding = g_ActiveConfig.UseVertexRounding();
+    const bool bUseVertexRounding =
+        g_ActiveConfig.UseVertexRounding() && g_ActiveConfig.stereo_mode != StereoMode::OpenXR;
     const float viewport_width = bUseVertexRounding ?
                                      (2.f * xfmem.viewport.wd) :
                                      g_framebuffer_manager->EFBToScaledXf(2.f * xfmem.viewport.wd);
@@ -417,7 +451,7 @@ void VertexShaderManager::SetConstants(const std::vector<std::string>& textures,
     xf_state_manager.ResetProjection();
     m_projection_graphics_mod_change = !projection_actions.empty();
 
-    auto corrected_matrix = LoadProjectionMatrix();
+    auto corrected_matrix = LoadProjectionMatrix(m_apply_openxr_legacy_view);
 
     GraphicsModActionData::Projection projection{&corrected_matrix};
     for (const auto& action : projection_actions)

@@ -369,6 +369,7 @@ void FifoManager::RunGpuLoop()
             // leading the CPU thread to wait in Video_OutputXFB or Video_AccessEFB thus slowing
             // things down.
             AsyncRequests::GetInstance()->PullEvents();
+
           }
 
           // fast skip remaining GPU time if fifo is empty

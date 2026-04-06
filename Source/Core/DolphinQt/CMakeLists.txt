@@ -48,6 +48,16 @@ add_executable(dolphin-emu
   Config/CheatCodeEditor.h
   Config/CheatWarningWidget.cpp
   Config/CheatWarningWidget.h
+  Config/ElementsGroupOverrideAddEditDialog.cpp
+  Config/ElementsGroupOverrideAddEditDialog.h
+  Config/ElementsGroupOverrideWidget.cpp
+  Config/ElementsGroupOverrideWidget.h
+  Config/ElementsHuntingDialog.cpp
+  Config/ElementsHuntingDialog.h
+  Config/ImportShaderFindElementDialog.cpp
+  Config/ImportShaderFindElementDialog.h
+  Config/TextureHashBrowserDialog.cpp
+  Config/TextureHashBrowserDialog.h
   Config/CommonControllersWidget.cpp
   Config/CommonControllersWidget.h
   Config/ConfigControls/ConfigBool.cpp
@@ -91,6 +101,8 @@ add_executable(dolphin-emu
   Config/GameConfigHighlighter.h
   Config/GameConfigWidget.cpp
   Config/GameConfigWidget.h
+  Config/VRConfigWidget.cpp
+  Config/VRConfigWidget.h
   Config/GamecubeControllersWidget.cpp
   Config/GamecubeControllersWidget.h
   Config/GeckoCodeWidget.cpp
@@ -155,6 +167,8 @@ add_executable(dolphin-emu
   Config/Mapping/HotkeyTAS.h
   Config/Mapping/HotkeyUSBEmu.cpp
   Config/Mapping/HotkeyUSBEmu.h
+  Config/Mapping/HotkeyVR.cpp
+  Config/Mapping/HotkeyVR.h
   Config/Mapping/HotkeyWii.cpp
   Config/Mapping/HotkeyWii.h
   Config/Mapping/IOWindow.cpp
@@ -186,6 +200,14 @@ add_executable(dolphin-emu
   Config/NewPatchDialog.h
   Config/PatchesWidget.cpp
   Config/PatchesWidget.h
+  Config/HideObjectAddEditDialog.cpp
+  Config/HideObjectAddEditDialog.h
+  Config/HideObjectWidget.cpp
+  Config/HideObjectWidget.h
+  Config/ShaderOverrideAddEditDialog.cpp
+  Config/ShaderOverrideAddEditDialog.h
+  Config/ShaderOverrideWidget.cpp
+  Config/ShaderOverrideWidget.h
   Config/PropertiesDialog.cpp
   Config/PropertiesDialog.h
   Config/SettingsWindow.cpp
@@ -229,6 +251,8 @@ add_executable(dolphin-emu
   Debugger/CodeViewWidget.h
   Debugger/CodeWidget.cpp
   Debugger/CodeWidget.h
+  Debugger/ShaderHunterWidget.cpp
+  Debugger/ShaderHunterWidget.h
   Debugger/EditSymbolDialog.cpp
   Debugger/EditSymbolDialog.h
   Debugger/GekkoSyntaxHighlight.cpp
@@ -382,6 +406,8 @@ add_executable(dolphin-emu
   Settings/TriforcePane.h
   Settings/USBDevicePicker.cpp
   Settings/USBDevicePicker.h
+  Settings/VRPane.cpp
+  Settings/VRPane.h
   Settings/WiiPane.cpp
   Settings/WiiPane.h
   SkylanderPortal/SkylanderModifyDialog.cpp

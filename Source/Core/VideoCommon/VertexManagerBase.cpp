@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <memory>
+#include <string>
 
 #include "Common/ChunkFile.h"
 #include "Common/CommonTypes.h"
@@ -23,6 +24,7 @@
 #include "VideoCommon/BPMemory.h"
 #include "VideoCommon/BoundingBox.h"
 #include "VideoCommon/DataReader.h"
+#include "VideoCommon/ElementsGroupManager.h"
 #include "VideoCommon/FramebufferManager.h"
 #include "VideoCommon/GeometryShaderManager.h"
 #include "VideoCommon/GraphicsModSystem/Runtime/CustomShaderCache.h"
@@ -42,11 +44,70 @@
 #include "VideoCommon/VideoCommon.h"
 #include "VideoCommon/VideoConfig.h"
 #include "VideoCommon/XFMemory.h"
+#include "VideoCommon/HideObjectEngine.h"
+#include "VideoCommon/ShaderHunter.h"
 #include "VideoCommon/XFStateManager.h"
+
+#include "Common/Hash.h"
+#include "Core/ConfigManager.h"
 
 std::unique_ptr<VertexManagerBase> g_vertex_manager;
 
 using OpcodeDecoder::Primitive;
+
+namespace
+{
+ShaderHunter::RuntimeElementSignature BuildRuntimeElementSignature(const XFMemory& xf_memory,
+                                                                   const BPMemory& bp_memory,
+                                                                   int ortho_layer)
+{
+  ShaderHunter::RuntimeElementSignature signature;
+  signature.valid = true;
+  signature.perspective = xf_memory.projection.type == ProjectionType::Perspective;
+
+  const float* projection = xf_memory.projection.rawProjection.data();
+  if (signature.perspective)
+  {
+    const float hfov = 2.0f * std::atan(1.0f / projection[0]) * 180.0f / 3.14159265f;
+    const float vfov = 2.0f * std::atan(1.0f / projection[2]) * 180.0f / 3.14159265f;
+    const float far_plane = projection[5] / projection[4];
+    const float near_plane = far_plane * projection[4] / (projection[4] - 1.0f);
+    signature.perspective_hfov_x100 = static_cast<int>(std::lround(hfov * 100.0f));
+    signature.perspective_vfov_x100 = static_cast<int>(std::lround(vfov * 100.0f));
+    signature.perspective_near_x1000 = static_cast<int>(std::lround(near_plane * 1000.0f));
+    signature.perspective_far_x100 = static_cast<int>(std::lround(far_plane * 100.0f));
+  }
+  else
+  {
+    const float left = -(projection[1] + 1.0f) / projection[0];
+    const float right = left + 2.0f / projection[0];
+    const float bottom = -(projection[3] + 1.0f) / projection[2];
+    const float top = bottom + 2.0f / projection[2];
+    signature.ortho_left_x100 = static_cast<int>(std::lround(left * 100.0f));
+    signature.ortho_right_x100 = static_cast<int>(std::lround(right * 100.0f));
+    signature.ortho_top_x100 = static_cast<int>(std::lround(top * 100.0f));
+    signature.ortho_bottom_x100 = static_cast<int>(std::lround(bottom * 100.0f));
+    signature.ortho_layer = ortho_layer;
+  }
+
+  const auto& viewport = xf_memory.viewport;
+  signature.viewport_x = static_cast<int>(std::lround(viewport.xOrig));
+  signature.viewport_y = static_cast<int>(std::lround(viewport.yOrig));
+  signature.viewport_width = static_cast<int>(std::lround(std::abs(viewport.wd)));
+  signature.viewport_height = static_cast<int>(std::lround(std::abs(viewport.ht)));
+  signature.scissor_left = bp_memory.scissorTL.x;
+  signature.scissor_top = bp_memory.scissorTL.y;
+  signature.scissor_right = bp_memory.scissorBR.x;
+  signature.scissor_bottom = bp_memory.scissorBR.y;
+  signature.alpha_test_hex = bp_memory.alpha_test.hex;
+  signature.ztest = bp_memory.zmode.test_enable != 0;
+  signature.zupdate = bp_memory.zmode.update_enable != 0;
+  signature.zfunc = static_cast<int>(bp_memory.zmode.func.Value());
+  signature.blend_color_update = bp_memory.blendmode.color_update != 0;
+  signature.blend_alpha_update = bp_memory.blendmode.alpha_update != 0;
+  return signature;
+}
+}  // namespace
 
 // GX primitive -> RenderState primitive, no primitive restart
 constexpr Common::EnumMap<PrimitiveType, Primitive::GX_DRAW_POINTS> primitive_from_gx{
@@ -646,20 +707,263 @@ void VertexManagerBase::Flush()
     {
       UpdatePipelineConfig();
       UpdatePipelineObject();
+      bool shader_hunter_force_pink = false;
       if (m_current_pipeline_object)
       {
-        const AbstractPipeline* pipeline_object = m_current_pipeline_object;
-        if (!custom_pixel_shader_contents.shaders.empty())
+        // Shader Hunter: register shader hashes and check for skip.
+        // Also check persistent overrides (always active, even when hunting is disabled).
+        bool hunter_skip = false;
+        bool elements_skip = false;
+        auto& hunter = ShaderHunter::GetInstance();
+        auto& elements = ElementsGroupManager::GetInstance();
+        const auto& vs = m_current_pipeline_config.vs_uid;
+        const auto& ps = m_current_pipeline_config.ps_uid;
+        const auto& gs = m_current_pipeline_config.gs_uid;
+        const u64 vs_hash =
+            Common::ComputeCRC32(vs.GetUidDataRaw(), static_cast<u32>(vs.GetUidDataSize()));
+        const u64 ps_hash =
+            Common::ComputeCRC32(ps.GetUidDataRaw(), static_cast<u32>(ps.GetUidDataSize()));
+        const u64 gs_hash =
+            Common::ComputeCRC32(gs.GetUidDataRaw(), static_cast<u32>(gs.GetUidDataSize()));
+        if (hunter.IsEnabled() || hunter.HasOverrides() || hunter.IsDebugLogging() ||
+            elements.IsPopupOpen() || elements.HasOverrides())
         {
-          if (const auto custom_pipeline =
-                  GetCustomPipeline(custom_pixel_shader_contents, m_current_pipeline_config,
-                                    m_current_uber_pipeline_config, m_current_pipeline_object))
+          // Capture bound texture hashes and names for texture-conditioned overrides and hunting UI
+          std::array<u64, 8> tex_hashes{};
+          std::array<std::string, 8> tex_names{};
+          for (u32 i = 0; i < 8; i++)
           {
-            pipeline_object = custom_pipeline;
+            tex_hashes[i] = g_texture_cache->GetBoundTextureHash(i);
+            if (hunter.IsEnabled() || elements.IsPopupOpen())
+              tex_names[i] = g_texture_cache->GetBoundTextureName(i);
+          }
+          hunter.SetCurrentDrawTextures(tex_hashes, tex_names);
+          const u64 vs_family = hunter.RegisterShader(ShaderHunter::ShaderType::Vertex, vs_hash,
+                                                      vs.GetUidDataRaw(), vs.GetUidDataSize());
+          const u64 ps_family = hunter.RegisterShader(ShaderHunter::ShaderType::Pixel, ps_hash,
+                                                      ps.GetUidDataRaw(), ps.GetUidDataSize());
+          const u64 gs_family = hunter.RegisterShader(ShaderHunter::ShaderType::Geometry, gs_hash,
+                                                      gs.GetUidDataRaw(), gs.GetUidDataSize());
+          hunter.SetCurrentDrawShaderFamilies(vs_family, ps_family, gs_family);
+          const ShaderHunter::RuntimeElementSignature draw_signature =
+              BuildRuntimeElementSignature(xfmem, bpmem,
+                                           system.GetGeometryShaderManager().vr_ortho_draw_counter);
+          hunter.SetCurrentDrawSignature(draw_signature);
+          const ElementsGroupManager::DrawRecord element_draw{.draw_index = -1,
+                                                              .draw_sequence = m_draw_counter + 1,
+                                                              .vs_hash = vs_hash,
+                                                              .ps_hash = ps_hash,
+                                                              .gs_hash = gs_hash,
+                                                              .vs_family = vs_family,
+                                                              .ps_family = ps_family,
+                                                              .gs_family = gs_family,
+                                                              .signature = draw_signature,
+                                                              .textures = tex_hashes,
+                                                              .texture_names = tex_names};
+          if (hunter.IsEnabled())
+          {
+            hunter.RegisterDrawCombination(vs_hash, ps_hash, gs_hash);
+            hunter_skip = hunter.ShouldSkipDraw(vs_hash, ps_hash, gs_hash);
+            shader_hunter_force_pink = hunter.ShouldHighlightSelectedDraw();
+          }
+          const auto preview_action = elements.RegisterDraw(element_draw);
+          elements_skip = preview_action == ElementsGroupManager::PreviewAction::Skip;
+          if (preview_action == ElementsGroupManager::PreviewAction::Pink)
+            shader_hunter_force_pink = true;
+          // Register flag shaders (must be before skip/handling checks)
+          hunter.RegisterFlags(vs_hash, ps_hash, gs_hash);
+          elements.RegisterFlagsForDraw(element_draw);
+
+          // Advance per-hash draw counters for element-aware overrides
+          hunter.AdvanceOverrideDrawCounters(vs_hash, ps_hash, gs_hash);
+          elements.AdvanceOverrideDrawCounters(element_draw);
+
+          if (!hunter_skip && !elements_skip)
+            elements_skip = elements.ShouldSkipByOverride(element_draw);
+
+          if (!hunter_skip && !elements_skip)
+            hunter_skip = hunter.ShouldSkipByOverride(vs_hash, ps_hash, gs_hash);
+
+          // Check for screen/fullscreen handling overrides (VR stereo mode override)
+          if (!hunter_skip && !elements_skip)
+          {
+            auto handling = elements.GetOverrideHandling(element_draw);
+            int manual_layer = elements.GetOverrideLayer(element_draw);
+            float element_depth = elements.GetOverrideElementDepth(element_draw);
+            float units_per_meter = elements.GetOverrideUnitsPerMeter(element_draw);
+            if (handling == ShaderHunter::HandlingType::Skip)
+            {
+              handling = hunter.GetOverrideHandling(vs_hash, ps_hash, gs_hash);
+              manual_layer = hunter.GetOverrideLayer(vs_hash, ps_hash, gs_hash);
+              element_depth = hunter.GetOverrideElementDepth(vs_hash, ps_hash, gs_hash);
+              units_per_meter = hunter.GetOverrideUnitsPerMeter(vs_hash, ps_hash, gs_hash);
+            }
+            if (handling == ShaderHunter::HandlingType::Screen)
+            {
+              geometry_shader_manager.vr_stereo_override = -1.0f;
+              if (manual_layer >= 0)
+                geometry_shader_manager.vr_ortho_layer_override = manual_layer;
+              if (element_depth >= 0.0f)
+                geometry_shader_manager.vr_element_depth_override = element_depth;
+            }
+            else if (handling == ShaderHunter::HandlingType::Fullscreen)
+            {
+              geometry_shader_manager.vr_stereo_override = 0.0f;
+            }
+            else if (handling == ShaderHunter::HandlingType::FullscreenMono)
+            {
+              geometry_shader_manager.vr_stereo_override = 0.0f;
+            }
+            else if (handling == ShaderHunter::HandlingType::HeadLocked)
+            {
+              geometry_shader_manager.vr_stereo_override = -2.0f;
+              if (manual_layer >= 0)
+                geometry_shader_manager.vr_ortho_layer_override = manual_layer;
+              if (element_depth >= 0.0f)
+                geometry_shader_manager.vr_element_depth_override = element_depth;
+            }
+            else if (handling == ShaderHunter::HandlingType::UnitsPerMeter)
+            {
+              if (units_per_meter > 0.0f)
+                geometry_shader_manager.vr_units_per_meter_override = units_per_meter;
+            }
+            else
+            {
+              // No override matched — log for debugging if relevant
+              hunter.DebugLogUnmatched(vs_hash, ps_hash, gs_hash);
+            }
+          }
+
+          // ClearEFB is an independent flag, checked regardless of handling type.
+          // This lets a shader be e.g. Skip+ClearEFB or Screen+ClearEFB.
+          hunter.CheckClearEFBForDraw(vs_hash, ps_hash, gs_hash);
+
+          // VR Draw Debug Logging: log every draw call's projection, viewport, scissor, and
+          // shader hashes so we can identify how specific visual elements (e.g. cinematic bars)
+          // are drawn.
+          if (hunter.IsDebugLogging()) [[unlikely]]
+          {
+            const auto& proj = xfmem.projection;
+            const auto& vp = xfmem.viewport;
+            const auto& scTL = bpmem.scissorTL;
+            const auto& scBR = bpmem.scissorBR;
+            const u32 nidx = m_index_generator.GetIndexLen();
+            const bool z_test = bpmem.zmode.test_enable != 0;
+            const bool color_update = bpmem.blendmode.color_update != 0;
+            const bool alpha_update = bpmem.blendmode.alpha_update != 0;
+            const bool z_update = bpmem.zmode.update_enable != 0;
+            const int ortho_layer_counter = geometry_shader_manager.vr_ortho_draw_counter;
+            const int ortho_layer_override = geometry_shader_manager.vr_ortho_layer_override;
+            if (proj.type == ProjectionType::Orthographic)
+            {
+              const float* p = proj.rawProjection.data();
+              const float left = -(p[1] + 1) / p[0];
+              const float right = left + 2 / p[0];
+              const float bottom = -(p[3] + 1) / p[2];
+              const float top = bottom + 2 / p[2];
+              const float zfar = p[5] / p[4];
+              const float znear = (1 + p[4] * zfar) / p[4];
+              INFO_LOG_FMT(VIDEO,
+                           "VR_DRAW #{}: ORTHO l={:.1f} r={:.1f} t={:.1f} b={:.1f} n={:.1f} "
+                           "f={:.1f} | VP({:.0f},{:.0f} {:.0f}x{:.0f}) | SC({},{} {},{})"
+                           " | VS={:08x} PS={:08x} GS={:08x} | idx={} col={} alpha={} zt={} "
+                           "z={} zf={} | layer_ctr={} layer_ovr={} | skip={}",
+                           m_draw_counter, left, right, top, bottom, znear, zfar, vp.xOrig,
+                           vp.yOrig, vp.wd, vp.ht, scTL.x, scTL.y, scBR.x, scBR.y, vs_hash,
+                           ps_hash, gs_hash, nidx, color_update, alpha_update, z_test, z_update,
+                           bpmem.zmode.func, ortho_layer_counter, ortho_layer_override, hunter_skip);
+            }
+            else
+            {
+              const float* p = proj.rawProjection.data();
+              const float hfov = 2 * std::atan(1.0f / p[0]) * 180.0f / 3.14159265f;
+              const float vfov = 2 * std::atan(1.0f / p[2]) * 180.0f / 3.14159265f;
+              const float f = p[5] / p[4];
+              const float n = f * p[4] / (p[4] - 1);
+              INFO_LOG_FMT(VIDEO,
+                           "VR_DRAW #{}: PERSP hfov={:.2f} vfov={:.2f} n={:.2f} f={:.2f}"
+                           " | VP({:.0f},{:.0f} {:.0f}x{:.0f}) | SC({},{} {},{})"
+                           " | VS={:08x} PS={:08x} GS={:08x} | idx={} col={} alpha={} zt={} "
+                           "z={} zf={} | layer_ctr={} layer_ovr={} | skip={}",
+                           m_draw_counter, hfov, vfov, n, f, vp.xOrig, vp.yOrig, vp.wd, vp.ht,
+                           scTL.x, scTL.y, scBR.x, scBR.y, vs_hash, ps_hash, gs_hash, nidx,
+                           color_update, alpha_update, z_test, z_update, bpmem.zmode.func,
+                           ortho_layer_counter, ortho_layer_override, hunter_skip);
+            }
           }
         }
-        RenderDrawCall(pixel_shader_manager, geometry_shader_manager, custom_pixel_shader_contents,
-                       custom_pixel_shader_uniforms, m_current_primitive_type, pipeline_object);
+
+        // Increment ortho draw counter for depth layering on the VR virtual screen.
+        // Applies to natural ortho draws and draws forced to screen/head-locked by override.
+        // Keep read-only EQUAL passes on the previous layer to preserve multi-pass HUD rendering.
+        if (g_ActiveConfig.vr_auto_layer_spread)
+        {
+          const bool is_ortho = xfmem.projection.type != ProjectionType::Perspective;
+          const bool forced_screen_or_headlocked =
+              !std::isnan(geometry_shader_manager.vr_stereo_override) &&
+              geometry_shader_manager.vr_stereo_override < -0.5f;
+          if (is_ortho || forced_screen_or_headlocked)
+          {
+            const bool z_equal_read_only =
+                bpmem.zmode.test_enable && !bpmem.zmode.update_enable &&
+                bpmem.zmode.func == CompareMode::Equal;
+
+            if (z_equal_read_only && geometry_shader_manager.vr_ortho_layer_override < 0 &&
+                geometry_shader_manager.vr_ortho_draw_counter > 0)
+            {
+              geometry_shader_manager.vr_ortho_layer_override =
+                  geometry_shader_manager.vr_ortho_draw_counter - 1;
+            }
+
+            if (!z_equal_read_only)
+              geometry_shader_manager.vr_ortho_draw_counter++;
+          }
+        }
+
+        if (!hunter_skip && !elements_skip)
+        {
+          if (shader_hunter_force_pink && !m_pink_pixel_shader)
+          {
+            // Simple PS that outputs solid magenta, like 3DMigoto's hunting mode.
+            // No #version or #defines — the backend prepends its own SHADER_HEADER
+            // (with #version 450, type aliases, etc.) before SPIRV compilation.
+            // Outputs both ocol0 and ocol1 (dual-source blending index 1) so shaders
+            // using SRC1_ALPHA blend modes still render visibly.
+            constexpr std::string_view pink_source =
+                "FRAGMENT_OUTPUT_LOCATION_INDEXED(0, 0) out float4 ocol0;\n"
+                "FRAGMENT_OUTPUT_LOCATION_INDEXED(0, 1) out float4 ocol1;\n"
+                "void main() {\n"
+                "  ocol0 = float4(1.0, 0.0, 1.0, 1.0);\n"
+                "  ocol1 = float4(0.0, 0.0, 0.0, 1.0);\n"
+                "}\n";
+            m_pink_pixel_shader = g_gfx->CreateShaderFromSource(
+                ShaderStage::Pixel, pink_source, nullptr, "Pink Highlight");
+            if (!m_pink_pixel_shader)
+              WARN_LOG_FMT(VIDEO, "Failed to compile pink highlight pixel shader");
+          }
+          m_force_pink_ps = shader_hunter_force_pink;
+
+          const AbstractPipeline* pipeline_object = m_current_pipeline_object;
+          if (!custom_pixel_shader_contents.shaders.empty())
+          {
+            const AbstractPipeline* custom_pipeline = nullptr;
+            if (const auto async_pipeline =
+                    GetCustomPipeline(custom_pixel_shader_contents, m_current_pipeline_config,
+                                      m_current_uber_pipeline_config, m_current_pipeline_object))
+            {
+              custom_pipeline = async_pipeline;
+            }
+
+            if (custom_pipeline)
+            {
+              pipeline_object = custom_pipeline;
+            }
+          }
+          RenderDrawCall(pixel_shader_manager, geometry_shader_manager,
+                         custom_pixel_shader_contents, custom_pixel_shader_uniforms,
+                         m_current_primitive_type, pipeline_object);
+          m_force_pink_ps = false;
+        }
       }
     }
 
@@ -996,6 +1300,19 @@ void VertexManagerBase::OnEFBCopyToRAM()
 
 void VertexManagerBase::OnEndFrame()
 {
+  auto& hunter = ShaderHunter::GetInstance();
+  // Lazy-load shader overrides and hide object codes when game ID becomes available or changes
+  const std::string game_id = SConfig::GetInstance().GetGameID();
+  if (!game_id.empty())
+  {
+    hunter.LoadOverridesIfNeeded(game_id);
+    ElementsGroupManager::GetInstance().LoadOverridesIfNeeded(game_id);
+    HideObjectEngine::Engine::GetInstance().LoadCodesIfNeeded(game_id);
+  }
+  hunter.OnFrameEnd();
+  ElementsGroupManager::GetInstance().OnFrameEnd();
+  auto& system = Core::System::GetInstance();
+  system.GetGeometryShaderManager().vr_ortho_draw_counter = 0;
   m_draw_counter = 0;
   m_last_efb_copy_draw_counter = 0;
   m_scheduled_command_buffer_kicks.clear();
@@ -1060,6 +1377,18 @@ void VertexManagerBase::RenderDrawCall(
     std::span<u8> custom_pixel_shader_uniforms, PrimitiveType primitive_type,
     const AbstractPipeline* current_pipeline)
 {
+  auto& system = Core::System::GetInstance();
+  auto& vertex_shader_manager = system.GetVertexShaderManager();
+  auto& xf_state_manager = system.GetXFStateManager();
+
+  if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR && g_backend_info.api_type == APIType::Vulkan)
+  {
+    const float vr_override = geometry_shader_manager.vr_stereo_override;
+    const bool force_screen_or_headlocked = !std::isnan(vr_override) && vr_override < -0.5f;
+    vertex_shader_manager.SetProjectionMatrix(xf_state_manager,
+                                              !force_screen_or_headlocked, true);
+  }
+
   // Now we can upload uniforms, as nothing else will override them.
   geometry_shader_manager.SetConstants(primitive_type);
   pixel_shader_manager.SetConstants();
@@ -1072,6 +1401,10 @@ void VertexManagerBase::RenderDrawCall(
   UploadUniforms();
 
   g_gfx->SetPipeline(current_pipeline);
+
+  // Shader Hunter pink highlight: override PS after pipeline is set (like 3DMigoto).
+  if (m_force_pink_ps && m_pink_pixel_shader)
+    g_gfx->SetForcePixelShader(m_pink_pixel_shader.get());
 
   u32 base_vertex, base_index;
   CommitBuffer(m_index_generator.GetNumVerts(),
@@ -1125,9 +1458,9 @@ const AbstractPipeline* VertexManagerBase::GetCustomPipeline(
       break;
       case ShaderCompilationMode::SynchronousUberShaders:
       {
-        // D3D has issues compiling large custom ubershaders
-        // use specialized shaders instead
-        if (g_backend_info.api_type == APIType::D3D)
+        // Custom pixel shader injection is only supported by specialized pixel shader generation.
+        // Avoid custom ubershader fallback in this mode so behavior is consistent across backends.
+        if (!custom_pixel_shader_contents.shaders.empty())
         {
           if (auto pipeline = m_custom_shader_cache->GetPipelineAsync(
                   current_pipeline_config, custom_shaders, current_pipeline->m_config))
@@ -1137,10 +1470,22 @@ const AbstractPipeline* VertexManagerBase::GetCustomPipeline(
         }
         else
         {
-          if (auto pipeline = m_custom_shader_cache->GetPipelineAsync(
-                  current_uber_pipeline_config, custom_shaders, current_pipeline->m_config))
+          // D3D has issues compiling large custom ubershaders, use specialized shaders instead.
+          if (g_backend_info.api_type == APIType::D3D)
           {
-            return *pipeline;
+            if (auto pipeline = m_custom_shader_cache->GetPipelineAsync(
+                    current_pipeline_config, custom_shaders, current_pipeline->m_config))
+            {
+              return *pipeline;
+            }
+          }
+          else
+          {
+            if (auto pipeline = m_custom_shader_cache->GetPipelineAsync(
+                    current_uber_pipeline_config, custom_shaders, current_pipeline->m_config))
+            {
+              return *pipeline;
+            }
           }
         }
       }
@@ -1152,10 +1497,14 @@ const AbstractPipeline* VertexManagerBase::GetCustomPipeline(
         {
           return *pipeline;
         }
-        else if (auto uber_pipeline = m_custom_shader_cache->GetPipelineAsync(
-                     current_uber_pipeline_config, custom_shaders, current_pipeline->m_config))
+        // Custom pixel shader injection is only supported by specialized shaders.
+        else if (custom_pixel_shader_contents.shaders.empty())
         {
-          return *uber_pipeline;
+          if (auto uber_pipeline = m_custom_shader_cache->GetPipelineAsync(
+                  current_uber_pipeline_config, custom_shaders, current_pipeline->m_config))
+          {
+            return *uber_pipeline;
+          }
         }
       }
       break;

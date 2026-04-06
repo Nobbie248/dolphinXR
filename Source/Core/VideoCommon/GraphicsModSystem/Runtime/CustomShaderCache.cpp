@@ -92,6 +92,60 @@ CustomShaderCache::GetPipelineAsync(const VideoCommon::GXUberPipelineUid& uid,
   return std::nullopt;
 }
 
+const AbstractPipeline* CustomShaderCache::GetPipelineSync(
+    const VideoCommon::GXPipelineUid& uid, const CustomShaderInstance& custom_shaders,
+    const AbstractPipelineConfig& pipeline_config)
+{
+  if (auto holder = m_pipeline_cache.GetHolder(uid, custom_shaders); holder && !holder->pending)
+    return holder->value.get();
+
+  PixelShaderUid ps_uid = uid.ps_uid;
+  ClearUnusedPixelShaderUidBits(m_api_type, m_host_config, &ps_uid);
+
+  if (auto holder = m_ps_cache.GetHolder(ps_uid, custom_shaders); !holder || holder->pending ||
+                                                              !holder->value)
+  {
+    auto shader_iter = m_ps_cache.InsertElement(ps_uid, custom_shaders);
+    shader_iter->second.value = CompilePixelShader(ps_uid, custom_shaders);
+    shader_iter->second.pending = false;
+  }
+
+  auto pipeline_iter = m_pipeline_cache.InsertElement(uid, custom_shaders);
+  pipeline_iter->second.pending = false;
+  auto config = pipeline_config;
+  if (auto ps_holder = m_ps_cache.GetHolder(ps_uid, custom_shaders))
+    config.pixel_shader = ps_holder->value.get();
+  pipeline_iter->second.value = g_gfx->CreatePipeline(config);
+  return pipeline_iter->second.value.get();
+}
+
+const AbstractPipeline* CustomShaderCache::GetPipelineSync(
+    const VideoCommon::GXUberPipelineUid& uid, const CustomShaderInstance& custom_shaders,
+    const AbstractPipelineConfig& pipeline_config)
+{
+  if (auto holder = m_uber_pipeline_cache.GetHolder(uid, custom_shaders); holder && !holder->pending)
+    return holder->value.get();
+
+  UberShader::PixelShaderUid ps_uid = uid.ps_uid;
+  ClearUnusedPixelShaderUidBits(m_api_type, m_host_config, &ps_uid);
+
+  if (auto holder = m_uber_ps_cache.GetHolder(ps_uid, custom_shaders); !holder || holder->pending ||
+                                                                   !holder->value)
+  {
+    auto shader_iter = m_uber_ps_cache.InsertElement(ps_uid, custom_shaders);
+    shader_iter->second.value = CompilePixelShader(ps_uid, custom_shaders);
+    shader_iter->second.pending = false;
+  }
+
+  auto pipeline_iter = m_uber_pipeline_cache.InsertElement(uid, custom_shaders);
+  pipeline_iter->second.pending = false;
+  auto config = pipeline_config;
+  if (auto ps_holder = m_uber_ps_cache.GetHolder(ps_uid, custom_shaders))
+    config.pixel_shader = ps_holder->value.get();
+  pipeline_iter->second.value = g_gfx->CreatePipeline(config);
+  return pipeline_iter->second.value.get();
+}
+
 void CustomShaderCache::AsyncCreatePipeline(const VideoCommon::GXPipelineUid& uid,
 
                                             const CustomShaderInstance& custom_shaders,
@@ -353,8 +407,16 @@ std::unique_ptr<AbstractShader>
 CustomShaderCache::CompilePixelShader(const PixelShaderUid& uid,
                                       const CustomShaderInstance& custom_shaders) const
 {
+  CustomPixelContents custom_contents{};
+  if (!custom_shaders.pixel_contents.shaders.empty())
+  {
+    const CustomPixelShader& shader = custom_shaders.pixel_contents.shaders.front();
+    custom_contents.shader = shader.custom_shader;
+    custom_contents.uniforms = shader.material_uniform_block;
+  }
+
   const ShaderCode source_code =
-      GeneratePixelShaderCode(m_api_type, m_host_config, uid.GetUidData(), {});
+      GeneratePixelShaderCode(m_api_type, m_host_config, uid.GetUidData(), custom_contents);
   return g_gfx->CreateShaderFromSource(ShaderStage::Pixel, source_code.GetBuffer(), nullptr,
                                        "Custom Pixel Shader");
 }

@@ -128,6 +128,20 @@ bool VertexManager::Initialize()
   return true;
 }
 
+void VertexManager::OnReplayFrameBegin()
+{
+  InvalidateConstants();
+  InvalidatePipelineObject();
+  SetRasterizationStateChanged();
+  SetDepthStateChanged();
+  SetBlendingStateChanged();
+}
+
+void VertexManager::OnReplayFrameEnd()
+{
+  InvalidateConstants();
+}
+
 void VertexManager::DestroyTexelBufferViews()
 {
   for (VkBufferView view : m_texel_buffer_views)
