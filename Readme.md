@@ -6,6 +6,9 @@ Dolphin is an emulator for running GameCube and Wii games on Windows,
 Linux, macOS, and recent Android devices. It's licensed under the terms
 of the GNU General Public License, version 2 or later (GPLv2+).
 
+This fork adds OpenXR support to Dolphin so users can play in VR on supported
+Windows builds.
+
 Please read the [FAQ](https://dolphin-emu.org/docs/faq/) before using Dolphin.
 
 ## System Requirements
@@ -48,6 +51,30 @@ Make sure to pull submodules before building:
 ```sh
 git submodule update --init --recursive
 ```
+
+### Building the OpenXR VR version on Windows
+
+To build the VR-enabled version of this fork, OpenXR support must be enabled and
+the OpenXR loader binaries must be compiled before building Dolphin itself.
+
+If you are generating a Visual Studio build with CMake, configure with
+`-DENABLE_VR=ON`:
+```sh
+cmake -S . -B Build-vs2022 -G "Visual Studio 17 2022" -A x64 -DENABLE_VR=ON
+```
+
+Then build the OpenXR loader first:
+```sh
+cmake --build Build-vs2022 --config Release --target openxr_loader
+```
+
+Finally, build Dolphin:
+```sh
+cmake --build Build-vs2022 --config Release --target dolphin-emu
+```
+
+If you prefer building OpenXR separately first, the repository also includes
+`Externals/OpenXR/build-win64/OPENXR.sln`.
 
 The "Release" solution configuration includes performance optimizations for the best user experience but complicates debugging Dolphin.
 The "Debug" solution configuration is significantly slower, more verbose and less permissive but makes debugging Dolphin easier.
@@ -136,6 +163,10 @@ If using Android Studio, import the Gradle project located in `./Source/Android`
 Android apps are compiled using a build system called Gradle. Dolphin's native component,
 however, is compiled using CMake. The Gradle script will attempt to run a CMake build
 automatically while building the Java code.
+
+## Project Notes
+
+This project was developed with the use of AI tools.
 
 ## Uninstalling
 
