@@ -28,8 +28,12 @@ HacksWidget::HacksWidget(GraphicsPane* gfx_pane) : m_game_layer{gfx_pane->GetCon
 
   connect(gfx_pane, &GraphicsPane::BackendChanged, this, &HacksWidget::OnBackendChanged);
   const auto update_openxr_immediate_xfb = [this] {
-    if (Config::Get(Config::GFX_VR_ENABLE_OPENXR) && !Config::Get(Config::GFX_HACK_IMMEDIATE_XFB))
+    if (Config::Get(Config::GFX_VR_ENABLE_OPENXR) &&
+        Config::Get(Config::GFX_VR_AUTO_IMMEDIATE_XFB) &&
+        !Config::Get(Config::GFX_HACK_IMMEDIATE_XFB))
+    {
       Config::SetBaseOrCurrent(Config::GFX_HACK_IMMEDIATE_XFB, true);
+    }
 
     UpdateSkipPresentingDuplicateFramesEnabled();
   };

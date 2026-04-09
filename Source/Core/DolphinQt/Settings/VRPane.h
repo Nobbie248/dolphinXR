@@ -31,6 +31,7 @@ private:
   void OnEmulationStateChanged(Core::State state);
 
   ConfigBool* m_enable_openxr = nullptr;
+  ConfigBool* m_auto_immediate_xfb = nullptr;
   ConfigFloatSlider* m_units_per_meter = nullptr;
   QLabel* m_units_per_meter_value = nullptr;
   ConfigFloatSlider* m_lean_back_angle = nullptr;
