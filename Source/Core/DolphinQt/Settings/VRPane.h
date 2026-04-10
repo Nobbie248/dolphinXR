@@ -52,6 +52,7 @@ private:
   ConfigSlider* m_clear_efb_slider = nullptr;
   QLabel* m_clear_efb_value = nullptr;
   ConfigBool* m_remove_bars = nullptr;
+  ConfigBool* m_lock_head_pose = nullptr;
   ConfigFloatSlider* m_vr_gamma = nullptr;
   QLabel* m_vr_gamma_value = nullptr;
   ConfigBool* m_auto_layer_spread = nullptr;

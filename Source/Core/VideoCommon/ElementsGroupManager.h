@@ -103,6 +103,7 @@ public:
   struct SeedCandidate
   {
     RuntimeElementSignature signature;
+    RuntimeElementSignature group_signature;
     DrawRecord representative_draw;
     int occurrence_count = 0;
   };
@@ -209,9 +210,20 @@ private:
     StableSubMatchSignature signature;
   };
 
+  struct GroupMask
+  {
+    bool projection = false;
+    bool layer = false;
+    bool viewport = false;
+    bool scissor = false;
+    bool render_state = false;
+  };
+
   void ClearSeedSelectionLocked();
   void SelectSeedCandidateLocked(int index);
   bool HasActiveHuntLocked() const;
+  RuntimeElementSignature GetMaskedSeedSignatureLocked() const;
+  RuntimeElementSignature GetSeedGroupSignatureLocked(const RuntimeElementSignature& signature) const;
   bool MatchesSelectedMatchFilterLocked(const DrawRecord& draw) const;
   bool MatchesSelectedMatchFilterSignatureLocked(const SelectedSubgroupSignature& signature) const;
   std::vector<CurrentMatchCandidate> ResolveSelectedMatchDisplayDrawsLocked() const;
@@ -231,7 +243,9 @@ private:
   bool m_hunt_enabled = false;
   HuntingOption m_hunting_option = HuntingOption::Skip;
   RuntimeElementSignature m_seed_signature{};
+  RuntimeElementSignature m_seed_group_signature{};
   std::optional<DrawRecord> m_seed_draw;
+  GroupMask m_group_mask;
   int m_selected_seed_index = -1;
   int m_selected_match = 0;
   std::vector<SelectedSubgroupSignature> m_selected_match_filters;

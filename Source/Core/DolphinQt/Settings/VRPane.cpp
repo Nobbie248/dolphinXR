@@ -50,7 +50,7 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
 
   m_enable_openxr = new ConfigBool(tr("Enable OpenXR"), Config::GFX_VR_ENABLE_OPENXR);
   m_auto_immediate_xfb =
-      new ConfigBool(tr("Auto-enable Immediately Present XFB"),
+      new ConfigBool(tr("Force Immediately Present XFB"),
                      Config::GFX_VR_AUTO_IMMEDIATE_XFB);
   m_units_per_meter = new ConfigFloatSlider(Config::GFX_VR_UNITS_PER_METER_MIN,
                                             Config::GFX_VR_UNITS_PER_METER_MAX,
@@ -228,12 +228,36 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   m_disable_cpu_cull =
       new ConfigBool(tr("Disable CPU Culling in VR"), Config::GFX_VR_DISABLE_CPU_CULL);
   m_remove_bars = new ConfigBool(tr("Remove Cinematic Bars"), Config::GFX_VR_REMOVE_BARS);
+  m_lock_head_pose =
+      new ConfigBool(tr("Lock Head Pose Per Frame"), Config::GFX_VR_LOCK_HEAD_POSE);
 
   hacks_group_layout->addWidget(m_auto_immediate_xfb);
+  hacks_group_layout->addWidget(m_lock_head_pose);
   hacks_group_layout->addWidget(m_dont_clear_screen);
   hacks_group_layout->addWidget(m_disable_cpu_cull);
   hacks_group_layout->addWidget(m_remove_bars);
   hack_layout->addWidget(hacks_group);
+
+  // Lock Head Pose is incompatible with Immediately Present XFB — when enabled,
+  // force-disable both Auto-enable Immediate XFB (local) and the Graphics Hacks
+  // Immediately Present XFB config key, and grey them out.
+  const auto update_lock_head_pose = [this] {
+    const bool locked = m_lock_head_pose->isChecked();
+    m_auto_immediate_xfb->setDisabled(locked);
+    if (locked)
+    {
+      Config::SetBaseOrCurrent(Config::GFX_VR_AUTO_IMMEDIATE_XFB, false);
+      Config::SetBaseOrCurrent(Config::GFX_HACK_IMMEDIATE_XFB, false);
+    }
+  };
+#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
+  connect(m_lock_head_pose, &QCheckBox::checkStateChanged, this,
+          [update_lock_head_pose](Qt::CheckState) { update_lock_head_pose(); });
+#else
+  connect(m_lock_head_pose, &QCheckBox::stateChanged, this,
+          [update_lock_head_pose](int) { update_lock_head_pose(); });
+#endif
+  update_lock_head_pose();  // Apply initial state
 
   auto* tools_group = new QGroupBox(tr("Tools"));
   auto* tools_layout = new QGridLayout;
@@ -319,8 +343,11 @@ void VRPane::AddDescriptions()
       "<br><br>This setting cannot be changed while emulation is active."
       "<br><br><dolphin_emphasis>If unsure, leave this unchecked.</dolphin_emphasis>");
   static constexpr char TR_AUTO_IMMEDIATE_XFB_DESCRIPTION[] = QT_TR_NOOP(
-      "Automatically enables Graphics > Hacks > Immediately Present XFB while OpenXR is enabled."
-      "<br><br>Turn this off to restore the normal manual behavior of Immediately Present XFB."
+      "Forces Immediately Present XFB on while OpenXR is enabled."
+      "<br><br>This improves head-tracking responsiveness and reduces latency in VR by presenting "
+      "each XFB copy as soon as it is created."
+      "<br><br>Turn this off if a game flickers with Immediately Present XFB, then use "
+      "<b>Lock Head Pose Per Frame</b> instead to keep head-tracking coherent."
       "<br><br><dolphin_emphasis>If unsure, leave this checked.</dolphin_emphasis>");
   static constexpr char TR_UNITS_PER_METER_DESCRIPTION[] = QT_TR_NOOP(
       "Sets how many game world units correspond to one real-world meter."
@@ -401,6 +428,18 @@ void VRPane::AddDescriptions()
       "This option removes them by expanding the rendered area."
       "<br><br>Disable this if it causes visual artifacts in a specific game."
       "<br><br><dolphin_emphasis>If unsure, leave this checked.</dolphin_emphasis>");
+  static constexpr char TR_LOCK_HEAD_POSE_DESCRIPTION[] = QT_TR_NOOP(
+      "Snaps OpenXR head-tracking updates to game-frame boundaries (XFB copies) so every draw "
+      "call within a single game frame uses one consistent head pose."
+      "<br><br>Without this, when <b>Immediately Present XFB</b> is disabled, "
+      "<code>LocateViews()</code> can mutate the head pose mid-frame on the video thread, "
+      "causing different parts of the same frame (e.g. level geometry vs. dynamic objects) "
+      "to be rendered with different poses. The visible symptom is objects appearing to "
+      "&quot;stay in place&quot; and jump to their correct positions a few frames later."
+      "<br><br>This option captures a single head pose at the XFB-copy point in FIFO order, "
+      "guaranteeing all draws of a frame are coherent. It has no effect when "
+      "<b>Immediately Present XFB</b> is on (that path is already coherent)."
+      "<br><br><dolphin_emphasis>If unsure, leave this checked.</dolphin_emphasis>");
   static constexpr char TR_VR_GAMMA_DESCRIPTION[] = QT_TR_NOOP(
       "Adjusts gamma correction for VR eye output."
       "<br><br>1.0 = no correction (default). 2.2 = standard sRGB gamma. "
@@ -430,6 +469,7 @@ void VRPane::AddDescriptions()
   m_auto_vbi_from_hmd->SetDescription(tr(TR_AUTO_VBI_FROM_HMD_DESCRIPTION));
   m_clear_efb_slider->SetDescription(tr(TR_CLEAR_EFB_COPIES_DESCRIPTION));
   m_remove_bars->SetDescription(tr(TR_REMOVE_BARS_DESCRIPTION));
+  m_lock_head_pose->SetDescription(tr(TR_LOCK_HEAD_POSE_DESCRIPTION));
   m_vr_gamma->SetDescription(tr(TR_VR_GAMMA_DESCRIPTION));
   m_auto_layer_spread->SetDescription(tr(TR_AUTO_LAYER_SPREAD_DESCRIPTION));
   m_layer_offset->SetDescription(tr(TR_LAYER_OFFSET_DESCRIPTION));

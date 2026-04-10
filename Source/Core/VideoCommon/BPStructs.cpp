@@ -42,6 +42,10 @@
 #include "VideoCommon/VideoEvents.h"
 #include "VideoCommon/XFStateManager.h"
 
+#ifdef ENABLE_VR
+#include "VideoCommon/VR/OpenXRManager.h"
+#endif
+
 using namespace BPFunctions;
 
 static constexpr Common::EnumMap<float, GammaCorrection::Invalid2_2> s_gammaLUT = {1.0f, 1.7f, 2.2f,
@@ -378,6 +382,22 @@ static void BPWritten(PixelShaderManager& pixel_shader_manager, XFStateManager& 
           auto& vi = system.GetVideoInterface();
           vi.FakeVIUpdate(destAddr, srcRect.GetWidth(), destStride, height);
         }
+
+#ifdef ENABLE_VR
+        // Lock Head Pose Per Frame: refresh the OpenXR head pose at this exact point
+        // in the FIFO stream — between the just-finished game frame and the next one.
+        // Because this runs in FIFO order on the video thread, every draw within a
+        // single game frame is guaranteed to see one consistent head pose, eliminating
+        // the level-vs-objects desync that occurs when LocateViews() races with draws
+        // via VI-event AsyncRequests in Present().
+        if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
+            g_ActiveConfig.vr_lock_head_pose && VR::g_openxr &&
+            VR::g_openxr->IsSessionRunning() && VR::g_openxr->ShouldRender())
+        {
+          VR::g_openxr->LocateViews();
+          system.GetGeometryShaderManager().InvalidateVRHeadPose();
+        }
+#endif
       }
     }
 

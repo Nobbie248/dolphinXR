@@ -42,27 +42,68 @@ QString GetProjectionLabel(const ShaderHunter::RuntimeElementSignature& sig)
       .arg(sig.ortho_layer);
 }
 
-QString FormatSeedCandidateLabel(const ElementsGroupManager::SeedCandidate& candidate)
+QString FormatSeedCandidateLabel(const ElementsGroupManager::SeedCandidate& candidate,
+                                 const ShaderHunter::RuntimeElementSignature& active_mask)
 {
-  const auto& sig = candidate.signature;
-  return QObject::tr("%1 | VP %2,%3 %4x%5 | SC %6,%7 %8,%9 | Draw #%10 | Seen %11x")
-      .arg(GetProjectionLabel(sig))
-      .arg(sig.viewport_x)
-      .arg(sig.viewport_y)
-      .arg(sig.viewport_width)
-      .arg(sig.viewport_height)
-      .arg(sig.scissor_left)
-      .arg(sig.scissor_top)
-      .arg(sig.scissor_right)
-      .arg(sig.scissor_bottom)
-      .arg(candidate.representative_draw.draw_index + 1)
-      .arg(candidate.occurrence_count);
+  const auto& group = candidate.group_signature;
+  const auto& rep = candidate.representative_draw.signature;
+  QStringList parts;
+
+  if (!active_mask.use_projection && !active_mask.use_layer && !active_mask.use_viewport &&
+      !active_mask.use_scissor && !active_mask.use_render_state)
+  {
+    parts << GetProjectionLabel(candidate.signature);
+    parts << QObject::tr("VP %1,%2 %3x%4")
+                 .arg(candidate.signature.viewport_x)
+                 .arg(candidate.signature.viewport_y)
+                 .arg(candidate.signature.viewport_width)
+                 .arg(candidate.signature.viewport_height);
+    parts << QObject::tr("SC %1,%2 %3,%4")
+                 .arg(candidate.signature.scissor_left)
+                 .arg(candidate.signature.scissor_top)
+                 .arg(candidate.signature.scissor_right)
+                 .arg(candidate.signature.scissor_bottom);
+  }
+  else
+  {
+    if (active_mask.use_projection)
+      parts << GetProjectionLabel(group);
+    else if (active_mask.use_layer)
+      parts << (rep.perspective ? QObject::tr("Perspective") :
+                                  QObject::tr("Ortho L%1").arg(group.ortho_layer));
+
+    if (active_mask.use_viewport)
+    {
+      parts << QObject::tr("VP %1,%2 %3x%4")
+                   .arg(group.viewport_x)
+                   .arg(group.viewport_y)
+                   .arg(group.viewport_width)
+                   .arg(group.viewport_height);
+    }
+
+    if (active_mask.use_scissor)
+    {
+      parts << QObject::tr("SC %1,%2 %3,%4")
+                   .arg(group.scissor_left)
+                   .arg(group.scissor_top)
+                   .arg(group.scissor_right)
+                   .arg(group.scissor_bottom);
+    }
+
+    if (active_mask.use_render_state)
+      parts << QObject::tr("State");
+  }
+
+  parts << QObject::tr("Draw #%1").arg(candidate.representative_draw.draw_index + 1);
+  parts << QObject::tr("Seen %1x").arg(candidate.occurrence_count);
+  return parts.join(QStringLiteral(" | "));
 }
 
-QString FormatSeedSummary(const ElementsGroupManager::SeedCandidate& candidate)
+QString FormatSeedSummary(const ElementsGroupManager::SeedCandidate& candidate,
+                          const ShaderHunter::RuntimeElementSignature& active_mask)
 {
   return QObject::tr("%1\nRepresentative Draw: #%2\nOccurrences: %3")
-      .arg(FormatSeedCandidateLabel(candidate))
+      .arg(FormatSeedCandidateLabel(candidate, active_mask))
       .arg(candidate.representative_draw.draw_index + 1)
       .arg(candidate.occurrence_count);
 }
@@ -396,7 +437,7 @@ void ElementsHuntingDialog::UpdateDisplay()
         m_seed_list->clear();
         for (size_t i = 0; i < candidates.size(); ++i)
         {
-          auto* item = new QListWidgetItem(FormatSeedCandidateLabel(candidates[i]));
+          auto* item = new QListWidgetItem(FormatSeedCandidateLabel(candidates[i], status.seed_signature));
           item->setData(Qt::UserRole, static_cast<int>(i));
           m_seed_list->addItem(item);
         }
@@ -405,7 +446,7 @@ void ElementsHuntingDialog::UpdateDisplay()
       {
         for (int i = 0; i < m_seed_list->count(); ++i)
           m_seed_list->item(i)->setText(
-              FormatSeedCandidateLabel(candidates[static_cast<size_t>(i)]));
+              FormatSeedCandidateLabel(candidates[static_cast<size_t>(i)], status.seed_signature));
       }
 
       if (status.selected_seed_index >= 0 && status.selected_seed_index < m_seed_list->count())
@@ -470,7 +511,8 @@ void ElementsHuntingDialog::UpdateDisplay()
     QString seed_summary = tr("Seed: %1\nGroups: %2\nChecked Match Filters: %3")
                               .arg(status.selected_seed_index >= 0 &&
                                            status.selected_seed_index < static_cast<int>(candidates.size()) ?
-                                       FormatSeedSummary(candidates[static_cast<size_t>(status.selected_seed_index)]) :
+                                       FormatSeedSummary(candidates[static_cast<size_t>(status.selected_seed_index)],
+                                                         status.seed_signature) :
                                        tr("selected"))
                               .arg(groups.isEmpty() ? tr("(none)") :
                                                       groups.join(QStringLiteral(", ")))

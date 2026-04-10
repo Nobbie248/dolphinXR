@@ -131,25 +131,43 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
                                                           g_ActiveConfig.vr_units_per_meter,
                                      0.0001f);
 
-          // Per-eye projection rows — needed by BOTH perspective and ortho VR paths.
-          std::array<std::array<float, 4>, 4> eye_projection_rows{};
-          std::array<std::array<float, 4>, 2> eye_z_rows{};
-          VR::g_openxr->GetEyeProjectionRows(upm, eye_projection_rows, eye_z_rows);
-
-          // OpenXR stereo path bypasses the classic cproj path, so apply freelook here too.
-          if (perspective && g_freelook_camera.IsActive())
+          // When vr_lock_head_pose is ON, only re-fetch the head pose from OpenXR when
+          // we've been explicitly invalidated (at the XFB-copy frame boundary).  This
+          // prevents mid-frame LocateViews() updates from desynchronising different draw
+          // calls within the same game frame.  When OFF, refetch every call (legacy
+          // behavior — kept as an escape hatch).
+          const bool need_refresh = !g_ActiveConfig.vr_lock_head_pose || m_vr_pose_needs_refresh;
+          if (need_refresh)
           {
-            const Common::Matrix44 freelook_view = g_freelook_camera.GetView();
-            ApplyRowTransform(&eye_projection_rows, freelook_view);
-            ApplyRowTransform(&eye_z_rows, freelook_view);
+            std::array<std::array<float, 4>, 4> eye_projection_rows{};
+            std::array<std::array<float, 4>, 2> eye_z_rows{};
+            VR::g_openxr->GetEyeProjectionRows(upm, eye_projection_rows, eye_z_rows);
+
+            // OpenXR stereo path bypasses the classic cproj path, so apply freelook here too.
+            if (perspective && g_freelook_camera.IsActive())
+            {
+              const Common::Matrix44 freelook_view = g_freelook_camera.GetView();
+              ApplyRowTransform(&eye_projection_rows, freelook_view);
+              ApplyRowTransform(&eye_z_rows, freelook_view);
+            }
+
+            m_cached_eye_projection = eye_projection_rows;
+            m_cached_eye_z_row = eye_z_rows;
+
+            // Unrotated per-eye projection rows for head-locked content.
+            std::array<std::array<float, 4>, 4> head_proj_rows{};
+            VR::g_openxr->GetRawEyeProjectionRows(upm, head_proj_rows);
+            m_cached_head_projection = head_proj_rows;
+
+            m_vr_pose_needs_refresh = false;
           }
 
-          constants.eye_projection[0] = eye_projection_rows[0];
-          constants.eye_projection[1] = eye_projection_rows[1];
-          constants.eye_projection[2] = eye_projection_rows[2];
-          constants.eye_projection[3] = eye_projection_rows[3];
-          constants.eye_z_row[0] = eye_z_rows[0];
-          constants.eye_z_row[1] = eye_z_rows[1];
+          constants.eye_projection[0] = m_cached_eye_projection[0];
+          constants.eye_projection[1] = m_cached_eye_projection[1];
+          constants.eye_projection[2] = m_cached_eye_projection[2];
+          constants.eye_projection[3] = m_cached_eye_projection[3];
+          constants.eye_z_row[0] = m_cached_eye_z_row[0];
+          constants.eye_z_row[1] = m_cached_eye_z_row[1];
 
           if (perspective && g_backend_info.api_type == APIType::Vulkan)
           {
@@ -187,13 +205,11 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
             constants.stereoparams[1] = 1.0f;
           }
 
-          // Unrotated per-eye projection rows for head-locked content.
-          std::array<std::array<float, 4>, 4> head_proj_rows{};
-          VR::g_openxr->GetRawEyeProjectionRows(upm, head_proj_rows);
-          constants.head_projection[0] = head_proj_rows[0];
-          constants.head_projection[1] = head_proj_rows[1];
-          constants.head_projection[2] = head_proj_rows[2];
-          constants.head_projection[3] = head_proj_rows[3];
+          // Unrotated per-eye projection rows for head-locked content (cached above).
+          constants.head_projection[0] = m_cached_head_projection[0];
+          constants.head_projection[1] = m_cached_head_projection[1];
+          constants.head_projection[2] = m_cached_head_projection[2];
+          constants.head_projection[3] = m_cached_head_projection[3];
           constants.head_locked_params = {g_ActiveConfig.vr_head_locked_curvature, 0.0f, 0.0f,
                                           0.0f};
           constants.pixel_center_correction = vertex_shader_manager.constants.pixelcentercorrection;
@@ -328,6 +344,11 @@ void GeometryShaderManager::SetViewportChanged()
 void GeometryShaderManager::SetProjectionChanged()
 {
   m_projection_changed = true;
+}
+
+void GeometryShaderManager::InvalidateVRHeadPose()
+{
+  m_vr_pose_needs_refresh = true;
 }
 
 void GeometryShaderManager::SetLinePtWidthChanged()

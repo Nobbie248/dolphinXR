@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <array>
 #include <cmath>
 #include <limits>
 
@@ -25,6 +26,11 @@ public:
   void SetProjectionChanged();
   void SetLinePtWidthChanged();
   void SetTexCoordChanged(u8 texmapid);
+
+  // VR head-pose cache: marks the cached eye projection as stale so the next
+  // SetConstants() call re-fetches it from OpenXR.  Called from BPStructs at the
+  // XFB-copy boundary so a single game frame's draws all see one consistent pose.
+  void InvalidateVRHeadPose();
 
   GeometryShaderConstants constants{};
   bool dirty = false;
@@ -51,4 +57,11 @@ private:
 
   bool m_projection_changed = false;
   bool m_viewport_changed = false;
+
+  // Cached OpenXR head pose data — refreshed only at frame boundaries (XFB copy)
+  // when vr_lock_head_pose is enabled, otherwise refreshed every SetConstants call.
+  std::array<std::array<float, 4>, 4> m_cached_eye_projection{};
+  std::array<std::array<float, 4>, 2> m_cached_eye_z_row{};
+  std::array<std::array<float, 4>, 4> m_cached_head_projection{};
+  bool m_vr_pose_needs_refresh = true;
 };

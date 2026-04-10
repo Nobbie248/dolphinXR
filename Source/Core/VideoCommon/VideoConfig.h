@@ -337,6 +337,7 @@ struct VideoConfig final
   OpenXROpcodeReplayMode vr_opcode_replay_mode = OpenXROpcodeReplayMode::Off;
   bool vr_auto_layer_spread = true;
   bool vr_remove_bars = true;       // Expand scissor/viewport to remove cinematic letterbox bars
+  bool vr_lock_head_pose = true;    // Snap head-pose updates to XFB-copy boundaries (FIFO order)
   float vr_gamma = 1.0f;  // Gamma for VR eye output (1.0=off, 2.2=sRGB, adjustable per headset)
   float vr_layer_offset = 0.002f;
   float vr_element_depth = 0.001f;

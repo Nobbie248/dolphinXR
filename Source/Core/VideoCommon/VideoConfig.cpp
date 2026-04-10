@@ -207,6 +207,7 @@ void VideoConfig::Refresh()
   vr_opcode_replay_mode = Config::Get(Config::GFX_VR_OPCODE_REPLAY);
   vr_auto_layer_spread = Config::Get(Config::GFX_VR_AUTO_LAYER_SPREAD);
   vr_remove_bars = Config::Get(Config::GFX_VR_REMOVE_BARS);
+  vr_lock_head_pose = Config::Get(Config::GFX_VR_LOCK_HEAD_POSE);
   vr_gamma = std::clamp(Config::Get(Config::GFX_VR_GAMMA),
                         Config::GFX_VR_GAMMA_MIN, Config::GFX_VR_GAMMA_MAX);
   vr_layer_offset = std::clamp(Config::Get(Config::GFX_VR_LAYER_OFFSET),

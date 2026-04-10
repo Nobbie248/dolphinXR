@@ -28,9 +28,19 @@ HacksWidget::HacksWidget(GraphicsPane* gfx_pane) : m_game_layer{gfx_pane->GetCon
 
   connect(gfx_pane, &GraphicsPane::BackendChanged, this, &HacksWidget::OnBackendChanged);
   const auto update_openxr_immediate_xfb = [this] {
-    if (Config::Get(Config::GFX_VR_ENABLE_OPENXR) &&
-        Config::Get(Config::GFX_VR_AUTO_IMMEDIATE_XFB) &&
-        !Config::Get(Config::GFX_HACK_IMMEDIATE_XFB))
+    // When VR Lock Head Pose is active, Immediately Present XFB must stay off.
+    const bool vr_lock = Config::Get(Config::GFX_VR_ENABLE_OPENXR) &&
+                         Config::Get(Config::GFX_VR_LOCK_HEAD_POSE);
+    // When VR Force Immediately Present XFB is active, force it on and grey out.
+    const bool vr_force = Config::Get(Config::GFX_VR_ENABLE_OPENXR) &&
+                          Config::Get(Config::GFX_VR_AUTO_IMMEDIATE_XFB);
+
+    m_immediate_xfb->setDisabled(vr_lock || vr_force);
+    if (vr_lock)
+    {
+      Config::SetBaseOrCurrent(Config::GFX_HACK_IMMEDIATE_XFB, false);
+    }
+    else if (vr_force && !Config::Get(Config::GFX_HACK_IMMEDIATE_XFB))
     {
       Config::SetBaseOrCurrent(Config::GFX_HACK_IMMEDIATE_XFB, true);
     }

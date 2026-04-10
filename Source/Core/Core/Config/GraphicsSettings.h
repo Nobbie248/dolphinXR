@@ -190,6 +190,7 @@ extern const Info<bool> GFX_VR_AUTO_LAYER_SPREAD;
 extern const Info<float> GFX_VR_LAYER_OFFSET;
 extern const Info<float> GFX_VR_ELEMENT_DEPTH;
 extern const Info<bool> GFX_VR_REMOVE_BARS;
+extern const Info<bool> GFX_VR_LOCK_HEAD_POSE;
 extern const Info<float> GFX_VR_GAMMA;
 extern const Info<int> GFX_VR_CLEAR_EFB_COPIES;
 static constexpr int GFX_VR_CLEAR_EFB_MIN = 0;

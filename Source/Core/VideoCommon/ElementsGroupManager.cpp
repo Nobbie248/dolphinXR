@@ -360,6 +360,12 @@ size_t ComputeStableSubMatchBaseKey(const ElementsGroupManager::StableSubMatchSi
   return seed;
 }
 
+bool GroupMaskHasActiveGroups(bool projection, bool layer, bool viewport, bool scissor,
+                              bool render_state)
+{
+  return projection || layer || viewport || scissor || render_state;
+}
+
 void SaveStableSubMatchSignature(std::ostringstream& out,
                                  const ElementsGroupManager::StableSubMatchSignature& signature,
                                  const std::string& prefix)
@@ -943,6 +949,7 @@ ElementsGroupManager::HuntingOption ElementsGroupManager::GetHuntingOption() con
 void ElementsGroupManager::ClearSeedSelectionLocked()
 {
   m_seed_signature = {};
+  m_seed_group_signature = {};
   m_seed_draw.reset();
   m_selected_seed_index = -1;
   m_selected_match = 0;
@@ -955,6 +962,84 @@ void ElementsGroupManager::ClearSeedSelectionLocked()
   m_display_highlighted_match_raw_draw_count = 0;
 }
 
+ElementsGroupManager::RuntimeElementSignature ElementsGroupManager::GetMaskedSeedSignatureLocked() const
+{
+  RuntimeElementSignature masked = m_seed_signature;
+  masked.use_projection = m_group_mask.projection;
+  masked.use_layer = m_group_mask.layer;
+  masked.use_viewport = m_group_mask.viewport;
+  masked.use_scissor = m_group_mask.scissor;
+  masked.use_render_state = m_group_mask.render_state;
+  return masked;
+}
+
+ElementsGroupManager::RuntimeElementSignature
+ElementsGroupManager::GetSeedGroupSignatureLocked(const RuntimeElementSignature& signature) const
+{
+  if (!signature.valid)
+    return {};
+
+  if (!GroupMaskHasActiveGroups(m_group_mask.projection, m_group_mask.layer, m_group_mask.viewport,
+                                m_group_mask.scissor, m_group_mask.render_state))
+    return signature;
+
+  RuntimeElementSignature grouped{};
+  grouped.valid = true;
+
+  if (m_group_mask.projection)
+  {
+    grouped.perspective = signature.perspective;
+    if (signature.perspective)
+    {
+      grouped.perspective_hfov_x100 = signature.perspective_hfov_x100;
+      grouped.perspective_vfov_x100 = signature.perspective_vfov_x100;
+      grouped.perspective_near_x1000 = signature.perspective_near_x1000;
+      grouped.perspective_far_x100 = signature.perspective_far_x100;
+    }
+    else
+    {
+      grouped.ortho_left_x100 = signature.ortho_left_x100;
+      grouped.ortho_right_x100 = signature.ortho_right_x100;
+      grouped.ortho_top_x100 = signature.ortho_top_x100;
+      grouped.ortho_bottom_x100 = signature.ortho_bottom_x100;
+    }
+  }
+
+  if (m_group_mask.layer)
+  {
+    grouped.perspective = signature.perspective;
+    grouped.ortho_layer = signature.ortho_layer;
+  }
+
+  if (m_group_mask.viewport)
+  {
+    grouped.viewport_x = signature.viewport_x;
+    grouped.viewport_y = signature.viewport_y;
+    grouped.viewport_width = signature.viewport_width;
+    grouped.viewport_height = signature.viewport_height;
+  }
+
+  if (m_group_mask.scissor)
+  {
+    grouped.scissor_left = signature.scissor_left;
+    grouped.scissor_top = signature.scissor_top;
+    grouped.scissor_right = signature.scissor_right;
+    grouped.scissor_bottom = signature.scissor_bottom;
+  }
+
+  if (m_group_mask.render_state)
+  {
+    grouped.alpha_test_hex = signature.alpha_test_hex;
+    grouped.ztest = signature.ztest;
+    grouped.zupdate = signature.zupdate;
+    grouped.zfunc = signature.zfunc;
+    grouped.blend_color_update = signature.blend_color_update;
+    grouped.blend_alpha_update = signature.blend_alpha_update;
+  }
+
+  return grouped;
+}
+
 void ElementsGroupManager::SelectSeedCandidateLocked(int index)
 {
   if (index < 0 || index >= static_cast<int>(m_display_seed_candidates.size()))
@@ -964,7 +1049,8 @@ void ElementsGroupManager::SelectSeedCandidateLocked(int index)
   }
 
   m_selected_seed_index = index;
-  m_seed_signature = m_display_seed_candidates[index].signature;
+  m_seed_signature = m_display_seed_candidates[index].representative_draw.signature;
+  m_seed_group_signature = m_display_seed_candidates[index].group_signature;
   m_seed_draw = m_display_seed_candidates[index].representative_draw;
   m_selected_match = 0;
   m_selected_match_filters.clear();
@@ -982,31 +1068,20 @@ void ElementsGroupManager::SelectSeedCandidateLocked(int index)
 void ElementsGroupManager::SelectSeedCandidate(int index)
 {
   std::lock_guard lock(m_mutex);
-  const bool use_projection = m_seed_signature.use_projection;
-  const bool use_layer = m_seed_signature.use_layer;
-  const bool use_viewport = m_seed_signature.use_viewport;
-  const bool use_scissor = m_seed_signature.use_scissor;
-  const bool use_render_state = m_seed_signature.use_render_state;
   SelectSeedCandidateLocked(index);
-  if (m_seed_signature.valid)
-  {
-    m_seed_signature.use_projection = use_projection;
-    m_seed_signature.use_layer = use_layer;
-    m_seed_signature.use_viewport = use_viewport;
-    m_seed_signature.use_scissor = use_scissor;
-    m_seed_signature.use_render_state = use_render_state;
-  }
 }
 
 void ElementsGroupManager::SetSeedGroupMask(bool projection, bool layer, bool viewport,
                                             bool scissor, bool render_state)
 {
   std::lock_guard lock(m_mutex);
-  m_seed_signature.use_projection = projection;
-  m_seed_signature.use_layer = layer;
-  m_seed_signature.use_viewport = viewport;
-  m_seed_signature.use_scissor = scissor;
-  m_seed_signature.use_render_state = render_state;
+  m_group_mask.projection = projection;
+  m_group_mask.layer = layer;
+  m_group_mask.viewport = viewport;
+  m_group_mask.scissor = scissor;
+  m_group_mask.render_state = render_state;
+  if (m_seed_signature.valid)
+    m_seed_group_signature = GetSeedGroupSignatureLocked(m_seed_signature);
   m_selected_match = 0;
   m_selected_match_filters.clear();
   m_selected_match_filters_excluded = false;
@@ -1164,7 +1239,7 @@ ElementsGroupManager::GetSelectedMatchDisplayDraws() const
 ElementsGroupManager::RuntimeElementSignature ElementsGroupManager::GetSeedSignature() const
 {
   std::lock_guard lock(m_mutex);
-  return m_seed_signature;
+  return GetMaskedSeedSignatureLocked();
 }
 
 ElementsGroupManager::Status ElementsGroupManager::GetStatus() const
@@ -1175,7 +1250,7 @@ ElementsGroupManager::Status ElementsGroupManager::GetStatus() const
   status.hunt_enabled = m_hunt_enabled;
   status.option = m_hunting_option;
   status.seed_valid = m_seed_signature.valid;
-  status.seed_signature = m_seed_signature;
+  status.seed_signature = GetMaskedSeedSignatureLocked();
   status.seed_draw = m_seed_draw;
   status.selected_seed_index = m_selected_seed_index;
   status.total_seed_candidates = static_cast<int>(m_display_seed_candidates.size());
@@ -1266,7 +1341,8 @@ ElementsGroupManager::PreviewAction ElementsGroupManager::RegisterDraw(const Dra
     recorded.draw_index = static_cast<int>(m_collecting_draws.size());
     m_collecting_draws.push_back(recorded);
 
-    if (HasActiveHuntLocked() && RuntimeElementMatcher::Matches(m_seed_signature, recorded.signature))
+    if (HasActiveHuntLocked() &&
+        RuntimeElementMatcher::Matches(GetMaskedSeedSignatureLocked(), recorded.signature))
     {
       m_collecting_matches.push_back(recorded);
       m_collecting_match_total++;
@@ -1338,17 +1414,23 @@ void ElementsGroupManager::OnFrameEnd()
   m_display_seed_candidates.reserve(m_display_draws.size());
   for (const DrawRecord& draw : m_display_draws)
   {
+    const RuntimeElementSignature group_signature = GetSeedGroupSignatureLocked(draw.signature);
     auto it = std::find_if(m_display_seed_candidates.begin(), m_display_seed_candidates.end(),
-                           [&draw](const SeedCandidate& candidate) {
-                             return SignaturesEqual(candidate.signature, draw.signature);
+                           [&group_signature](const SeedCandidate& candidate) {
+                             return SignaturesEqual(candidate.group_signature, group_signature);
                            });
     if (it == m_display_seed_candidates.end())
     {
-      m_display_seed_candidates.push_back(
-          SeedCandidate{.signature = draw.signature, .representative_draw = draw, .occurrence_count = 1});
+      m_display_seed_candidates.push_back(SeedCandidate{.signature = draw.signature,
+                                                        .group_signature = group_signature,
+                                                        .representative_draw = draw,
+                                                        .occurrence_count = 1});
     }
     else
     {
+      it->signature = draw.signature;
+      it->group_signature = group_signature;
+      it->representative_draw = draw;
       it->occurrence_count++;
     }
   }
@@ -1357,7 +1439,8 @@ void ElementsGroupManager::OnFrameEnd()
   {
     const auto it = std::find_if(m_display_seed_candidates.begin(), m_display_seed_candidates.end(),
                                  [this](const SeedCandidate& candidate) {
-                                   return SignaturesEqual(candidate.signature, m_seed_signature);
+                                   return SignaturesEqual(candidate.group_signature,
+                                                          m_seed_group_signature);
                                  });
     if (it == m_display_seed_candidates.end())
     {
@@ -1366,6 +1449,8 @@ void ElementsGroupManager::OnFrameEnd()
     else
     {
       m_selected_seed_index = static_cast<int>(std::distance(m_display_seed_candidates.begin(), it));
+      m_seed_signature = it->representative_draw.signature;
+      m_seed_group_signature = it->group_signature;
       m_seed_draw = it->representative_draw;
     }
   }
@@ -1406,8 +1491,9 @@ void ElementsGroupManager::OnFrameEnd()
 
 bool ElementsGroupManager::HasActiveHuntLocked() const
 {
-  return m_popup_open_count > 0 && m_hunt_enabled &&
-         RuntimeElementMatcher::HasActiveGroups(m_seed_signature);
+  return m_popup_open_count > 0 && m_hunt_enabled && m_seed_signature.valid &&
+         GroupMaskHasActiveGroups(m_group_mask.projection, m_group_mask.layer, m_group_mask.viewport,
+                                  m_group_mask.scissor, m_group_mask.render_state);
 }
 
 bool ElementsGroupManager::MatchesSelectedMatchFilterLocked(const DrawRecord& draw) const
