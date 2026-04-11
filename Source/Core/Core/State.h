@@ -22,6 +22,12 @@ namespace State
 // number of states
 static const u32 NUM_STATES = 10;
 
+struct SaveOptions
+{
+  bool compress = true;
+  bool wait_for_completion = false;
+};
+
 struct StateHeaderLegacy
 {
   char game_id[6];
@@ -92,11 +98,12 @@ u64 GetUnixTimeOfSlot(int slot);
 // These don't happen instantly - they get scheduled as events.
 // ...But only if we're not in the main CPU thread.
 //    If we're in the main CPU thread then they run immediately instead.
-void Save(Core::System& system, int slot);
+void Save(Core::System& system, int slot, SaveOptions options = {});
 void Load(Core::System& system, int slot);
 
-void SaveAs(Core::System& system, std::string filename);
+void SaveAs(Core::System& system, std::string filename, SaveOptions options = {});
 void LoadAs(Core::System& system, std::string filename);
+void WaitForPendingSaves();
 
 void LoadLastSaved(Core::System& system, int i = 1);
 void SaveFirstSaved(Core::System& system);

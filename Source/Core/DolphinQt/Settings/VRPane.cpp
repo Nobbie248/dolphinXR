@@ -21,6 +21,7 @@
 #include "DolphinQt/Config/ConfigControls/ConfigChoice.h"
 #include "DolphinQt/Config/ConfigControls/ConfigFloatSlider.h"
 #include "DolphinQt/Config/ConfigControls/ConfigSlider.h"
+#include "DolphinQt/Debugger/CullingCodeFinderWidget.h"
 #include "DolphinQt/Debugger/ShaderHunterWidget.h"
 #include "DolphinQt/Settings.h"
 #include "VideoCommon/HideObjectEngine.h"
@@ -69,6 +70,27 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   m_camera_forward_value = new QLabel();
 
   openxr_layout->addWidget(m_enable_openxr, 0, 0, 1, 3);
+
+  m_ar_mode = new ConfigBool(tr("AR Mode (Passthrough)"), Config::GFX_VR_AR_MODE);
+  openxr_layout->addWidget(m_ar_mode, 1, 0, 1, 3);
+
+  m_ar_background_alpha =
+      new ConfigFloatSlider(Config::GFX_VR_AR_BACKGROUND_ALPHA_MIN,
+                            Config::GFX_VR_AR_BACKGROUND_ALPHA_MAX,
+                            Config::GFX_VR_AR_BACKGROUND_ALPHA,
+                            Config::GFX_VR_AR_BACKGROUND_ALPHA_STEP);
+  m_ar_background_alpha_value = new QLabel();
+  openxr_layout->addWidget(
+      new ConfigFloatLabel(tr("AR Background Alpha:"), m_ar_background_alpha), 16, 0);
+  openxr_layout->addWidget(m_ar_background_alpha, 16, 1);
+  openxr_layout->addWidget(m_ar_background_alpha_value, 16, 2);
+  m_ar_background_alpha_value->setText(
+      QString::asprintf("%.2f", m_ar_background_alpha->GetValue()));
+  connect(m_ar_background_alpha, &ConfigFloatSlider::valueChanged, this, [this] {
+    m_ar_background_alpha_value->setText(
+        QString::asprintf("%.2f", m_ar_background_alpha->GetValue()));
+  });
+
   openxr_layout->addWidget(new ConfigFloatLabel(tr("Units per Meter:"), m_units_per_meter), 2, 0);
   openxr_layout->addWidget(m_units_per_meter, 2, 1);
   openxr_layout->addWidget(m_units_per_meter_value, 2, 2);
@@ -315,9 +337,39 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   });
   tools_layout->addWidget(shader_hunter_btn, 1, 0);
 
+  auto* culling_finder_btn = new QPushButton(tr("Culling Code Finder"));
+  connect(culling_finder_btn, &QPushButton::clicked, this, [this] {
+    const std::string game_id = SConfig::GetInstance().GetGameID();
+    if (game_id.empty() || game_id == "00000000")
+    {
+      QMessageBox::information(this, tr("No Game Running"),
+                               tr("Start a game before searching for culling codes."));
+      return;
+    }
+
+    if (m_culling_finder_widget)
+    {
+      m_culling_finder_widget->show();
+      m_culling_finder_widget->raise();
+      m_culling_finder_widget->activateWindow();
+      return;
+    }
+
+    m_culling_finder_widget = new CullingCodeFinderWidget(this);
+    m_culling_finder_widget->setAttribute(Qt::WA_DeleteOnClose, true);
+    m_culling_finder_widget->show();
+    connect(m_culling_finder_widget, &QObject::destroyed, this,
+            [this] { m_culling_finder_widget = nullptr; });
+  });
+  tools_layout->addWidget(culling_finder_btn, 2, 0);
+
   m_load_custom_shaders =
       new ConfigBool(tr("Load Custom Shaders"), Config::GFX_VR_LOAD_CUSTOM_SHADERS);
-  tools_layout->addWidget(m_load_custom_shaders, 2, 0);
+  tools_layout->addWidget(m_load_custom_shaders, 3, 0);
+
+  m_ar_mode_debug =
+      new ConfigBool(tr("Fake AR Mode (Debug)"), Config::GFX_VR_AR_MODE_DEBUG);
+  tools_layout->addWidget(m_ar_mode_debug, 4, 0);
 
   general_layout->addStretch();
   hack_layout->addStretch();
@@ -453,6 +505,27 @@ void VRPane::AddDescriptions()
       "<br><br>Place edited shader files (dumped via Shader Hunter) in this folder to override "
       "the game's original shaders. Files must be named &lt;hash&gt;-&lt;vs|ps|gs&gt;.txt."
       "<br><br><dolphin_emphasis>If unsure, leave this unchecked.</dolphin_emphasis>");
+  static constexpr char TR_AR_MODE_DEBUG_DESCRIPTION[] = QT_TR_NOOP(
+      "Debug aid for AR Mode development on headsets that do <b>not</b> support passthrough."
+      "<br><br>Clears the per-eye OpenXR swapchain to <b>solid magenta</b> instead of "
+      "transparent black, so the regions that <i>would</i> be see-through in real AR Mode "
+      "become clearly visible. The OpenXR composition state is left as <code>OPAQUE</code>, "
+      "so this works on any headset and never triggers "
+      "<code>XR_ERROR_ENVIRONMENT_BLEND_MODE_UNSUPPORTED</code>."
+      "<br><br>Use this to verify that the eye framebuffer clear path, layer flag wiring, "
+      "and game-geometry-on-empty-background composition all behave correctly without "
+      "needing a passthrough-capable runtime."
+      "<br><br><dolphin_emphasis>If unsure, leave this unchecked.</dolphin_emphasis>");
+  static constexpr char TR_AR_MODE_DESCRIPTION[] = QT_TR_NOOP(
+      "Submits the OpenXR projection layer with alpha-blended composition so that empty "
+      "(transparent) pixels reveal the headset passthrough feed, making game geometry float "
+      "over the real world."
+      "<br><br>Requires a headset and runtime that support "
+      "<code>XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND</code> (e.g. Quest 3, Vive XR Elite, "
+      "Varjo, HoloLens). On opaque-only PCVR headsets (Index, Vive Pro) enabling this will "
+      "cause <code>xrEndFrame</code> to fail; disable it again if the VR session stops "
+      "submitting frames."
+      "<br><br><dolphin_emphasis>If unsure, leave this unchecked.</dolphin_emphasis>");
 
   m_enable_openxr->SetDescription(tr(TR_ENABLE_OPENXR_DESCRIPTION));
   m_auto_immediate_xfb->SetDescription(tr(TR_AUTO_IMMEDIATE_XFB_DESCRIPTION));
@@ -475,6 +548,8 @@ void VRPane::AddDescriptions()
   m_layer_offset->SetDescription(tr(TR_LAYER_OFFSET_DESCRIPTION));
   m_element_depth->SetDescription(tr(TR_ELEMENT_DEPTH_DESCRIPTION));
   m_load_custom_shaders->SetDescription(tr(TR_LOAD_CUSTOM_SHADERS_DESCRIPTION));
+  m_ar_mode->SetDescription(tr(TR_AR_MODE_DESCRIPTION));
+  m_ar_mode_debug->SetDescription(tr(TR_AR_MODE_DEBUG_DESCRIPTION));
 }
 
 void VRPane::OnEmulationStateChanged(Core::State state)

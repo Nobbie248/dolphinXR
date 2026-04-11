@@ -962,10 +962,46 @@ void Presenter::BlitCurrentSourceToOpenXREyes(const AbstractTexture* source_text
     const MathUtil::Rectangle<int> eye_rect{
         0, 0, static_cast<int>(sc->GetEyeWidth()), static_cast<int>(sc->GetEyeHeight())};
     if (is_replay_present)
+    {
       g_gfx->SetFramebuffer(eye_fb);
+    }
+    else if (g_ActiveConfig.vr_ar_mode_debug)
+    {
+      // Debug: skip the post-processor blit entirely and submit a solid magenta eye
+      // swapchain to the headset.  Composition state stays OPAQUE so xrEndFrame works
+      // on any headset (no XR_ERROR_ENVIRONMENT_BLEND_MODE_UNSUPPORTED).  This proves
+      // that frame submission to the runtime is reaching the compositor.
+      g_gfx->SetAndClearFramebuffer(eye_fb, {1.f, 0.f, 1.f, 1.f});
+
+      static bool s_ar_debug_was_active = false;
+      static u64 s_ar_debug_log_counter = 0;
+      if (eye == 0)
+      {
+        if (!s_ar_debug_was_active)
+        {
+          INFO_LOG_FMT(VIDEO,
+                       "VR AR Debug: submitting solid MAGENTA eye swapchains "
+                       "({}x{}, fb format {}, layers {}) — game blit skipped",
+                       sc->GetEyeWidth(), sc->GetEyeHeight(),
+                       static_cast<int>(eye_fb->GetColorFormat()),
+                       eye_fb->GetLayers());
+          s_ar_debug_was_active = true;
+          s_ar_debug_log_counter = 0;
+        }
+        else if ((++s_ar_debug_log_counter % 300) == 0)
+        {
+          INFO_LOG_FMT(VIDEO, "VR AR Debug: still submitting magenta ({} frames)",
+                       s_ar_debug_log_counter);
+        }
+      }
+    }
     else
-      g_gfx->SetAndClearFramebuffer(eye_fb, {0.f, 0.f, 0.f, 1.f});
-    m_post_processor->BlitFromTexture(eye_rect, source_rc, source_texture, static_cast<int>(eye));
+    {
+      const float clear_alpha =
+          g_ActiveConfig.vr_ar_mode ? g_ActiveConfig.vr_ar_background_alpha : 1.0f;
+      g_gfx->SetAndClearFramebuffer(eye_fb, {0.f, 0.f, 0.f, clear_alpha});
+      m_post_processor->BlitFromTexture(eye_rect, source_rc, source_texture, static_cast<int>(eye));
+    }
     sc->ReleaseEyeTexture(eye);
   }
 

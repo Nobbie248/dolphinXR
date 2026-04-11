@@ -251,6 +251,8 @@ add_executable(dolphin-emu
   Debugger/CodeViewWidget.h
   Debugger/CodeWidget.cpp
   Debugger/CodeWidget.h
+  Debugger/CullingCodeFinderWidget.cpp
+  Debugger/CullingCodeFinderWidget.h
   Debugger/ShaderHunterWidget.cpp
   Debugger/ShaderHunterWidget.h
   Debugger/EditSymbolDialog.cpp

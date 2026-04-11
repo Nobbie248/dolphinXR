@@ -8,6 +8,7 @@
 
 #include "VideoCommon/BPMemory.h"
 #include "VideoCommon/TextureConfig.h"
+#include "VideoCommon/VideoConfig.h"
 
 void RasterizationState::Generate(const BPMemory& bp, PrimitiveType primitive_type)
 {
@@ -117,6 +118,10 @@ void BlendingState::Generate(const BPMemory& bp)
 
   color_update = bp.blendmode.color_update && alpha_test_may_succeed;
   alpha_update = bp.blendmode.alpha_update && target_has_alpha && alpha_test_may_succeed;
+  // VR AR mode: always allow alpha writes so the OpenXR compositor receives a usable
+  // alpha channel for passthrough composition.
+  if (g_ActiveConfig.vr_ar_mode)
+    alpha_update = true;
   const bool dst_alpha = bp.dstalpha.enable && alpha_update;
   use_dual_src = true;
 

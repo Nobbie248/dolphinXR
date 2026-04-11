@@ -205,6 +205,9 @@ const Info<float> GFX_VR_LAYER_OFFSET{{System::GFX, "VR", "LayerOffset"}, 0.002f
 const Info<float> GFX_VR_ELEMENT_DEPTH{{System::GFX, "VR", "ElementDepth"}, 0.001f};
 const Info<bool> GFX_VR_REMOVE_BARS{{System::GFX, "VR", "RemoveCinematicBars"}, true};
 const Info<bool> GFX_VR_LOCK_HEAD_POSE{{System::GFX, "VR", "LockHeadPosePerFrame"}, true};
+const Info<bool> GFX_VR_AR_MODE{{System::GFX, "VR", "ARMode"}, false};
+const Info<bool> GFX_VR_AR_MODE_DEBUG{{System::GFX, "VR", "ARModeDebug"}, false};
+const Info<float> GFX_VR_AR_BACKGROUND_ALPHA{{System::GFX, "VR", "ARBackgroundAlpha"}, 0.0f};
 const Info<float> GFX_VR_GAMMA{{System::GFX, "VR", "Gamma"}, 1.0f};
 const Info<int> GFX_VR_CLEAR_EFB_COPIES{{System::GFX, "VR", "ClearEFBCopies"}, 0};
 // Graphics.Hacks

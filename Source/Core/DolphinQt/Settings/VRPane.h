@@ -10,6 +10,7 @@ class ConfigBool;
 class ConfigFloatSlider;
 class ConfigSlider;
 class QLabel;
+class CullingCodeFinderWidget;
 class ShaderHunterWidget;
 template <typename T>
 class ConfigChoiceMap;
@@ -53,6 +54,9 @@ private:
   QLabel* m_clear_efb_value = nullptr;
   ConfigBool* m_remove_bars = nullptr;
   ConfigBool* m_lock_head_pose = nullptr;
+  ConfigBool* m_ar_mode = nullptr;
+  ConfigFloatSlider* m_ar_background_alpha = nullptr;
+  QLabel* m_ar_background_alpha_value = nullptr;
   ConfigFloatSlider* m_vr_gamma = nullptr;
   QLabel* m_vr_gamma_value = nullptr;
   ConfigBool* m_auto_layer_spread = nullptr;
@@ -61,5 +65,7 @@ private:
   ConfigFloatSlider* m_element_depth = nullptr;
   QLabel* m_element_depth_value = nullptr;
   ConfigBool* m_load_custom_shaders = nullptr;
+  ConfigBool* m_ar_mode_debug = nullptr;
+  QPointer<CullingCodeFinderWidget> m_culling_finder_widget;
   QPointer<ShaderHunterWidget> m_shader_hunter_widget;
 };

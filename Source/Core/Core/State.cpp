@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <future>
 #include <locale>
 #include <map>
 #include <mutex>
@@ -87,6 +88,7 @@ struct CompressAndDumpStateArgs
 {
   Common::UniqueBuffer<u8> buffer;
   std::string filename;
+  CompressionType compression_type = CompressionType::LZ4;
   std::shared_lock<decltype(s_state_saves_in_progress)> task_lock;
 };
 
@@ -120,8 +122,6 @@ static const std::map<u32, std::pair<std::string, std::string>> s_old_versions =
     {35, {"4.0-3409", "4.0-3603"}}, {36, {"4.0-3610", "4.0-4480"}}, {37, {"4.0-4484", "4.0-4943"}},
     {38, {"4.0-4963", "4.0-5267"}}, {39, {"4.0-5279", "4.0-5525"}}, {40, {"4.0-5531", "4.0-5809"}},
     {41, {"4.0-5811", "4.0-5923"}}, {42, {"4.0-5925", "4.0-5946"}}};
-
-static constexpr bool s_use_compression = true;
 
 // Acquired for tasks that will write state save data to the filesystem.
 // This allows for later waiting on completion of said tasks when necessary.
@@ -353,19 +353,25 @@ static void CompressBufferToFile(std::span<const u8> raw_buffer, File::IOFile& f
   }
 }
 
-static void CreateExtendedHeader(StateExtendedHeader& extended_header, size_t uncompressed_size)
+static CompressionType GetCompressionType(const SaveOptions& options)
+{
+  return options.compress ? CompressionType::LZ4 : CompressionType::Uncompressed;
+}
+
+static void CreateExtendedHeader(StateExtendedHeader& extended_header, size_t uncompressed_size,
+                                 CompressionType compression_type)
 {
   StateExtendedBaseHeader& base_header = extended_header.base_header;
   base_header.header_version = EXTENDED_HEADER_VERSION;
-  base_header.compression_type =
-      s_use_compression ? CompressionType::LZ4 : CompressionType::Uncompressed;
+  base_header.compression_type = compression_type;
   base_header.payload_offset = COMPRESSED_DATA_OFFSET;
   base_header.uncompressed_size = uncompressed_size;
 
   // If more fields are added to StateExtendedHeader, set them here.
 }
 
-static void WriteHeadersToFile(size_t uncompressed_size, File::IOFile& f)
+static void WriteHeadersToFile(size_t uncompressed_size, CompressionType compression_type,
+                               File::IOFile& f)
 {
   StateHeader header{};
   SConfig::GetInstance().GetGameID().copy(header.legacy_header.game_id,
@@ -377,7 +383,7 @@ static void WriteHeadersToFile(size_t uncompressed_size, File::IOFile& f)
   header.version_header.version_string_length = static_cast<u32>(header.version_string.length());
 
   StateExtendedHeader extended_header{};
-  CreateExtendedHeader(extended_header, uncompressed_size);
+  CreateExtendedHeader(extended_header, uncompressed_size, compression_type);
 
   f.WriteArray(&header.legacy_header, 1);
   f.WriteArray(&header.version_header, 1);
@@ -411,9 +417,9 @@ static void CompressAndDumpState(Core::System& system, const CompressAndDumpStat
     return;
   }
 
-  WriteHeadersToFile(buffer.size(), f);
+  WriteHeadersToFile(buffer.size(), save_args.compression_type, f);
 
-  if (s_use_compression)
+  if (save_args.compression_type == CompressionType::LZ4)
     CompressBufferToFile(buffer, f);
   else
     f.WriteBytes(buffer.data(), buffer.size());
@@ -467,7 +473,7 @@ static void CompressAndDumpState(Core::System& system, const CompressAndDumpStat
   }
 }
 
-static void SaveAsFromCore(Core::System& system, std::string filename)
+static void SaveAsFromCore(Core::System& system, std::string filename, SaveOptions options)
 {
   // Try with a buffer a bit larger than the previous state.
   // This will often avoid the "Measure" step.
@@ -482,10 +488,13 @@ static void SaveAsFromCore(Core::System& system, std::string filename)
     CompressAndDumpStateArgs dump_args{
         .buffer = std::move(buffer),
         .filename = std::move(filename),
+        .compression_type = GetCompressionType(options),
         .task_lock = GetStateSaveTaskLock(),
     };
     Core::DisplayMessage("Saving State...", 1000);
     s_compress_and_dump_thread.EmplaceItem(std::move(dump_args));
+    if (options.wait_for_completion)
+      s_compress_and_dump_thread.WaitForCompletion();
   }
   else
   {
@@ -493,12 +502,28 @@ static void SaveAsFromCore(Core::System& system, std::string filename)
   }
 }
 
-void SaveAs(Core::System& system, std::string filename)
+void SaveAs(Core::System& system, std::string filename, SaveOptions options)
 {
-  Core::RunOnCPUThread(
-      system, [&system, filename = std::move(filename), lock = GetStateSaveTaskLock()]() mutable {
-        SaveAsFromCore(system, std::move(filename));
-      });
+  if (options.wait_for_completion)
+  {
+    std::promise<void> completion;
+    auto future = completion.get_future();
+    Core::RunOnCPUThread(system,
+                         [&system, filename = std::move(filename), options,
+                          lock = GetStateSaveTaskLock(),
+                          completion = std::move(completion)]() mutable {
+                           SaveAsFromCore(system, std::move(filename), options);
+                           completion.set_value();
+                         });
+    future.wait();
+    return;
+  }
+
+  Core::RunOnCPUThread(system,
+                       [&system, filename = std::move(filename), options,
+                        lock = GetStateSaveTaskLock()]() mutable {
+                         SaveAsFromCore(system, std::move(filename), options);
+                       });
 }
 
 static bool GetVersionFromLZO(StateHeader& header, File::IOFile& f)
@@ -807,7 +832,7 @@ static void LoadFileStateData(const std::string& filename, Common::UniqueBuffer<
 static void LoadAsFromCore(Core::System& system, std::string filename)
 {
   // Ensure all data has reached the filesystem before trying to use it.
-  s_compress_and_dump_thread.WaitForCompletion();
+  WaitForPendingSaves();
 
   // Save temp buffer for undo load state
   auto& movie = system.GetMovie();
@@ -899,14 +924,19 @@ void Shutdown()
   s_flush_unsaved_data_hook.reset();
 }
 
-void Save(Core::System& system, int slot)
+void Save(Core::System& system, int slot, SaveOptions options)
 {
-  SaveAs(system, MakeStateFilename(slot));
+  SaveAs(system, MakeStateFilename(slot), options);
 }
 
 void Load(Core::System& system, int slot)
 {
   LoadAs(system, MakeStateFilename(slot));
+}
+
+void WaitForPendingSaves()
+{
+  s_compress_and_dump_thread.WaitForCompletion();
 }
 
 void LoadLastSaved(Core::System& system, int i)
@@ -916,7 +946,7 @@ void LoadLastSaved(Core::System& system, int i)
 
   Core::RunOnCPUThread(system, [&system, i] {
     // Data must reach the filesystem for up to date "UsedSlots".
-    s_compress_and_dump_thread.WaitForCompletion();
+    WaitForPendingSaves();
 
     std::vector<SlotWithTimestamp> used_slots = GetUsedSlotsWithTimestamp();
     if (std::size_t(i) > used_slots.size())
@@ -934,7 +964,7 @@ void SaveFirstSaved(Core::System& system)
 {
   Core::RunOnCPUThread(system, [&system, lock = GetStateSaveTaskLock()] {
     // Data must reach the filesystem for up to date "UsedSlots".
-    s_compress_and_dump_thread.WaitForCompletion();
+    WaitForPendingSaves();
 
     std::vector<SlotWithTimestamp> used_slots = GetUsedSlotsWithTimestamp();
     auto slot = GetEmptySlot(used_slots);
@@ -945,7 +975,7 @@ void SaveFirstSaved(Core::System& system)
       slot = used_slots.front().slot;
     }
 
-    SaveAsFromCore(system, MakeStateFilename(*slot));
+    SaveAsFromCore(system, MakeStateFilename(*slot), {});
   });
 }
 

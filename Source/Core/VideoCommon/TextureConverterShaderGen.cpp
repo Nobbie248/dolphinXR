@@ -48,6 +48,7 @@ TCShaderUid GetShaderUid(EFBCopyFormat dst_format, bool is_depth_copy, bool is_i
   uid_data->copy_filter_can_overflow = TextureCacheBase::CopyFilterCanOverflow(filter_coefficients);
   // If the gamma is needed, then include that too.
   uid_data->apply_gamma = gamma_rcp != 1.0f;
+  uid_data->vr_ar_mode = g_ActiveConfig.vr_ar_mode ? 1 : 0;
 
   return out;
 }
@@ -243,7 +244,10 @@ ShaderCode GeneratePixelShader(APIType api_type, const UidData* uid_data)
     break;
 
   case EFBCopyFormat::XFB:
-    out.Write("  ocol0 = float4(float3(texcol_raw.rgb) / 255.0, 1.0);\n");
+    if (uid_data->vr_ar_mode)
+      out.Write("  ocol0 = float4(texcol_raw.rgba) / 255.0;\n");
+    else
+      out.Write("  ocol0 = float4(float3(texcol_raw.rgb) / 255.0, 1.0);\n");
     break;
 
   default:

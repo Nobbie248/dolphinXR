@@ -178,6 +178,8 @@ add_library(videocommon
   ShaderGenCommon.h
   HideObjectEngine.cpp
   HideObjectEngine.h
+  CullingCodeFinder.cpp
+  CullingCodeFinder.h
   ShaderHunter.cpp
   ShaderHunter.h
   Spirv.cpp

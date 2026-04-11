@@ -44,6 +44,7 @@
 #include "VideoCommon/VideoCommon.h"
 #include "VideoCommon/VideoConfig.h"
 #include "VideoCommon/XFMemory.h"
+#include "VideoCommon/CullingCodeFinder.h"
 #include "VideoCommon/HideObjectEngine.h"
 #include "VideoCommon/ShaderHunter.h"
 #include "VideoCommon/XFStateManager.h"
@@ -1310,6 +1311,7 @@ void VertexManagerBase::OnEndFrame()
     HideObjectEngine::Engine::GetInstance().LoadCodesIfNeeded(game_id);
   }
   hunter.OnFrameEnd();
+  CullingCodeFinder::GetInstance().OnFrameEnd();
   ElementsGroupManager::GetInstance().OnFrameEnd();
   auto& system = Core::System::GetInstance();
   system.GetGeometryShaderManager().vr_ortho_draw_counter = 0;

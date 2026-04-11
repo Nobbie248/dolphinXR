@@ -38,6 +38,7 @@
 #include "DolphinQt/Settings.h"
 
 #include "InputCommon/ControlReference/ControlReference.h"
+#include "VideoCommon/CullingCodeFinder.h"
 #include "InputCommon/ControllerInterface/ControllerInterface.h"
 
 #include "VideoCommon/OnScreenDisplay.h"
@@ -796,15 +797,23 @@ void HotkeyScheduler::Run()
         }
       }
 
-      Core::SetIsThrottlerTempDisabled(IsHotkey(HK_TOGGLE_THROTTLE, true));
+      const bool throttle_hotkey_active = IsHotkey(HK_TOGGLE_THROTTLE, true);
+      const bool finder_forces_turbo =
+          CullingCodeFinder::GetInstance().IsTurboRuntimeOverrideActive();
+      const bool finder_forces_audio_mute =
+          CullingCodeFinder::GetInstance().IsAudioMuteRuntimeOverrideActive();
+      const bool wants_temp_audio_mute =
+          finder_forces_audio_mute ||
+          (throttle_hotkey_active && Config::Get(Config::MAIN_AUDIO_MUTE_ON_DISABLED_SPEED_LIMIT));
 
-      if (IsHotkey(HK_TOGGLE_THROTTLE, true) && !Config::Get(Config::MAIN_AUDIO_MUTED) &&
-          Config::Get(Config::MAIN_AUDIO_MUTE_ON_DISABLED_SPEED_LIMIT))
+      Core::SetIsThrottlerTempDisabled(throttle_hotkey_active || finder_forces_turbo);
+
+      if (wants_temp_audio_mute && !Config::Get(Config::MAIN_AUDIO_MUTED))
       {
         Config::SetCurrent(Config::MAIN_AUDIO_MUTED, true);
         AudioCommon::UpdateSoundStream(system);
       }
-      else if (!IsHotkey(HK_TOGGLE_THROTTLE, true) && Config::Get(Config::MAIN_AUDIO_MUTED) &&
+      else if (!wants_temp_audio_mute && Config::Get(Config::MAIN_AUDIO_MUTED) &&
                Config::GetActiveLayerForConfig(Config::MAIN_AUDIO_MUTED) ==
                    Config::LayerType::CurrentRun)
       {

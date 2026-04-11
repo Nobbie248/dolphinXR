@@ -18,6 +18,7 @@
 #include "VideoBackends/D3D/D3DBase.h"
 #include "VideoBackends/D3D/DXTexture.h"
 #include "VideoCommon/TextureConfig.h"
+#include "VideoCommon/VideoConfig.h"
 #include "VideoCommon/VR/OpenXRManager.h"
 
 namespace DX11
@@ -406,6 +407,12 @@ bool D3DOpenXR::SubmitFrame()
   m_projection_layer.space = VR::g_openxr->GetReferenceSpace();
   m_projection_layer.viewCount = 2;
   m_projection_layer.views = m_projection_views.data();
+
+  if (VR::g_openxr->GetActiveBlendMode() == XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND)
+  {
+    m_projection_layer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT |
+                                    XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT;
+  }
 
   const std::vector<XrCompositionLayerBaseHeader*> layers = {
       reinterpret_cast<XrCompositionLayerBaseHeader*>(&m_projection_layer)};
