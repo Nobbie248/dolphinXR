@@ -7,13 +7,9 @@ Linux, macOS, and recent Android devices. It's licensed under the terms
 of the GNU General Public License, version 2 or later (GPLv2+).
 
 This fork adds OpenXR support to Dolphin so users can play in VR on supported
-Windows builds.
+Windows builds and was developed with the use of AI tools.
 
 Please read the [FAQ](https://dolphin-emu.org/docs/faq/) before using Dolphin.
-
-## Project Notes
-
-This fork was developed with the use of AI tools.
 
 ## System Requirements
 
