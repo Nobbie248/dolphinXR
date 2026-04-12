@@ -367,9 +367,14 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
       new ConfigBool(tr("Load Custom Shaders"), Config::GFX_VR_LOAD_CUSTOM_SHADERS);
   tools_layout->addWidget(m_load_custom_shaders, 3, 0);
 
+  m_enable_openxr_config_scene = new ConfigBool(
+      tr("Enable OpenXR Config Scene For Controller Binding"),
+      Config::GFX_VR_ENABLE_OPENXR_CONFIG_SCENE);
+  tools_layout->addWidget(m_enable_openxr_config_scene, 4, 0);
+
   m_ar_mode_debug =
       new ConfigBool(tr("Fake AR Mode (Debug)"), Config::GFX_VR_AR_MODE_DEBUG);
-  tools_layout->addWidget(m_ar_mode_debug, 4, 0);
+  tools_layout->addWidget(m_ar_mode_debug, 5, 0);
 
   general_layout->addStretch();
   hack_layout->addStretch();
@@ -505,6 +510,16 @@ void VRPane::AddDescriptions()
       "<br><br>Place edited shader files (dumped via Shader Hunter) in this folder to override "
       "the game's original shaders. Files must be named &lt;hash&gt;-&lt;vs|ps|gs&gt;.txt."
       "<br><br><dolphin_emphasis>If unsure, leave this unchecked.</dolphin_emphasis>");
+  static constexpr char TR_ENABLE_OPENXR_CONFIG_SCENE_DESCRIPTION[] = QT_TR_NOOP(
+      "Starts a temporary OpenXR scene while configuring an <b>OpenXR Wii Remote</b> with no "
+      "game running."
+      "<br><br>This keeps OpenXR controller input active so the mapping window can detect button "
+      "presses and motion input outside emulation."
+      "<br><br>If the temporary session cannot start, Dolphin falls back to the desktop-only "
+      "mapping window."
+      "<br><br>Disable this if your runtime or headset has trouble with the temporary binding "
+      "scene."
+      "<br><br><dolphin_emphasis>If unsure, leave this checked.</dolphin_emphasis>");
   static constexpr char TR_AR_MODE_DEBUG_DESCRIPTION[] = QT_TR_NOOP(
       "Debug aid for AR Mode development on headsets that do <b>not</b> support passthrough."
       "<br><br>Clears the per-eye OpenXR swapchain to <b>solid magenta</b> instead of "
@@ -548,6 +563,7 @@ void VRPane::AddDescriptions()
   m_layer_offset->SetDescription(tr(TR_LAYER_OFFSET_DESCRIPTION));
   m_element_depth->SetDescription(tr(TR_ELEMENT_DEPTH_DESCRIPTION));
   m_load_custom_shaders->SetDescription(tr(TR_LOAD_CUSTOM_SHADERS_DESCRIPTION));
+  m_enable_openxr_config_scene->SetDescription(tr(TR_ENABLE_OPENXR_CONFIG_SCENE_DESCRIPTION));
   m_ar_mode->SetDescription(tr(TR_AR_MODE_DESCRIPTION));
   m_ar_mode_debug->SetDescription(tr(TR_AR_MODE_DEBUG_DESCRIPTION));
 }

@@ -19,81 +19,12 @@
 #include "VideoBackends/D3D/DXTexture.h"
 #include "VideoCommon/TextureConfig.h"
 #include "VideoCommon/VideoConfig.h"
+#include "VideoCommon/VR/OpenXRD3D11Common.h"
 #include "VideoCommon/VR/OpenXRManager.h"
 
 namespace DX11
 {
 std::unique_ptr<D3DOpenXR> g_openxr_d3d;
-
-static const char* DXGIFormatToString(int64_t format)
-{
-  switch (static_cast<DXGI_FORMAT>(format))
-  {
-  case DXGI_FORMAT_R8G8B8A8_UNORM:
-    return "DXGI_FORMAT_R8G8B8A8_UNORM";
-  case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
-    return "DXGI_FORMAT_R8G8B8A8_UNORM_SRGB";
-  case DXGI_FORMAT_B8G8R8A8_UNORM:
-    return "DXGI_FORMAT_B8G8R8A8_UNORM";
-  case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
-    return "DXGI_FORMAT_B8G8R8A8_UNORM_SRGB";
-  case DXGI_FORMAT_R16G16B16A16_FLOAT:
-    return "DXGI_FORMAT_R16G16B16A16_FLOAT";
-  default:
-    return "UNKNOWN_DXGI_FORMAT";
-  }
-}
-
-static bool SelectSwapchainFormat(XrSession session, int64_t* out_format)
-{
-  uint32_t format_count = 0;
-  XrResult result = xrEnumerateSwapchainFormats(session, 0, &format_count, nullptr);
-  if (XR_FAILED(result) || format_count == 0)
-  {
-    ERROR_LOG_FMT(VIDEO, "OpenXR: xrEnumerateSwapchainFormats (count) failed ({}).",
-                  static_cast<int>(result));
-    return false;
-  }
-
-  std::vector<int64_t> runtime_formats(format_count);
-  result = xrEnumerateSwapchainFormats(session, format_count, &format_count, runtime_formats.data());
-  if (XR_FAILED(result))
-  {
-    ERROR_LOG_FMT(VIDEO, "OpenXR: xrEnumerateSwapchainFormats failed ({}).",
-                  static_cast<int>(result));
-    return false;
-  }
-
-  for (const int64_t format : runtime_formats)
-  {
-    INFO_LOG_FMT(VIDEO, "OpenXR: Runtime swapchain format {} ({})", static_cast<long long>(format),
-                 DXGIFormatToString(format));
-  }
-
-  static constexpr std::array<DXGI_FORMAT, 5> preferred_formats = {
-      DXGI_FORMAT_R8G8B8A8_UNORM,      DXGI_FORMAT_B8G8R8A8_UNORM,
-      DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_FORMAT_B8G8R8A8_UNORM_SRGB,
-      DXGI_FORMAT_R16G16B16A16_FLOAT};
-
-  for (const DXGI_FORMAT preferred : preferred_formats)
-  {
-    const int64_t wanted = static_cast<int64_t>(preferred);
-    if (std::find(runtime_formats.begin(), runtime_formats.end(), wanted) != runtime_formats.end())
-    {
-      *out_format = wanted;
-      INFO_LOG_FMT(VIDEO, "OpenXR: Selected swapchain format {} ({}).",
-                   static_cast<long long>(*out_format), DXGIFormatToString(*out_format));
-      return true;
-    }
-  }
-
-  *out_format = runtime_formats.front();
-  WARN_LOG_FMT(VIDEO,
-               "OpenXR: No preferred D3D11 swapchain format found; falling back to runtime format "
-               "{} ({}).",
-               static_cast<long long>(*out_format), DXGIFormatToString(*out_format));
-  return true;
-}
 
 D3DOpenXR::D3DOpenXR() = default;
 
@@ -166,27 +97,10 @@ bool D3DOpenXR::CreateSessionD3D11()
   ASSERT(D3D::device != nullptr);
   ASSERT(VR::g_openxr != nullptr);
 
-  // --- Query D3D11 graphics requirements (mandatory before session creation) ---
-  PFN_xrGetD3D11GraphicsRequirementsKHR pfnGetD3D11Requirements = nullptr;
-  XrResult result = xrGetInstanceProcAddr(
-      VR::g_openxr->GetInstance(), "xrGetD3D11GraphicsRequirementsKHR",
-      reinterpret_cast<PFN_xrVoidFunction*>(&pfnGetD3D11Requirements));
-
-  if (XR_FAILED(result) || pfnGetD3D11Requirements == nullptr)
-  {
-    ERROR_LOG_FMT(VIDEO, "OpenXR: Could not load xrGetD3D11GraphicsRequirementsKHR.");
-    return false;
-  }
-
   XrGraphicsRequirementsD3D11KHR requirements{XR_TYPE_GRAPHICS_REQUIREMENTS_D3D11_KHR};
-  result = pfnGetD3D11Requirements(VR::g_openxr->GetInstance(), VR::g_openxr->GetSystemId(),
-                                    &requirements);
-  if (XR_FAILED(result))
-  {
-    ERROR_LOG_FMT(VIDEO, "OpenXR: xrGetD3D11GraphicsRequirementsKHR failed ({}).",
-                  static_cast<int>(result));
+  if (!VR::D3D11OpenXR::QueryGraphicsRequirements(VR::g_openxr->GetInstance(),
+                                                  VR::g_openxr->GetSystemId(), &requirements))
     return false;
-  }
 
   INFO_LOG_FMT(VIDEO,
                "OpenXR: D3D11 requirements — adapter LUID {:#010x}{:08x}, "
@@ -194,21 +108,11 @@ bool D3DOpenXR::CreateSessionD3D11()
                requirements.adapterLuid.HighPart, requirements.adapterLuid.LowPart,
                static_cast<int>(requirements.minFeatureLevel));
 
-  // --- Create XrSession bound to the active D3D11 device ---
-  XrGraphicsBindingD3D11KHR d3d11_binding{XR_TYPE_GRAPHICS_BINDING_D3D11_KHR};
-  d3d11_binding.device = D3D::device.Get();
-
-  XrSessionCreateInfo session_info{XR_TYPE_SESSION_CREATE_INFO};
-  session_info.next = &d3d11_binding;
-  session_info.systemId = VR::g_openxr->GetSystemId();
-
   XrSession session = XR_NULL_HANDLE;
-  result = xrCreateSession(VR::g_openxr->GetInstance(), &session_info, &session);
-  if (XR_FAILED(result))
-  {
-    ERROR_LOG_FMT(VIDEO, "OpenXR: xrCreateSession failed ({}).", static_cast<int>(result));
+  if (!VR::D3D11OpenXR::CreateSessionFromRequirements(VR::g_openxr->GetInstance(),
+                                                      VR::g_openxr->GetSystemId(), requirements,
+                                                      D3D::device.Get(), &session))
     return false;
-  }
 
   VR::g_openxr->SetSession(session);
   INFO_LOG_FMT(VIDEO, "OpenXR D3D11: Session created successfully.");
@@ -221,7 +125,7 @@ bool D3DOpenXR::CreateSwapchains()
 
   const auto& view_cfgs = VR::g_openxr->GetViewConfigViews();
   int64_t swapchain_format = 0;
-  if (!SelectSwapchainFormat(VR::g_openxr->GetSession(), &swapchain_format))
+  if (!VR::D3D11OpenXR::SelectSwapchainFormat(VR::g_openxr->GetSession(), &swapchain_format))
     return false;
 
   for (uint32_t eye = 0; eye < 2; ++eye)

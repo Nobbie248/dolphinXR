@@ -308,8 +308,12 @@ endif()
 
 if(ENABLE_VR)
   target_sources(videocommon PRIVATE
+    VR/OpenXRD3D11Common.cpp
+    VR/OpenXRD3D11Common.h
     VR/OpenXRManager.cpp
     VR/OpenXRManager.h
+    VR/OpenXRUtilitySession.cpp
+    VR/OpenXRUtilitySession.h
   )
   # Expose the OpenXR headers to all targets that depend on videocommon.
   target_include_directories(videocommon PUBLIC "${CMAKE_SOURCE_DIR}/Externals/OpenXR/include")

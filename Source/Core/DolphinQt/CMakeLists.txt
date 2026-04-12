@@ -180,6 +180,8 @@ add_executable(dolphin-emu
   Config/Mapping/MappingIndicator.h
   Config/Mapping/MappingNumeric.cpp
   Config/Mapping/MappingNumeric.h
+  Config/Mapping/OpenXRWiimoteConfigSessionController.cpp
+  Config/Mapping/OpenXRWiimoteConfigSessionController.h
   Config/Mapping/MappingWidget.cpp
   Config/Mapping/MappingWidget.h
   Config/Mapping/MappingWindow.cpp

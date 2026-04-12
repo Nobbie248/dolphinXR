@@ -50,6 +50,7 @@
 #include "DolphinQt/Config/Mapping/HotkeyVR.h"
 #include "DolphinQt/Config/Mapping/HotkeyWii.h"
 #include "DolphinQt/Config/Mapping/MappingCommon.h"
+#include "DolphinQt/Config/Mapping/OpenXRWiimoteConfigSessionController.h"
 #include "DolphinQt/Config/Mapping/WiimoteEmuExtension.h"
 #include "DolphinQt/Config/Mapping/WiimoteEmuExtensionMotionInput.h"
 #include "DolphinQt/Config/Mapping/WiimoteEmuExtensionMotionSimulation.h"
@@ -93,6 +94,9 @@ MappingWindow::MappingWindow(QWidget* parent, Type type, int port_num)
 
   const auto lock = GetController()->GetStateLock();
   emit ConfigChanged();
+
+  if (m_mapping_type == Type::MAPPING_WIIMOTE_EMU && m_is_openxr_wiimote)
+    m_openxr_config_session_controller = new OpenXRWiimoteConfigSessionController(this, m_port);
 
   auto* filter = new WindowActivationEventFilter(this);
   installEventFilter(filter);
@@ -445,6 +449,7 @@ void MappingWindow::UpdateDeviceList()
 
 void MappingWindow::SetMappingType(MappingWindow::Type type)
 {
+  m_mapping_type = type;
   MappingWidget* widget;
 
   switch (type)

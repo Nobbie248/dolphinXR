@@ -65,6 +65,7 @@ private:
   ConfigFloatSlider* m_element_depth = nullptr;
   QLabel* m_element_depth_value = nullptr;
   ConfigBool* m_load_custom_shaders = nullptr;
+  ConfigBool* m_enable_openxr_config_scene = nullptr;
   ConfigBool* m_ar_mode_debug = nullptr;
   QPointer<CullingCodeFinderWidget> m_culling_finder_widget;
   QPointer<ShaderHunterWidget> m_shader_hunter_widget;

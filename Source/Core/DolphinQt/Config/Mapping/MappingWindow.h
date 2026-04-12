@@ -4,6 +4,7 @@
 #pragma once
 
 #include <QDialog>
+#include <QPointer>
 #include <QString>
 
 namespace ControllerEmu
@@ -13,6 +14,7 @@ class EmulatedController;
 
 class InputConfig;
 class MappingButton;
+class OpenXRWiimoteConfigSessionController;
 
 class QComboBox;
 class QDialogButtonBox;
@@ -139,4 +141,5 @@ private:
   const int m_port;
   bool m_is_openxr_wiimote = false;
   InputConfig* m_config;
+  QPointer<OpenXRWiimoteConfigSessionController> m_openxr_config_session_controller;
 };

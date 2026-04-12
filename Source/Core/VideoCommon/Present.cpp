@@ -965,38 +965,11 @@ void Presenter::BlitCurrentSourceToOpenXREyes(const AbstractTexture* source_text
     {
       g_gfx->SetFramebuffer(eye_fb);
     }
-    else if (g_ActiveConfig.vr_ar_mode_debug)
-    {
-      // Debug: skip the post-processor blit entirely and submit a solid magenta eye
-      // swapchain to the headset.  Composition state stays OPAQUE so xrEndFrame works
-      // on any headset (no XR_ERROR_ENVIRONMENT_BLEND_MODE_UNSUPPORTED).  This proves
-      // that frame submission to the runtime is reaching the compositor.
-      g_gfx->SetAndClearFramebuffer(eye_fb, {1.f, 0.f, 1.f, 1.f});
-
-      static bool s_ar_debug_was_active = false;
-      static u64 s_ar_debug_log_counter = 0;
-      if (eye == 0)
-      {
-        if (!s_ar_debug_was_active)
-        {
-          INFO_LOG_FMT(VIDEO,
-                       "VR AR Debug: submitting solid MAGENTA eye swapchains "
-                       "({}x{}, fb format {}, layers {}) — game blit skipped",
-                       sc->GetEyeWidth(), sc->GetEyeHeight(),
-                       static_cast<int>(eye_fb->GetColorFormat()),
-                       eye_fb->GetLayers());
-          s_ar_debug_was_active = true;
-          s_ar_debug_log_counter = 0;
-        }
-        else if ((++s_ar_debug_log_counter % 300) == 0)
-        {
-          INFO_LOG_FMT(VIDEO, "VR AR Debug: still submitting magenta ({} frames)",
-                       s_ar_debug_log_counter);
-        }
-      }
-    }
     else
     {
+      // In AR debug mode the EFB has already been cleared to opaque magenta by
+      // BPFunctions::ClearScreen, so the regular blit path produces the desired
+      // game-over-magenta image with composition state staying OPAQUE.
       const float clear_alpha =
           g_ActiveConfig.vr_ar_mode ? g_ActiveConfig.vr_ar_background_alpha : 1.0f;
       g_gfx->SetAndClearFramebuffer(eye_fb, {0.f, 0.f, 0.f, clear_alpha});
