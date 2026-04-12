@@ -11,6 +11,10 @@ Windows builds.
 
 Please read the [FAQ](https://dolphin-emu.org/docs/faq/) before using Dolphin.
 
+## Project Notes
+
+This fork was developed with the use of AI tools.
+
 ## System Requirements
 
 ### Desktop
@@ -163,10 +167,6 @@ If using Android Studio, import the Gradle project located in `./Source/Android`
 Android apps are compiled using a build system called Gradle. Dolphin's native component,
 however, is compiled using CMake. The Gradle script will attempt to run a CMake build
 automatically while building the Java code.
-
-## Project Notes
-
-This project was developed with the use of AI tools.
 
 ## Uninstalling
 
