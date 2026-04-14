@@ -174,7 +174,9 @@ bool VulkanOpenXR::PreQueryVulkanExtensions(VulkanExtensionRequirements& out)
 
   auto mgr = std::make_unique<VR::OpenXRManager>();
 
-  const std::vector<const char*> extensions = {XR_KHR_VULKAN_ENABLE_EXTENSION_NAME};
+  std::vector<const char*> extensions = {XR_KHR_VULKAN_ENABLE_EXTENSION_NAME};
+  const auto controller_exts = VR::OpenXRManager::GetAvailableControllerExtensions();
+  extensions.insert(extensions.end(), controller_exts.begin(), controller_exts.end());
   if (!mgr->CreateInstance(extensions))
     return false;
 
@@ -268,7 +270,9 @@ bool VulkanOpenXR::Initialize()
   {
     auto mgr = std::make_unique<VR::OpenXRManager>();
 
-    const std::vector<const char*> extensions = {XR_KHR_VULKAN_ENABLE_EXTENSION_NAME};
+    std::vector<const char*> extensions = {XR_KHR_VULKAN_ENABLE_EXTENSION_NAME};
+    const auto controller_exts = VR::OpenXRManager::GetAvailableControllerExtensions();
+    extensions.insert(extensions.end(), controller_exts.begin(), controller_exts.end());
     if (!mgr->CreateInstance(extensions))
       return false;
 

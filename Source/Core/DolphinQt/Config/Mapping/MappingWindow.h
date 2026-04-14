@@ -21,6 +21,7 @@ class QDialogButtonBox;
 class QEvent;
 class QHBoxLayout;
 class QGroupBox;
+class QLabel;
 class QVBoxLayout;
 class QPushButton;
 class QTabWidget;
@@ -98,6 +99,9 @@ private:
   void OnDefaultFieldsPressed();
   void OnClearFieldsPressed();
   void OnSelectDevice(int index);
+#ifdef ENABLE_VR
+  void UpdateOpenXRProfileLabel();
+#endif
 
   ControllerEmu::EmulatedController* m_controller = nullptr;
 
@@ -110,6 +114,7 @@ private:
   QGroupBox* m_devices_box;
   QHBoxLayout* m_devices_layout;
   QComboBox* m_devices_combo;
+  QLabel* m_openxr_profile_label = nullptr;
   QAction* m_other_device_mappings;
   QAction* m_wait_for_alternate_mappings;
   QAction* m_iterative_mapping;

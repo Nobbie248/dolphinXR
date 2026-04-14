@@ -41,7 +41,10 @@ bool D3DOpenXR::Initialize()
   auto mgr = std::make_unique<VR::OpenXRManager>();
 
   // The D3D11 graphics binding extension is mandatory.
-  const std::vector<const char*> extensions = {XR_KHR_D3D11_ENABLE_EXTENSION_NAME};
+  // Also enable optional controller profile extensions (Meta, Pico, etc.) when available.
+  std::vector<const char*> extensions = {XR_KHR_D3D11_ENABLE_EXTENSION_NAME};
+  const auto controller_exts = VR::OpenXRManager::GetAvailableControllerExtensions();
+  extensions.insert(extensions.end(), controller_exts.begin(), controller_exts.end());
   if (!mgr->CreateInstance(extensions))
     return false;
 

@@ -10,6 +10,7 @@
 #include <QDialogButtonBox>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QLabel>
 #include <QPushButton>
 #include <QScreen>
 #include <QTabWidget>
@@ -64,6 +65,11 @@
 #include "DolphinQt/QtUtils/WrapInScrollArea.h"
 #include "DolphinQt/Settings.h"
 
+#ifdef ENABLE_VR
+#include "Common/Logging/Log.h"
+#include "Common/VR/OpenXRInputState.h"
+#endif
+
 #include "InputCommon/ControllerEmu/ControllerEmu.h"
 #include "InputCommon/ControllerInterface/ControllerInterface.h"
 #include "InputCommon/ControllerInterface/CoreDevice.h"
@@ -88,6 +94,11 @@ MappingWindow::MappingWindow(QWidget* parent, Type type, int port_num)
 
     const auto lock = GetController()->GetStateLock();
     emit Update();
+
+#ifdef ENABLE_VR
+    if (m_openxr_profile_label)
+      UpdateOpenXRProfileLabel();
+#endif
   });
 
   timer->start(100);
@@ -97,6 +108,18 @@ MappingWindow::MappingWindow(QWidget* parent, Type type, int port_num)
 
   if (m_mapping_type == Type::MAPPING_WIIMOTE_EMU && m_is_openxr_wiimote)
     m_openxr_config_session_controller = new OpenXRWiimoteConfigSessionController(this, m_port);
+
+#ifdef ENABLE_VR
+  if (m_is_openxr_wiimote)
+  {
+    m_openxr_profile_label = new QLabel(tr("OpenXR: not connected"));
+    m_openxr_profile_label->setWordWrap(true);
+    auto* outer = qobject_cast<QVBoxLayout*>(m_devices_box->layout());
+    if (outer)
+      outer->addWidget(m_openxr_profile_label);
+    UpdateOpenXRProfileLabel();
+  }
+#endif
 
   auto* filter = new WindowActivationEventFilter(this);
   installEventFilter(filter);
@@ -145,7 +168,9 @@ void MappingWindow::CreateDevicesLayout()
   m_devices_layout->addWidget(m_devices_combo);
   m_devices_layout->addWidget(options);
 
-  m_devices_box->setLayout(m_devices_layout);
+  auto* outer_layout = new QVBoxLayout();
+  outer_layout->addLayout(m_devices_layout);
+  m_devices_box->setLayout(outer_layout);
 }
 
 void MappingWindow::CreateProfilesLayout()
@@ -410,6 +435,12 @@ bool MappingWindow::IsIterativeMappingEnabled() const
 void MappingWindow::RefreshDevices()
 {
   g_controller_interface.RefreshDevices();
+
+#ifdef ENABLE_VR
+  const std::string diag = Common::VR::OpenXRInputState::GetDiagnosticString();
+  if (!diag.empty())
+    INFO_LOG_FMT(CONTROLLERINTERFACE, "OpenXR Refresh diagnostics:\n{}", diag);
+#endif
 }
 
 void MappingWindow::UpdateDeviceList()
@@ -652,3 +683,56 @@ void MappingWindow::ActivateExtensionTab()
   if (m_extension_tab)
     m_tab_widget->setCurrentIndex(m_tab_widget->indexOf(m_extension_tab));
 }
+
+#ifdef ENABLE_VR
+void MappingWindow::UpdateOpenXRProfileLabel()
+{
+  if (!m_openxr_profile_label)
+    return;
+
+  const auto snapshot = Common::VR::OpenXRInputState::GetSnapshot();
+  if (!snapshot.runtime_active)
+  {
+    m_openxr_profile_label->setText(tr("OpenXR: not connected"));
+    return;
+  }
+
+  // Extract short profile name from full path (e.g. "oculus/touch_controller" from
+  // "/interaction_profiles/oculus/touch_controller")
+  auto short_profile = [](const std::string& full_path) -> QString {
+    if (full_path.empty())
+      return QStringLiteral("none");
+    constexpr std::string_view prefix = "/interaction_profiles/";
+    if (full_path.starts_with(prefix))
+      return QString::fromStdString(full_path.substr(prefix.size()));
+    return QString::fromStdString(full_path);
+  };
+
+  const QString left_profile = short_profile(snapshot.interaction_profiles[0]);
+  const QString right_profile = short_profile(snapshot.interaction_profiles[1]);
+  const bool left_connected = snapshot.controllers[0].connected;
+  const bool right_connected = snapshot.controllers[1].connected;
+  const QString focused = snapshot.session_focused ? tr("Focused") : tr("Not Focused");
+
+  QString text;
+  if (left_profile == right_profile)
+  {
+    text = tr("OpenXR: %1 | L:%2 R:%3 | %4")
+               .arg(left_profile)
+               .arg(left_connected ? tr("OK") : tr("--"))
+               .arg(right_connected ? tr("OK") : tr("--"))
+               .arg(focused);
+  }
+  else
+  {
+    text = tr("OpenXR L: %1 (%2) | R: %3 (%4) | %5")
+               .arg(left_profile)
+               .arg(left_connected ? tr("OK") : tr("--"))
+               .arg(right_profile)
+               .arg(right_connected ? tr("OK") : tr("--"))
+               .arg(focused);
+  }
+
+  m_openxr_profile_label->setText(text);
+}
+#endif
