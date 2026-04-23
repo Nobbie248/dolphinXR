@@ -4,6 +4,7 @@
 #include "VideoCommon/BPStructs.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <string>
 
@@ -382,23 +383,38 @@ static void BPWritten(PixelShaderManager& pixel_shader_manager, XFStateManager& 
           auto& vi = system.GetVideoInterface();
           vi.FakeVIUpdate(destAddr, srcRect.GetWidth(), destStride, height);
         }
+      }
 
 #ifdef ENABLE_VR
-        // Lock Head Pose Per Frame: refresh the OpenXR head pose at this exact point
-        // in the FIFO stream — between the just-finished game frame and the next one.
-        // Because this runs in FIFO order on the video thread, every draw within a
-        // single game frame is guaranteed to see one consistent head pose, eliminating
-        // the level-vs-objects desync that occurs when LocateViews() races with draws
-        // via VI-event AsyncRequests in Present().
-        if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
-            g_ActiveConfig.vr_lock_head_pose && VR::g_openxr &&
-            VR::g_openxr->IsSessionRunning() && VR::g_openxr->ShouldRender())
+      // Lock Head Pose Per Frame: refresh the OpenXR head pose at this XFB-copy
+      // point in the FIFO stream — between the just-finished game frame and the
+      // next one. Runs on the video thread in FIFO order so every draw within a
+      // single game frame sees one consistent head pose.
+      // Must run for BOTH the ImmediateXFB and non-ImmediateXFB paths (games
+      // like Zack & Wiki use ImmediateXFB; without this firing the GS pose
+      // cache never gets invalidated and head tracking locks).
+      if (!VideoCommon::OpenXROpcodeReplay::IsReplaying() &&
+          g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
+          g_ActiveConfig.vr_lock_head_pose && VR::g_openxr &&
+          VR::g_openxr->IsSessionRunning() && VR::g_openxr->ShouldRender())
+      {
+        // Debounce: some games emit multiple XFB copies per visual frame within
+        // <1 ms. Only fire once per 5 ms so intra-frame bursts don't re-invalidate
+        // the pose cache between draws of the next frame.
+        static bool s_first_locate = true;
+        static auto s_last_locate_time = std::chrono::steady_clock::now();
+        const auto now = std::chrono::steady_clock::now();
+        const double ms_since_last =
+            std::chrono::duration<double, std::milli>(now - s_last_locate_time).count();
+        if (s_first_locate || ms_since_last >= 5.0)
         {
           VR::g_openxr->LocateViews();
           system.GetGeometryShaderManager().InvalidateVRHeadPose();
+          s_last_locate_time = now;
+          s_first_locate = false;
         }
-#endif
       }
+#endif
     }
 
     // Clear the rectangular region after copying it.

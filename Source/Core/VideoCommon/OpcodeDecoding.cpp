@@ -228,8 +228,13 @@ public:
   OPCODE_CALLBACK(void OnCommand(const u8* data, u32 size))
   {
     ASSERT(size >= 1);
-    if (!m_in_display_list && VideoCommon::OpenXROpcodeReplay::IsReplayLogFrameActive())
+    // Capture expanded DL commands rather than the GX_CMD_CALL_DL reference, so replay doesn't
+    // depend on DL memory remaining valid between capture and replay.
+    if (VideoCommon::OpenXROpcodeReplay::IsReplayLogFrameActive() &&
+        static_cast<Opcode>(data[0]) != Opcode::GX_CMD_CALL_DL)
+    {
       VideoCommon::OpenXROpcodeReplay::CaptureCommand(is_preprocess, data, size);
+    }
     if constexpr (!is_preprocess)
     {
       // Display lists get added directly into the FIFO stream since this same callback is used to

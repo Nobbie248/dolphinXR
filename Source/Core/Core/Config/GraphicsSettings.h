@@ -166,6 +166,7 @@ extern const Info<bool> GFX_VR_AUTO_IMMEDIATE_XFB;
 extern const Info<float> GFX_VR_UNITS_PER_METER;
 extern const Info<float> GFX_VR_LEAN_BACK_ANGLE;
 extern const Info<float> GFX_VR_CAMERA_FORWARD;
+extern const Info<float> GFX_VR_CAMERA_HEIGHT;
 
 static constexpr float GFX_VR_UNITS_PER_METER_MIN = 0.1f;
 static constexpr float GFX_VR_UNITS_PER_METER_MAX = 500.0f;
@@ -176,6 +177,9 @@ static constexpr float GFX_VR_LEAN_BACK_ANGLE_STEP = 0.1f;
 static constexpr float GFX_VR_CAMERA_FORWARD_MIN = -20.0f;
 static constexpr float GFX_VR_CAMERA_FORWARD_MAX = 20.0f;
 static constexpr float GFX_VR_CAMERA_FORWARD_STEP = 0.1f;
+static constexpr float GFX_VR_CAMERA_HEIGHT_MIN = -20.0f;
+static constexpr float GFX_VR_CAMERA_HEIGHT_MAX = 20.0f;
+static constexpr float GFX_VR_CAMERA_HEIGHT_STEP = 0.1f;
 
 extern const Info<bool> GFX_VR_VIRTUAL_SCREEN;
 extern const Info<float> GFX_VR_SCREEN_DISTANCE;

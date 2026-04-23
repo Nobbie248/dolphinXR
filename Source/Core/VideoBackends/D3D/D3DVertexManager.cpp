@@ -237,7 +237,6 @@ void VertexManager::CommitBuffer(u32 num_vertices, u32 vertex_stride, u32 num_in
   u32 vertexBufferSize = Common::AlignUp(num_vertices * vertex_stride, sizeof(u16));
   u32 indexBufferSize = num_indices * sizeof(u16);
   u32 totalBufferSize = vertexBufferSize + indexBufferSize;
-
   u32 cursor = m_buffer_cursor;
   u32 padding = vertex_stride > 0 ? (m_buffer_cursor % vertex_stride) : 0;
   if (padding)

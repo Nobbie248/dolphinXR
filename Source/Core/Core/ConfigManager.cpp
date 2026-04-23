@@ -160,6 +160,7 @@ static void ApplyGameVRConfigOverrides(std::string_view game_id)
   ApplyVRSetting(values, "UnitsPerMeter", Config::GFX_VR_UNITS_PER_METER);
   ApplyVRSetting(values, "LeanBackAngle", Config::GFX_VR_LEAN_BACK_ANGLE);
   ApplyVRSetting(values, "CameraForward", Config::GFX_VR_CAMERA_FORWARD);
+  ApplyVRSetting(values, "CameraHeight", Config::GFX_VR_CAMERA_HEIGHT);
   ApplyVRSetting(values, "VirtualScreen", Config::GFX_VR_VIRTUAL_SCREEN);
   ApplyVRSetting(values, "ScreenDistance", Config::GFX_VR_SCREEN_DISTANCE);
   ApplyVRSetting(values, "ScreenSize", Config::GFX_VR_SCREEN_SIZE);

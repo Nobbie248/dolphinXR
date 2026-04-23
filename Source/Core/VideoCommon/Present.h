@@ -142,7 +142,7 @@ private:
                                           bool blit_source);
   bool PresentReplayOpenXRFrame();
   void FinishReplayOpenXRFrameWithoutSource();
-  void MaybeRunOpenXROpcodeReplayFrames();
+  bool MaybeRunOpenXROpcodeReplayFrames();
 #endif
 
   std::mutex m_swap_mutex;

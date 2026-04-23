@@ -190,6 +190,7 @@ const Info<bool> GFX_VR_AUTO_IMMEDIATE_XFB{{System::GFX, "VR", "AutoImmediateXFB
 const Info<float> GFX_VR_UNITS_PER_METER{{System::GFX, "VR", "UnitsPerMeter"}, 1.0f};
 const Info<float> GFX_VR_LEAN_BACK_ANGLE{{System::GFX, "VR", "LeanBackAngle"}, 0.0f};
 const Info<float> GFX_VR_CAMERA_FORWARD{{System::GFX, "VR", "CameraForward"}, 0.0f};
+const Info<float> GFX_VR_CAMERA_HEIGHT{{System::GFX, "VR", "CameraHeight"}, 0.0f};
 const Info<bool> GFX_VR_VIRTUAL_SCREEN{{System::GFX, "VR", "VirtualScreen"}, true};
 const Info<float> GFX_VR_SCREEN_DISTANCE{{System::GFX, "VR", "ScreenDistance"}, 1.5f};
 const Info<float> GFX_VR_SCREEN_SIZE{{System::GFX, "VR", "ScreenSize"}, 1.5f};

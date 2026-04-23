@@ -67,6 +67,8 @@ private:
   QDoubleSpinBox* m_lean_back_angle = nullptr;
   QCheckBox* m_override_camera_forward = nullptr;
   QDoubleSpinBox* m_camera_forward = nullptr;
+  QCheckBox* m_override_camera_height = nullptr;
+  QDoubleSpinBox* m_camera_height = nullptr;
   QCheckBox* m_override_head_locked_curvature = nullptr;
   QDoubleSpinBox* m_head_locked_curvature = nullptr;
   QCheckBox* m_override_element_depth = nullptr;

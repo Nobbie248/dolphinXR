@@ -39,6 +39,8 @@ private:
   QLabel* m_lean_back_angle_value = nullptr;
   ConfigFloatSlider* m_camera_forward = nullptr;
   QLabel* m_camera_forward_value = nullptr;
+  ConfigFloatSlider* m_camera_height = nullptr;
+  QLabel* m_camera_height_value = nullptr;
   ConfigBool* m_virtual_screen = nullptr;
   ConfigFloatSlider* m_screen_distance = nullptr;
   QLabel* m_screen_distance_value = nullptr;

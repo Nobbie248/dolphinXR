@@ -19,6 +19,7 @@
 #include "VideoCommon/XFMemory.h"
 
 #ifdef ENABLE_VR
+#include "VideoCommon/OpenXROpcodeReplay.h"
 #include "VideoCommon/VR/OpenXRManager.h"
 #endif
 
@@ -136,7 +137,14 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
           // prevents mid-frame LocateViews() updates from desynchronising different draw
           // calls within the same game frame.  When OFF, refetch every call (legacy
           // behavior — kept as an escape hatch).
-          const bool need_refresh = !g_ActiveConfig.vr_lock_head_pose || m_vr_pose_needs_refresh;
+          // During opcode replay, never refresh: the real frame's cache is already
+          // correct, and BPStructs' XFB-copy LocateViews has mutated m_eye_views
+          // between real-frame draws and replay-frame draws.  Refreshing here would
+          // render the replay with a different pose than the real frame it pairs
+          // with, producing alternating-frame flicker on head rotation.
+          const bool is_replay = VideoCommon::OpenXROpcodeReplay::IsReplaying();
+          const bool need_refresh =
+              !is_replay && (!g_ActiveConfig.vr_lock_head_pose || m_vr_pose_needs_refresh);
           if (need_refresh)
           {
             std::array<std::array<float, 4>, 4> eye_projection_rows{};
@@ -158,6 +166,11 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
             std::array<std::array<float, 4>, 4> head_proj_rows{};
             VR::g_openxr->GetRawEyeProjectionRows(upm, head_proj_rows);
             m_cached_head_projection = head_proj_rows;
+
+            // Snapshot the pose the cache was built from.  SubmitFrame will use
+            // this snapshot so render_pose == submit_pose regardless of any
+            // later LocateViews that may clobber m_eye_views before xrEndFrame.
+            VR::g_openxr->RecordRenderedEyeViews();
 
             m_vr_pose_needs_refresh = false;
           }

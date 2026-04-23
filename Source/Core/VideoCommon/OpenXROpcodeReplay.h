@@ -13,13 +13,16 @@ bool IsCaptureEnabled();
 bool IsReplaying();
 bool IsReplayFrameActive();
 bool IsReplayLogFrameActive();
-void EnableCaptureForNextFrame();
+bool IsCaptureArmed();
+u64 GetCaptureFrameIndex();
+void EnableCaptureForNextFrame(double display_period_ms);
 
 void CaptureCommand(bool is_preprocess, const u8* data, u32 size);
 void NotifyFrameBoundary();
 void Clear();
 
 bool HasReplayData();
+u64 GetReplayFrameIndex();
 int GetReplayCount(double display_period_ms);
 
 bool BeginReplayIteration();

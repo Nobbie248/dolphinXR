@@ -112,6 +112,20 @@ void VRConfigWidget::CreateWidgets()
   camera_forward_layout->addWidget(m_override_camera_forward);
   camera_forward_layout->addWidget(m_camera_forward, 1);
 
+  auto* camera_height_row = new QWidget;
+  auto* camera_height_layout = new QHBoxLayout;
+  camera_height_layout->setContentsMargins(0, 0, 0, 0);
+  camera_height_row->setLayout(camera_height_layout);
+
+  m_override_camera_height = new QCheckBox(tr("Override"));
+  m_camera_height = new QDoubleSpinBox;
+  m_camera_height->setRange(Config::GFX_VR_CAMERA_HEIGHT_MIN, Config::GFX_VR_CAMERA_HEIGHT_MAX);
+  m_camera_height->setSingleStep(Config::GFX_VR_CAMERA_HEIGHT_STEP);
+  m_camera_height->setDecimals(1);
+  m_camera_height->setSuffix(tr(" m"));
+  camera_height_layout->addWidget(m_override_camera_height);
+  camera_height_layout->addWidget(m_camera_height, 1);
+
   auto* head_locked_curvature_row = new QWidget;
   auto* head_locked_curvature_layout = new QHBoxLayout;
   head_locked_curvature_layout->setContentsMargins(0, 0, 0, 0);
@@ -151,6 +165,7 @@ void VRConfigWidget::CreateWidgets()
   form->addRow(tr("Units per Meter"), units_row);
   form->addRow(tr("Lean Back Angle"), lean_back_row);
   form->addRow(tr("Camera Forward"), camera_forward_row);
+  form->addRow(tr("Camera Height"), camera_height_row);
   form->addRow(tr("Head Locked Curvature"), head_locked_curvature_row);
   form->addRow(tr("Element Depth"), element_depth_row);
   form->addRow(tr("Virtual Screen"), m_virtual_screen_mode);
@@ -206,6 +221,12 @@ void VRConfigWidget::CreateWidgets()
     SaveToFile();
   });
   connect(m_camera_forward, &QDoubleSpinBox::valueChanged, this,
+          [this](double) { SaveToFile(); });
+  connect(m_override_camera_height, &QCheckBox::toggled, this, [this](bool checked) {
+    m_camera_height->setEnabled(checked);
+    SaveToFile();
+  });
+  connect(m_camera_height, &QDoubleSpinBox::valueChanged, this,
           [this](double) { SaveToFile(); });
   connect(m_override_head_locked_curvature, &QCheckBox::toggled, this, [this](bool checked) {
     m_head_locked_curvature->setEnabled(checked);
@@ -303,6 +324,23 @@ void VRConfigWidget::LoadFromFile()
                  static_cast<double>(Config::GFX_VR_CAMERA_FORWARD_MAX));
   m_camera_forward->setValue(camera_forward);
 
+  const auto camera_height_it = values.find("CameraHeight");
+  const bool camera_height_overridden = camera_height_it != values.end();
+  m_override_camera_height->setChecked(camera_height_overridden);
+  m_camera_height->setEnabled(camera_height_overridden);
+
+  double camera_height = Config::GetBase(Config::GFX_VR_CAMERA_HEIGHT);
+  if (camera_height_overridden)
+  {
+    double parsed = camera_height;
+    if (TryParse(camera_height_it->second, &parsed))
+      camera_height = parsed;
+  }
+  camera_height =
+      std::clamp(camera_height, static_cast<double>(Config::GFX_VR_CAMERA_HEIGHT_MIN),
+                 static_cast<double>(Config::GFX_VR_CAMERA_HEIGHT_MAX));
+  m_camera_height->setValue(camera_height);
+
   const auto head_locked_curvature_it = values.find("HeadLockedCurvature");
   const bool head_locked_curvature_overridden = head_locked_curvature_it != values.end();
   m_override_head_locked_curvature->setChecked(head_locked_curvature_overridden);
@@ -365,6 +403,11 @@ void VRConfigWidget::SaveToFile()
   {
     entries.emplace_back("CameraForward",
                          QString::number(m_camera_forward->value(), 'f', 1).toStdString());
+  }
+  if (m_override_camera_height->isChecked())
+  {
+    entries.emplace_back("CameraHeight",
+                         QString::number(m_camera_height->value(), 'f', 1).toStdString());
   }
   if (m_override_head_locked_curvature->isChecked())
   {

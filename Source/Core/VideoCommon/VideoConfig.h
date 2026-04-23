@@ -327,6 +327,7 @@ struct VideoConfig final
   float vr_units_per_meter = 1.0f;
   float vr_lean_back_angle = 0.0f;
   float vr_camera_forward = 0.0f;
+  float vr_camera_height = 0.0f;
   bool vr_virtual_screen = true;
   float vr_screen_distance = 1.5f;
   float vr_screen_size = 1.5f;
