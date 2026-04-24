@@ -148,7 +148,13 @@ bool D3DOpenXR::CreateSwapchains()
     info.sampleCount = 1;
     // We render into this swapchain image as a color target, but never sample from it.
     // Some runtimes reject the extra SAMPLED usage for certain formats.
-    info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
+    //
+    // MUTABLE_FORMAT lets us keep the swapchain declared as sRGB (so the compositor
+    // decodes correctly) while creating a UNORM RTV on the underlying texture, so
+    // BlitFromTexture writes raw sRGB-encoded bytes without a double gamma encode.
+    // With this flag the runtime must back the texture with a DXGI _TYPELESS format.
+    info.usageFlags =
+        XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_MUTABLE_FORMAT_BIT;
 
     XrResult result = xrCreateSwapchain(VR::g_openxr->GetSession(), &info, &sc.swapchain);
     if (XR_FAILED(result))

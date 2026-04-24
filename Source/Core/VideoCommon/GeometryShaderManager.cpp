@@ -182,6 +182,9 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
           constants.eye_z_row[0] = m_cached_eye_z_row[0];
           constants.eye_z_row[1] = m_cached_eye_z_row[1];
 
+          // The Vulkan legacy projected-space fallback behaves like a flat stereo projection on
+          // Quest. Android should use the full per-eye OpenXR projection path instead.
+#if !defined(ANDROID)
           if (perspective && g_backend_info.api_type == APIType::Vulkan)
           {
             const Common::Vec2 fov_multiplier = g_freelook_camera.IsActive() ?
@@ -217,6 +220,7 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
             constants.legacy_eye_projection_y[1] = legacy_eye_projection_y_rows[0];
             constants.stereoparams[1] = 1.0f;
           }
+#endif
 
           // Unrotated per-eye projection rows for head-locked content (cached above).
           constants.head_projection[0] = m_cached_head_projection[0];

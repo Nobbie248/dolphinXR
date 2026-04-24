@@ -366,6 +366,9 @@ object NativeLibrary {
     @JvmStatic
     external fun StopEmulation()
 
+    @JvmStatic
+    external fun RequestOpenXRRecenter()
+
   /**
    * Ensures that IsRunning will return true from now on until emulation exits.
    * (If this is not called, IsRunning will start returning true at some point

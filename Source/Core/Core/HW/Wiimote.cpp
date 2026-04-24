@@ -421,9 +421,13 @@ void UpdateOpenXRInputOverride(unsigned int index, WiimoteSource source)
 
   if (source == WiimoteSource::OpenXR)
   {
+    const bool prefer_left_hand =
+        Config::Get(Config::Info<bool>{{Config::System::Main, "Android", "QuestLeftHanded"},
+                                       false});
     s_openxr_ir_centers[index] = {};
-    wiimote->SetInputOverrideFunction(CreateOpenXRInputOverrideFunction(index, false));
-    apply_to_attachments(CreateOpenXRInputOverrideFunction(index, true));
+    wiimote->SetInputOverrideFunction(
+        CreateOpenXRInputOverrideFunction(index, prefer_left_hand));
+    apply_to_attachments(CreateOpenXRInputOverrideFunction(index, !prefer_left_hand));
     s_openxr_overrides_enabled[index] = true;
   }
   else if (s_openxr_overrides_enabled[index])
@@ -521,6 +525,16 @@ std::optional<OpenXRWiiRemoteState> GetOpenXRWiiRemoteState(unsigned int index)
 #ifdef ENABLE_VR
   if (index >= MAX_WIIMOTES || s_wiimote_sources[index].load() != WiimoteSource::OpenXR)
     return std::nullopt;
+
+  const bool prefer_left_hand =
+      Config::Get(Config::Info<bool>{{Config::System::Main, "Android", "QuestLeftHanded"},
+                                     false});
+  if (prefer_left_hand)
+  {
+    if (const auto left = GetOpenXRHandState(true))
+      return left;
+    return GetOpenXRHandState(false);
+  }
 
   if (const auto right = GetOpenXRHandState(false))
     return right;

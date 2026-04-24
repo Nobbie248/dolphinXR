@@ -103,6 +103,16 @@ static void TryToSnapToXFBSize(int& width, int& height, int xfb_width, int xfb_h
   }
 }
 
+#ifdef ENABLE_VR
+static int GetOpenXRSourceLayer(const AbstractTexture* source_texture, int requested_layer)
+{
+  if (!source_texture || source_texture->GetLayers() == 0)
+    return 0;
+
+  return std::min(requested_layer, static_cast<int>(source_texture->GetLayers() - 1));
+}
+#endif
+
 Presenter::Presenter()
 {
   auto& video_events = GetVideoEvents();
@@ -936,8 +946,8 @@ void Presenter::FinishReplayOpenXRFrameWithoutSource()
 void Presenter::BlitCurrentSourceToOpenXREyes(const AbstractTexture* source_texture,
                                               const MathUtil::Rectangle<int>& source_rc)
 {
-  if (!source_texture || source_texture->GetLayers() < 2 || !VR::g_openxr ||
-      !VR::g_openxr->GetSwapchain() || !VR::g_openxr->ShouldRender())
+  if (!source_texture || !VR::g_openxr || !VR::g_openxr->GetSwapchain() ||
+      !VR::g_openxr->ShouldRender())
   {
     return;
   }
@@ -973,7 +983,8 @@ void Presenter::BlitCurrentSourceToOpenXREyes(const AbstractTexture* source_text
     const float clear_alpha =
         g_ActiveConfig.vr_ar_mode ? g_ActiveConfig.vr_ar_background_alpha : 1.0f;
     g_gfx->SetAndClearFramebuffer(eye_fb, {0.f, 0.f, 0.f, clear_alpha});
-    m_post_processor->BlitFromTexture(eye_rect, source_rc, source_texture, static_cast<int>(eye));
+    m_post_processor->BlitFromTexture(eye_rect, source_rc, source_texture,
+                                      GetOpenXRSourceLayer(source_texture, static_cast<int>(eye)));
     sc->ReleaseEyeTexture(eye);
   }
 
@@ -1187,8 +1198,10 @@ void Presenter::RenderXFBToScreen(const MathUtil::Rectangle<int>& target_rc,
     // Mirror view on the desktop window (side-by-side, left eye | right eye).
     // The HMD receives full-resolution images below.
     const auto [left_rc, right_rc] = ConvertStereoRectangle(target_rc);
-    m_post_processor->BlitFromTexture(left_rc, source_rc, source_texture, 0);
-    m_post_processor->BlitFromTexture(right_rc, source_rc, source_texture, 1);
+    m_post_processor->BlitFromTexture(left_rc, source_rc, source_texture,
+                                      GetOpenXRSourceLayer(source_texture, 0));
+    m_post_processor->BlitFromTexture(right_rc, source_rc, source_texture,
+                                      GetOpenXRSourceLayer(source_texture, 1));
     BlitCurrentSourceToOpenXREyes(source_texture, source_rc);
   }
 #endif

@@ -17,6 +17,8 @@ android {
         buildConfig = true
     }
 
+    flavorDimensions += "device"
+
     compileOptions {
         // Flag to enable support for the new language APIs
         isCoreLibraryDesugaringEnabled = true
@@ -94,6 +96,37 @@ android {
         }
     }
 
+    productFlavors {
+        create("standard") {
+            dimension = "device"
+            buildConfigField("boolean", "IS_QUEST", "false")
+            ndk {
+                abiFilters += listOf("arm64-v8a", "x86_64")
+            }
+            externalNativeBuild {
+                cmake {
+                    arguments += "-DENABLE_VR=OFF"
+                }
+            }
+        }
+
+        create("quest") {
+            dimension = "device"
+            applicationIdSuffix = ".quest"
+            versionNameSuffix = "-quest"
+            buildConfigField("boolean", "IS_QUEST", "true")
+            manifestPlaceholders["questSupportedDevices"] = "quest2|quest3|quest3s|questpro"
+            ndk {
+                abiFilters += listOf("arm64-v8a")
+            }
+            externalNativeBuild {
+                cmake {
+                    arguments += "-DENABLE_VR=ON"
+                }
+            }
+        }
+    }
+
     externalNativeBuild {
         cmake {
             path = file("../../../CMakeLists.txt")
@@ -111,7 +144,6 @@ android {
                     "-DCMAKE_BUILD_TYPE=RelWithDebInfo"
                     // , "-DENABLE_GENERIC=ON"
                 )
-                abiFilters("arm64-v8a", "x86_64") //, "armeabi-v7a", "x86"
 
                 // Uncomment the line below if you don't want to build the C++ unit tests
                 //targets("main", "hook_impl", "main_hook", "gsl_alloc_hook", "file_redirect_hook")

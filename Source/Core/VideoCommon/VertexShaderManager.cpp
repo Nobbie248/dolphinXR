@@ -119,6 +119,7 @@ Common::Matrix44 VertexShaderManager::LoadProjectionMatrix(bool apply_openxr_leg
   if (xfmem.projection.type == ProjectionType::Perspective)
   {
 #ifdef ENABLE_VR
+#if !defined(ANDROID)
     if (apply_openxr_legacy_view && g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
         g_backend_info.api_type == APIType::Vulkan && VR::g_openxr && VR::g_openxr->IsSessionRunning())
     {
@@ -137,6 +138,7 @@ Common::Matrix44 VertexShaderManager::LoadProjectionMatrix(bool apply_openxr_leg
         corrected_matrix *= openxr_view;
       }
     }
+#endif
 #endif
 
     if (g_freelook_camera.IsActive())

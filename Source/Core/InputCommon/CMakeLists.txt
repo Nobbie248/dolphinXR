@@ -145,6 +145,12 @@ elseif(ANDROID)
     ControllerInterface/Touch/InputOverrider.cpp
     ControllerInterface/Touch/InputOverrider.h
   )
+  if(ENABLE_VR)
+    target_sources(inputcommon PRIVATE
+      ControllerInterface/OpenXR/OpenXR.cpp
+      ControllerInterface/OpenXR/OpenXR.h
+    )
+  endif()
   target_link_libraries(inputcommon PRIVATE
     androidcommon
   )

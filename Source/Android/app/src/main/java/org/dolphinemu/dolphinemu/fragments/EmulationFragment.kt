@@ -14,6 +14,7 @@ import org.dolphinemu.dolphinemu.NativeLibrary
 import org.dolphinemu.dolphinemu.activities.EmulationActivity
 import org.dolphinemu.dolphinemu.databinding.FragmentEmulationBinding
 import org.dolphinemu.dolphinemu.features.settings.model.BooleanSetting
+import org.dolphinemu.dolphinemu.features.settings.model.QuestVrSettings
 import org.dolphinemu.dolphinemu.features.settings.model.Settings
 import org.dolphinemu.dolphinemu.overlay.InputOverlay
 import org.dolphinemu.dolphinemu.utils.AfterDirectoryInitializationRunner
@@ -67,6 +68,7 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
         // The new Surface created here will get passed to the native code via onSurfaceChanged.
         val surfaceView = binding.surfaceEmulation
         surfaceView.holder.addCallback(this)
+        surfaceView.alpha = if (QuestVrSettings.shouldShowMirrorSurface()) 1.0f else 0.0f
 
         inputOverlay = binding.surfaceInputOverlay
 

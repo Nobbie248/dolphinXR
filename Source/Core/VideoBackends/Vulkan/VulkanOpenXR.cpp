@@ -35,6 +35,11 @@ namespace Vulkan
 {
 std::unique_ptr<VulkanOpenXR> g_openxr_vk;
 
+XRVkEyeSwapchain::XRVkEyeSwapchain() = default;
+XRVkEyeSwapchain::~XRVkEyeSwapchain() = default;
+XRVkEyeSwapchain::XRVkEyeSwapchain(XRVkEyeSwapchain&&) noexcept = default;
+XRVkEyeSwapchain& XRVkEyeSwapchain::operator=(XRVkEyeSwapchain&&) noexcept = default;
+
 static const char* VkFormatToString(int64_t format)
 {
   switch (static_cast<VkFormat>(format))
@@ -101,16 +106,19 @@ static bool SelectSwapchainFormat(XrSession session, int64_t* out_format)
                  VkFormatToString(format));
   }
 
-  // Prefer formats that map cleanly through AbstractTextureFormat without SRGB/UNORM mismatch.
-  // sRGB formats are avoided because Dolphin's PostProcessing pipeline cache is keyed on
-  // AbstractTextureFormat (RGBA8), and a pipeline compiled for a UNORM render pass is NOT
-  // compatible with an SRGB render pass in Vulkan — causing silently dropped draws.
-  // RGB10_A2 (4 bytes/pixel, 2-bit alpha) and RGBA16F (8 bytes/pixel) both round-trip cleanly.
-  // UNORM 8-bit would also work but SteamVR typically doesn't offer them.
+  // Prefer sRGB formats so the OpenXR compositor correctly decodes Dolphin's
+  // gamma-encoded XFB. With a UNORM swapchain the runtime treats our sRGB bytes
+  // as linear and the image appears ~2x too bright.
+  //
+  // The image is created with MUTABLE_FORMAT_BIT so we render through a UNORM
+  // VkImageView alias — raw sRGB-encoded bytes land in memory without a double
+  // gamma encode, and the compositor reads them through the image's sRGB format.
+  // This also keeps the PostProcessing pipeline cache (keyed on AbstractTextureFormat
+  // RGBA8 / VK_FORMAT_*_UNORM) compatible with the eye framebuffer's render pass.
   static constexpr std::array<VkFormat, 6> preferred_formats = {
+      VK_FORMAT_R8G8B8A8_SRGB,            VK_FORMAT_B8G8R8A8_SRGB,
       VK_FORMAT_R8G8B8A8_UNORM,           VK_FORMAT_B8G8R8A8_UNORM,
-      VK_FORMAT_A2B10G10R10_UNORM_PACK32, VK_FORMAT_R16G16B16A16_SFLOAT,
-      VK_FORMAT_R8G8B8A8_SRGB,            VK_FORMAT_B8G8R8A8_SRGB};
+      VK_FORMAT_A2B10G10R10_UNORM_PACK32, VK_FORMAT_R16G16B16A16_SFLOAT};
 
   for (const VkFormat preferred : preferred_formats)
   {
@@ -175,6 +183,9 @@ bool VulkanOpenXR::PreQueryVulkanExtensions(VulkanExtensionRequirements& out)
   auto mgr = std::make_unique<VR::OpenXRManager>();
 
   std::vector<const char*> extensions = {XR_KHR_VULKAN_ENABLE_EXTENSION_NAME};
+#if defined(ANDROID)
+  extensions.push_back(XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME);
+#endif
   const auto controller_exts = VR::OpenXRManager::GetAvailableControllerExtensions();
   extensions.insert(extensions.end(), controller_exts.begin(), controller_exts.end());
   if (!mgr->CreateInstance(extensions))
@@ -271,6 +282,9 @@ bool VulkanOpenXR::Initialize()
     auto mgr = std::make_unique<VR::OpenXRManager>();
 
     std::vector<const char*> extensions = {XR_KHR_VULKAN_ENABLE_EXTENSION_NAME};
+#if defined(ANDROID)
+    extensions.push_back(XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME);
+#endif
     const auto controller_exts = VR::OpenXRManager::GetAvailableControllerExtensions();
     extensions.insert(extensions.end(), controller_exts.begin(), controller_exts.end());
     if (!mgr->CreateInstance(extensions))
@@ -504,8 +518,9 @@ bool VulkanOpenXR::CreateSwapchains()
     info.mipCount = 1;
     info.faceCount = 1;
     info.sampleCount = 1;
-    info.usageFlags =
-        XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT;
+    info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT |
+                      XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT |
+                      XR_SWAPCHAIN_USAGE_MUTABLE_FORMAT_BIT;
 
     XrResult result = xrCreateSwapchain(VR::g_openxr->GetSession(), &info, &sc.swapchain);
     if (XR_FAILED(result))
@@ -534,12 +549,17 @@ bool VulkanOpenXR::CreateSwapchains()
                                abstract_format, AbstractTextureFlag_RenderTarget,
                                AbstractTextureType::Texture_2D);
 
-      // Adopt the runtime-owned VkImage. Pass the actual VkFormat so the VkImageView
-      // matches the runtime's image format (critical for sRGB formats where
-      // AbstractTextureFormat::RGBA8 would otherwise map to VK_FORMAT_R8G8B8A8_UNORM).
-      sc.textures[i] = VKTexture::CreateAdopted(
-          tex_config, images[i].image, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_LAYOUT_UNDEFINED,
-          static_cast<VkFormat>(swapchain_format));
+      // Adopt the runtime-owned VkImage. For sRGB swapchains we create the
+      // VkImageView with the UNORM alias so BlitFromTexture writes raw bytes
+      // without a gamma encode — the runtime still sees the image as sRGB and
+      // the compositor decodes correctly. This relies on
+      // XR_SWAPCHAIN_USAGE_MUTABLE_FORMAT_BIT being set, which forces the
+      // runtime to create the VkImage with VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT.
+      const VkFormat view_format =
+          VKTexture::GetLinearFormat(static_cast<VkFormat>(swapchain_format));
+      sc.textures[i] =
+          VKTexture::CreateAdopted(tex_config, images[i].image, VK_IMAGE_VIEW_TYPE_2D,
+                                   VK_IMAGE_LAYOUT_UNDEFINED, view_format);
       if (!sc.textures[i])
       {
         ERROR_LOG_FMT(VIDEO, "OpenXR: VKTexture::CreateAdopted failed for eye {}, image {}.", eye,
@@ -664,31 +684,48 @@ void VulkanOpenXR::ReleaseEyeTexture(uint32_t eye_index)
   if (!m_image_acquired[eye_index])
     return;
 
-  // End any active render pass and submit the command buffer so the GPU actually
-  // executes the blit before we tell the runtime the image is ready.
-  // Without this flush, the draw commands sit in an unsubmitted command buffer
-  // and the runtime reads an uninitialized image, causing driver crashes.
+  // End any active render pass so the eye image is no longer bound for rendering.
+  // We defer the Vulkan submit/xrReleaseSwapchainImage pairing until SubmitFrame()
+  // so both eyes stay within one command-buffer lifetime.
   StateTracker::GetInstance()->EndRenderPass();
-  g_command_buffer_mgr->SubmitCommandBuffer(false, false);
-  StateTracker::GetInstance()->InvalidateCachedState();
-
-  XrSwapchainImageReleaseInfo release_info{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
-  const XrResult result =
-      xrReleaseSwapchainImage(m_eye_swapchains[eye_index].swapchain, &release_info);
-  if (XR_FAILED(result))
-  {
-    WARN_LOG_FMT(VIDEO, "OpenXR: xrReleaseSwapchainImage failed for eye {} ({}).", eye_index,
-                 static_cast<int>(result));
-  }
-
-  m_image_acquired[eye_index] = false;
 }
 
 bool VulkanOpenXR::SubmitFrame()
 {
   ASSERT(VR::g_openxr != nullptr);
 
-  // Images are already released in ReleaseEyeTexture(). Just compose layers and call xrEndFrame.
+  bool has_acquired_images = false;
+  for (bool acquired : m_image_acquired)
+  {
+    has_acquired_images |= acquired;
+  }
+
+  if (has_acquired_images)
+  {
+    // Submit the eye rendering work once per frame before releasing the swapchain
+    // images back to the runtime.
+    StateTracker::GetInstance()->EndRenderPass();
+    g_command_buffer_mgr->SubmitCommandBuffer(false, true);
+    StateTracker::GetInstance()->InvalidateCachedState();
+
+    XrSwapchainImageReleaseInfo release_info{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+    for (uint32_t eye = 0; eye < 2; ++eye)
+    {
+      if (!m_image_acquired[eye])
+        continue;
+
+      const XrResult result =
+          xrReleaseSwapchainImage(m_eye_swapchains[eye].swapchain, &release_info);
+      if (XR_FAILED(result))
+      {
+        WARN_LOG_FMT(VIDEO, "OpenXR: xrReleaseSwapchainImage failed for eye {} ({}).", eye,
+                     static_cast<int>(result));
+      }
+
+      m_image_acquired[eye] = false;
+    }
+  }
+
   const auto& eye_views = VR::g_openxr->GetEyeViews();
 
   for (uint32_t eye = 0; eye < 2; ++eye)

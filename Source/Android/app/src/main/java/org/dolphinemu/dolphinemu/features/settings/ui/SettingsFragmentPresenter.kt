@@ -2,6 +2,7 @@
 
 package org.dolphinemu.dolphinemu.features.settings.ui
 
+import org.dolphinemu.dolphinemu.BuildConfig
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -1659,7 +1660,9 @@ class SettingsFragmentPresenter(
         // If we only support OpenGLES then we need both OpenGLES 3.1 and AEP
         val helper = EGLHelper(EGLHelper.EGL_OPENGL_ES2_BIT)
 
-        if (helper.supportsOpenGL() && helper.GetVersion() >= 320 || helper.supportsGLES3() && helper.GetVersion() >= 310 && helper.SupportsExtension(
+        if (BuildConfig.IS_QUEST ||
+            helper.supportsOpenGL() && helper.GetVersion() >= 320 ||
+            helper.supportsGLES3() && helper.GetVersion() >= 310 && helper.SupportsExtension(
                 "GL_ANDROID_extension_pack_es31a"
             )
         ) {
@@ -2358,6 +2361,145 @@ class SettingsFragmentPresenter(
                 R.string.stereoscopy_swap_eyes_description
             )
         )
+
+        if (BuildConfig.IS_QUEST && gameId.isNullOrEmpty()) {
+            addQuestVrSettings(sl)
+        }
+    }
+
+    private fun addQuestVrSettings(sl: ArrayList<SettingsItem>) {
+        sl.add(HeaderSetting(context, R.string.quest_vr_runtime, 0))
+        sl.add(
+            SwitchSetting(
+                context,
+                QuestVrSettings.openXrEnabledSetting(),
+                R.string.quest_enable_openxr,
+                R.string.quest_enable_openxr_description
+            )
+        )
+        sl.add(
+            SwitchSetting(
+                context,
+                QuestVrSettings.launchInVrSetting(),
+                R.string.quest_launch_in_vr,
+                R.string.quest_launch_in_vr_description
+            )
+        )
+        sl.add(
+            SwitchSetting(
+                context,
+                QuestVrSettings.recenterOnLaunchSetting(),
+                R.string.quest_recenter_on_launch,
+                R.string.quest_recenter_on_launch_description
+            )
+        )
+        sl.add(
+            SwitchSetting(
+                context,
+                QuestVrSettings.lockHeadPoseSetting(),
+                R.string.quest_lock_head_pose,
+                R.string.quest_lock_head_pose_description
+            )
+        )
+
+        sl.add(HeaderSetting(context, R.string.quest_vr_presets, 0))
+        sl.add(
+            SingleChoiceSetting(
+                context,
+                QuestVrSettings.controllerPresetSetting(),
+                R.string.quest_controller_preset,
+                R.string.quest_controller_preset_description,
+                R.array.questControllerPresetEntries,
+                R.array.questControllerPresetValues
+            )
+        )
+        sl.add(
+            RunRunnable(
+                context,
+                R.string.quest_apply_controller_preset,
+                R.string.quest_apply_controller_preset_description,
+                0,
+                R.string.quest_controller_preset_applied,
+                false
+            ) {
+                runQuestSettingsMutation { settings ->
+                    QuestVrSettings.applySelectedControllerPreset(settings)
+                }
+            }
+        )
+        sl.add(
+            RunRunnable(
+                context,
+                R.string.quest_apply_recommended_defaults,
+                R.string.quest_apply_recommended_defaults_description,
+                0,
+                R.string.quest_recommended_defaults_applied,
+                false
+            ) {
+                runQuestSettingsMutation { settings ->
+                    QuestVrSettings.applyRecommendedDefaults(settings)
+                }
+            }
+        )
+
+        sl.add(HeaderSetting(context, R.string.quest_vr_debug, 0))
+        sl.add(
+            SwitchSetting(
+                context,
+                QuestVrSettings.leftHandedSetting(),
+                R.string.quest_left_handed_wiimote,
+                R.string.quest_left_handed_wiimote_description
+            )
+        )
+        sl.add(
+            SwitchSetting(
+                context,
+                QuestVrSettings.showMirrorSurfaceSetting(),
+                R.string.quest_show_mirror_surface,
+                R.string.quest_show_mirror_surface_description
+            )
+        )
+        sl.add(
+            SwitchSetting(
+                context,
+                QuestVrSettings.passthroughSetting(),
+                R.string.quest_passthrough,
+                R.string.quest_passthrough_description
+            )
+        )
+        sl.add(
+            SwitchSetting(
+                context,
+                QuestVrSettings.debugPassthroughSetting(),
+                R.string.quest_passthrough_debug,
+                R.string.quest_passthrough_debug_description
+            )
+        )
+        sl.add(
+            SwitchSetting(
+                context,
+                BooleanSetting.GFX_SHOW_FPS,
+                R.string.quest_show_perf_hud,
+                R.string.quest_show_perf_hud_description
+            )
+        )
+        sl.add(
+            RunRunnable(
+                context,
+                R.string.quest_recenter_now,
+                R.string.quest_recenter_now_description,
+                0,
+                0,
+                true
+            ) { NativeLibrary.RequestOpenXRRecenter() }
+        )
+    }
+
+    private fun runQuestSettingsMutation(block: (Settings) -> Unit) {
+        val activeSettings = settings ?: return
+        block(activeSettings)
+        activeSettings.saveSettings()
+        fragmentView.adapter?.notifyAllSettingsChanged()
     }
 
     private fun addGcPadSubSettings(sl: ArrayList<SettingsItem>, gcPadNumber: Int, gcPadType: Int) {

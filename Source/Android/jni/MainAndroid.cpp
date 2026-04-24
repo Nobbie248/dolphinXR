@@ -20,6 +20,7 @@
 
 #include "Common/Assert.h"
 #include "Common/CPUDetect.h"
+#include "Common/Config/Config.h"
 #include "Common/CommonPaths.h"
 #include "Common/CommonTypes.h"
 #include "Common/Event.h"
@@ -64,6 +65,9 @@
 #include "VideoCommon/OnScreenDisplay.h"
 #include "VideoCommon/Present.h"
 #include "VideoCommon/VideoBackendBase.h"
+#ifdef ENABLE_VR
+#include "VideoCommon/VR/OpenXRManager.h"
+#endif
 
 #include "jni/AndroidCommon/AndroidCommon.h"
 #include "jni/AndroidCommon/IDCache.h"
@@ -72,6 +76,10 @@
 namespace
 {
 constexpr char DOLPHIN_TAG[] = "DolphinEmuNative";
+constexpr char NATIVE_LIBRARY_CLASS[] = "org/dolphinemu/dolphinemu/NativeLibrary";
+constexpr char GET_EMULATION_ACTIVITY_METHOD[] = "getEmulationActivity";
+constexpr char GET_EMULATION_ACTIVITY_SIG[] =
+    "()Lorg/dolphinemu/dolphinemu/activities/EmulationActivity;";
 
 ANativeWindow* s_surf;
 
@@ -260,6 +268,16 @@ JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_StopEmulatio
 
   // Kick the waiting event
   s_update_main_frame_event.Set();
+}
+
+JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_RequestOpenXRRecenter(
+    JNIEnv*, jclass)
+{
+#ifdef ENABLE_VR
+  HostThreadLock guard;
+  if (VR::g_openxr)
+    VR::g_openxr->RequestRecenter();
+#endif
 }
 
 JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_SetIsBooting(JNIEnv*, jclass)
@@ -584,6 +602,26 @@ static float GetRenderSurfaceScale(JNIEnv* env)
   return env->CallStaticFloatMethod(native_library_class, get_render_surface_scale_method);
 }
 
+#ifdef ENABLE_VR
+static jobject GetEmulationActivity(JNIEnv* env)
+{
+  jclass native_library_class = env->FindClass(NATIVE_LIBRARY_CLASS);
+  jmethodID get_emulation_activity =
+      env->GetStaticMethodID(native_library_class, GET_EMULATION_ACTIVITY_METHOD,
+                             GET_EMULATION_ACTIVITY_SIG);
+  jobject activity = env->CallStaticObjectMethod(native_library_class, get_emulation_activity);
+  env->DeleteLocalRef(native_library_class);
+  return activity;
+}
+
+static bool IsQuestRecenterOnLaunchEnabled()
+{
+  static const Config::Info<bool> quest_recenter_on_launch{
+      {Config::System::Main, "Android", "QuestRecenterOnLaunch"}, true};
+  return Config::Get(quest_recenter_on_launch);
+}
+#endif
+
 static void Run(JNIEnv* env, std::unique_ptr<BootParameters>&& boot, bool riivolution)
 {
   HostThreadLock host_identity_guard;
@@ -606,11 +644,27 @@ static void Run(JNIEnv* env, std::unique_ptr<BootParameters>&& boot, bool riivol
   WindowSystemInfo wsi(WindowSystemType::Android, nullptr, s_surf, s_surf);
   wsi.render_surface_scale = GetRenderSurfaceScale(env);
 
+#ifdef ENABLE_VR
+  JavaVM* vm = nullptr;
+  env->GetJavaVM(&vm);
+  jobject activity = GetEmulationActivity(env);
+  if (activity)
+  {
+    VR::OpenXRManager::SetAndroidAppInfo(vm, env, activity);
+    env->DeleteLocalRef(activity);
+  }
+#endif
+
   if (BootManager::BootCore(Core::System::GetInstance(), std::move(boot), wsi))
   {
     static constexpr int WAIT_STEP = 25;
     while (Core::GetState(Core::System::GetInstance()) == Core::State::Starting)
       std::this_thread::sleep_for(std::chrono::milliseconds(WAIT_STEP));
+
+#ifdef ENABLE_VR
+    if (IsQuestRecenterOnLaunchEnabled() && VR::g_openxr)
+      VR::g_openxr->RequestRecenter();
+#endif
   }
 
   s_is_booting.Clear();
@@ -627,6 +681,9 @@ static void Run(JNIEnv* env, std::unique_ptr<BootParameters>&& boot, bool riivol
 
   s_game_metadata_is_valid = false;
   Core::Shutdown(Core::System::GetInstance());
+#ifdef ENABLE_VR
+  VR::OpenXRManager::ClearAndroidAppInfo(env);
+#endif
   host_identity_guard.Unlock();
 
   env->CallStaticVoidMethod(IDCache::GetNativeLibraryClass(),

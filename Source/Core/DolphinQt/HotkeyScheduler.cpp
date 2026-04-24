@@ -552,6 +552,9 @@ void HotkeyScheduler::Run()
                              Config::GFX_VR_LEAN_BACK_ANGLE_MAX, "Lean Back Angle", 1);
       }
 
+      if (IsHotkey(HK_VR_TOGGLE_ENABLE_CAMERA_FORWARD))
+        ToggleVRSetting(Config::GFX_VR_ENABLE_CAMERA_FORWARD, "Enable Camera Forward");
+
       if (IsHotkey(HK_VR_DECREASE_CAMERA_FORWARD))
       {
         AdjustVRFloatSetting(Config::GFX_VR_CAMERA_FORWARD, -Config::GFX_VR_CAMERA_FORWARD_STEP,
@@ -563,6 +566,22 @@ void HotkeyScheduler::Run()
         AdjustVRFloatSetting(Config::GFX_VR_CAMERA_FORWARD, Config::GFX_VR_CAMERA_FORWARD_STEP,
                              Config::GFX_VR_CAMERA_FORWARD_MIN, Config::GFX_VR_CAMERA_FORWARD_MAX,
                              "Camera Forward", 2);
+      }
+
+      if (IsHotkey(HK_VR_TOGGLE_ENABLE_CAMERA_HEIGHT))
+        ToggleVRSetting(Config::GFX_VR_ENABLE_CAMERA_HEIGHT, "Enable Camera Height");
+
+      if (IsHotkey(HK_VR_DECREASE_CAMERA_HEIGHT))
+      {
+        AdjustVRFloatSetting(Config::GFX_VR_CAMERA_HEIGHT, -Config::GFX_VR_CAMERA_HEIGHT_STEP,
+                             Config::GFX_VR_CAMERA_HEIGHT_MIN, Config::GFX_VR_CAMERA_HEIGHT_MAX,
+                             "Camera Height", 2);
+      }
+      if (IsHotkey(HK_VR_INCREASE_CAMERA_HEIGHT))
+      {
+        AdjustVRFloatSetting(Config::GFX_VR_CAMERA_HEIGHT, Config::GFX_VR_CAMERA_HEIGHT_STEP,
+                             Config::GFX_VR_CAMERA_HEIGHT_MIN, Config::GFX_VR_CAMERA_HEIGHT_MAX,
+                             "Camera Height", 2);
       }
 
       if (IsHotkey(HK_VR_TOGGLE_VIRTUAL_SCREEN))

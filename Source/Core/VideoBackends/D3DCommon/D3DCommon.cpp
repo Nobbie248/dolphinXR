@@ -240,10 +240,12 @@ AbstractTextureFormat GetAbstractFormatForDXGIFormat(DXGI_FORMAT format)
   {
   case DXGI_FORMAT_R8G8B8A8_UINT:
   case DXGI_FORMAT_R8G8B8A8_UNORM:
+  case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
   case DXGI_FORMAT_R8G8B8A8_TYPELESS:
     return AbstractTextureFormat::RGBA8;
 
   case DXGI_FORMAT_B8G8R8A8_UNORM:
+  case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
   case DXGI_FORMAT_B8G8R8A8_TYPELESS:
     return AbstractTextureFormat::BGRA8;
 

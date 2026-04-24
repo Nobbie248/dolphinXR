@@ -14,6 +14,10 @@
 #include "VideoBackends/Vulkan/VulkanLoader.h"
 
 #define XR_USE_GRAPHICS_API_VULKAN
+#if defined(ANDROID)
+#include <jni.h>
+#define XR_USE_PLATFORM_ANDROID
+#endif
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
 
@@ -29,6 +33,14 @@ class VKFramebuffer;
 // (without allocation) and VKFramebuffer provides a render pass for rendering.
 struct XRVkEyeSwapchain
 {
+  XRVkEyeSwapchain();
+  ~XRVkEyeSwapchain();
+  XRVkEyeSwapchain(XRVkEyeSwapchain&&) noexcept;
+  XRVkEyeSwapchain& operator=(XRVkEyeSwapchain&&) noexcept;
+
+  XRVkEyeSwapchain(const XRVkEyeSwapchain&) = delete;
+  XRVkEyeSwapchain& operator=(const XRVkEyeSwapchain&) = delete;
+
   XrSwapchain swapchain = XR_NULL_HANDLE;
   uint32_t width = 0;
   uint32_t height = 0;

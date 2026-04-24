@@ -188,9 +188,11 @@ void VideoConfig::Refresh()
   vr_lean_back_angle = std::clamp(Config::Get(Config::GFX_VR_LEAN_BACK_ANGLE),
                                   Config::GFX_VR_LEAN_BACK_ANGLE_MIN,
                                   Config::GFX_VR_LEAN_BACK_ANGLE_MAX);
+  vr_enable_camera_forward = Config::Get(Config::GFX_VR_ENABLE_CAMERA_FORWARD);
   vr_camera_forward = std::clamp(Config::Get(Config::GFX_VR_CAMERA_FORWARD),
                                  Config::GFX_VR_CAMERA_FORWARD_MIN,
                                  Config::GFX_VR_CAMERA_FORWARD_MAX);
+  vr_enable_camera_height = Config::Get(Config::GFX_VR_ENABLE_CAMERA_HEIGHT);
   vr_camera_height = std::clamp(Config::Get(Config::GFX_VR_CAMERA_HEIGHT),
                                 Config::GFX_VR_CAMERA_HEIGHT_MIN,
                                 Config::GFX_VR_CAMERA_HEIGHT_MAX);

@@ -44,6 +44,7 @@ import org.dolphinemu.dolphinemu.features.input.model.ControllerInterface
 import org.dolphinemu.dolphinemu.features.input.model.DolphinSensorEventListener
 import org.dolphinemu.dolphinemu.features.settings.model.BooleanSetting
 import org.dolphinemu.dolphinemu.features.settings.model.IntSetting
+import org.dolphinemu.dolphinemu.features.settings.model.QuestVrSettings
 import org.dolphinemu.dolphinemu.features.settings.model.Settings
 import org.dolphinemu.dolphinemu.features.settings.model.StringSetting
 import org.dolphinemu.dolphinemu.features.settings.ui.MenuTag
@@ -435,6 +436,7 @@ class EmulationActivity : AppCompatActivity(), ThemeProvider {
         val wii = NativeLibrary.IsEmulatingWii()
         val id = if (wii) R.menu.menu_overlay_controls_wii else R.menu.menu_overlay_controls_gc
         popup.menuInflater.inflate(id, menu)
+        menu.findItem(R.id.menu_emulation_recenter_vr)?.isVisible = QuestVrSettings.isQuestBuild()
 
         // Populate the switch value for joystick center on touch
         menu.findItem(R.id.menu_emulation_joystick_rel_center).isChecked =
@@ -517,6 +519,7 @@ class EmulationActivity : AppCompatActivity(), ThemeProvider {
             MENU_ACTION_SETTINGS -> SettingsActivity.launch(this, MenuTag.SETTINGS)
             MENU_ACTION_SKYLANDERS -> showSkylanderPortalSettings()
             MENU_ACTION_INFINITY_BASE -> showInfinityBaseSettings()
+            MENU_ACTION_RECENTER_OPENXR -> NativeLibrary.RequestOpenXRRecenter()
             MENU_ACTION_EXIT -> emulationFragment!!.stopEmulation()
         }
     }
@@ -1077,6 +1080,7 @@ class EmulationActivity : AppCompatActivity(), ThemeProvider {
         const val MENU_ACTION_SKYLANDERS = 36
         const val MENU_ACTION_INFINITY_BASE = 37
         const val MENU_ACTION_LATCHING_CONTROLS = 38
+        const val MENU_ACTION_RECENTER_OPENXR = 39
 
         init {
             buttonsActionsMap.apply {
@@ -1087,6 +1091,7 @@ class EmulationActivity : AppCompatActivity(), ThemeProvider {
                 append(R.id.menu_emulation_choose_controller, MENU_ACTION_CHOOSE_CONTROLLER)
                 append(R.id.menu_emulation_joystick_rel_center, MENU_ACTION_JOYSTICK_REL_CENTER)
                 append(R.id.menu_emulation_reset_overlay, MENU_ACTION_RESET_OVERLAY)
+                append(R.id.menu_emulation_recenter_vr, MENU_ACTION_RECENTER_OPENXR)
                 append(R.id.menu_emulation_ir_recenter, MENU_SET_IR_RECENTER)
                 append(R.id.menu_emulation_set_ir_mode, MENU_SET_IR_MODE)
                 append(R.id.menu_emulation_choose_doubletap, MENU_ACTION_CHOOSE_DOUBLETAP)
@@ -1111,10 +1116,11 @@ class EmulationActivity : AppCompatActivity(), ThemeProvider {
             riivolution: Boolean
         ) {
             ignoreLaunchRequests = true
+            prepareQuestLaunchSettings(false)
             val launcher = Intent(activity, EmulationActivity::class.java)
             launcher.putExtra(EXTRA_SELECTED_GAMES, filePaths)
             launcher.putExtra(EXTRA_RIIVOLUTION, riivolution)
-            activity.startActivity(launcher)
+            startEmulationActivity(activity, launcher)
         }
 
         private fun performLaunchChecks(activity: FragmentActivity, fromIntent: Boolean, continueCallback: Runnable) {
@@ -1165,14 +1171,41 @@ class EmulationActivity : AppCompatActivity(), ThemeProvider {
 
         private fun launchSystemMenuWithoutChecks(activity: FragmentActivity) {
             ignoreLaunchRequests = true
+            prepareQuestLaunchSettings(true)
             val launcher = Intent(activity, EmulationActivity::class.java)
             launcher.putExtra(EXTRA_SYSTEM_MENU, true)
-            activity.startActivity(launcher)
+            startEmulationActivity(activity, launcher)
+        }
+
+        private fun startEmulationActivity(activity: FragmentActivity, launcher: Intent) {
+            if (QuestVrSettings.isLaunchInVrEnabled()) {
+                launcher.addCategory("com.oculus.intent.category.VR")
+                launcher.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                activity.startActivity(launcher)
+                activity.finish()
+            } else {
+                activity.startActivity(launcher)
+            }
         }
 
         @JvmStatic
         fun stopIgnoringLaunchRequests() {
             ignoreLaunchRequests = false
+        }
+
+        private fun prepareQuestLaunchSettings(launchSystemMenu: Boolean) {
+            if (!QuestVrSettings.isQuestBuild()) {
+                return
+            }
+
+            val settings = Settings()
+            settings.loadSettings()
+            try {
+                QuestVrSettings.prepareLaunchSettings(settings, launchSystemMenu)
+                settings.saveSettings()
+            } finally {
+                settings.close()
+            }
         }
 
         private fun areCoordinatesOutside(view: View?, x: Float, y: Float): Boolean {

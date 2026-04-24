@@ -165,7 +165,9 @@ extern const Info<bool> GFX_VR_ENABLE_OPENXR;
 extern const Info<bool> GFX_VR_AUTO_IMMEDIATE_XFB;
 extern const Info<float> GFX_VR_UNITS_PER_METER;
 extern const Info<float> GFX_VR_LEAN_BACK_ANGLE;
+extern const Info<bool> GFX_VR_ENABLE_CAMERA_FORWARD;
 extern const Info<float> GFX_VR_CAMERA_FORWARD;
+extern const Info<bool> GFX_VR_ENABLE_CAMERA_HEIGHT;
 extern const Info<float> GFX_VR_CAMERA_HEIGHT;
 
 static constexpr float GFX_VR_UNITS_PER_METER_MIN = 0.1f;
