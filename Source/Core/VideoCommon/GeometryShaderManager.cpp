@@ -182,10 +182,11 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
           constants.eye_z_row[0] = m_cached_eye_z_row[0];
           constants.eye_z_row[1] = m_cached_eye_z_row[1];
 
-          // The Vulkan legacy projected-space fallback behaves like a flat stereo projection on
-          // Quest. Android should use the full per-eye OpenXR projection path instead.
+          // The Vulkan legacy projected-space fallback is only safe for runtimes/headsets that
+          // tolerate approximating the runtime frustum in projected space.
 #if !defined(ANDROID)
-          if (perspective && g_backend_info.api_type == APIType::Vulkan)
+          if (perspective && g_backend_info.api_type == APIType::Vulkan &&
+              VR::g_openxr->ShouldUseVulkanLegacyProjectionFallback())
           {
             const Common::Vec2 fov_multiplier = g_freelook_camera.IsActive() ?
                                                     g_freelook_camera.GetFieldOfViewMultiplier() :

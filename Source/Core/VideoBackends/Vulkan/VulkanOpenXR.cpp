@@ -715,9 +715,13 @@ void VulkanOpenXR::ReleaseEyeTexture(uint32_t eye_index)
 #else
   // PC OpenXR runtimes are sensitive to holding runtime-owned Vulkan swapchain images
   // across Dolphin's later frame-submit work. Preserve the original PC path: submit the
-  // blit for this eye, then immediately release the image back to the runtime.
+  // blit for this eye, then release the image back to the runtime. Virtual Desktop on
+  // Quest is stricter about runtime-owned Vulkan images being released before the GPU
+  // has finished writing them, so wait for completion on the Quest/full-projection path.
   StateTracker::GetInstance()->EndRenderPass();
-  g_command_buffer_mgr->SubmitCommandBuffer(false, false);
+  const bool wait_for_completion =
+      VR::g_openxr && !VR::g_openxr->ShouldUseVulkanLegacyProjectionFallback();
+  g_command_buffer_mgr->SubmitCommandBuffer(false, wait_for_completion);
   StateTracker::GetInstance()->InvalidateCachedState();
 
   XrSwapchainImageReleaseInfo release_info{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};

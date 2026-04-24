@@ -14,11 +14,14 @@
 
 namespace UberShader
 {
+static constexpr u32 UBER_VERTEX_SHADER_CODE_VERSION = 1;
+
 VertexShaderUid GetVertexShaderUid()
 {
   VertexShaderUid out;
 
   vertex_ubershader_uid_data* const uid_data = out.GetUidData();
+  uid_data->code_version = UBER_VERTEX_SHADER_CODE_VERSION;
   uid_data->num_texgens = xfmem.numTexGen.numTexGens;
 
   return out;
@@ -414,6 +417,13 @@ float3 load_input_float3_rawtex(uint vtx_offset, uint attr_offset) {{
               "o.WorldPos = pos.xyz;\n");
   }
 
+  if (host_config.vr_stereo)
+  {
+    // Pass the view-space position (before projection) to the GS so it can apply
+    // the correct per-eye asymmetric HMD projection for each eye independently.
+    out.Write("o.viewPos = pos;\n");
+  }
+
   // If we can disable the incorrect depth clipping planes using depth clamping, then we can do
   // our own depth clipping and calculate the depth range before the perspective divide if
   // necessary.
@@ -730,6 +740,7 @@ void EnumerateVertexShaderUids(const std::function<void(const VertexShaderUid&)>
   for (u32 texgens = 0; texgens <= 8; texgens++)
   {
     vertex_ubershader_uid_data* const vuid = uid.GetUidData();
+    vuid->code_version = UBER_VERTEX_SHADER_CODE_VERSION;
     vuid->num_texgens = texgens;
     callback(uid);
   }

@@ -121,7 +121,9 @@ Common::Matrix44 VertexShaderManager::LoadProjectionMatrix(bool apply_openxr_leg
 #ifdef ENABLE_VR
 #if !defined(ANDROID)
     if (apply_openxr_legacy_view && g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
-        g_backend_info.api_type == APIType::Vulkan && VR::g_openxr && VR::g_openxr->IsSessionRunning())
+        g_backend_info.api_type == APIType::Vulkan && VR::g_openxr &&
+        VR::g_openxr->IsSessionRunning() &&
+        VR::g_openxr->ShouldUseVulkanLegacyProjectionFallback())
     {
       Common::Matrix44 openxr_view;
       if (VR::g_openxr->GetLegacyViewMatrix(g_ActiveConfig.vr_units_per_meter, &openxr_view))
