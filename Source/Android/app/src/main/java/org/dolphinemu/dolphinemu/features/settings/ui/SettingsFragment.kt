@@ -274,6 +274,7 @@ class SettingsFragment : Fragment(), SettingsFragmentView {
             titles[MenuTag.GRAPHICS] = R.string.graphics_settings
             titles[MenuTag.ENHANCEMENTS] = R.string.enhancements_submenu
             titles[MenuTag.COLOR_CORRECTION] = R.string.color_correction_submenu
+            titles[MenuTag.OPENXR] = R.string.openxr_submenu
             titles[MenuTag.STEREOSCOPY] = R.string.stereoscopy_submenu
             titles[MenuTag.HACKS] = R.string.hacks_submenu
             titles[MenuTag.STATISTICS] = R.string.statistics_submenu

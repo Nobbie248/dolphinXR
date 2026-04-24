@@ -119,6 +119,7 @@ class SettingsFragmentPresenter(
             MenuTag.WIIMOTE -> addWiimoteSettings(sl)
             MenuTag.ENHANCEMENTS -> addEnhanceSettings(sl)
             MenuTag.COLOR_CORRECTION -> addColorCorrectionSettings(sl)
+            MenuTag.OPENXR -> addOpenXrSettings(sl)
             MenuTag.STEREOSCOPY -> addStereoSettings(sl)
             MenuTag.HACKS -> addHackSettings(sl)
             MenuTag.STATISTICS -> addStatisticsSettings(sl)
@@ -185,6 +186,9 @@ class SettingsFragmentPresenter(
     private fun addTopLevelSettings(sl: ArrayList<SettingsItem>) {
         sl.add(SubmenuSetting(context, R.string.config, MenuTag.CONFIG))
         sl.add(SubmenuSetting(context, R.string.graphics_settings, MenuTag.GRAPHICS))
+        if (BuildConfig.IS_QUEST && gameId.isNullOrEmpty()) {
+            sl.add(SubmenuSetting(context, R.string.openxr_submenu, MenuTag.OPENXR))
+        }
 
         sl.add(SubmenuSetting(context, R.string.gcpad_settings, MenuTag.GCPAD_TYPE))
         if (settings!!.isWii) {
@@ -2361,10 +2365,10 @@ class SettingsFragmentPresenter(
                 R.string.stereoscopy_swap_eyes_description
             )
         )
+    }
 
-        if (BuildConfig.IS_QUEST && gameId.isNullOrEmpty()) {
-            addQuestVrSettings(sl)
-        }
+    private fun addOpenXrSettings(sl: ArrayList<SettingsItem>) {
+        addQuestVrSettings(sl)
     }
 
     private fun addQuestVrSettings(sl: ArrayList<SettingsItem>) {
@@ -2396,9 +2400,212 @@ class SettingsFragmentPresenter(
         sl.add(
             SwitchSetting(
                 context,
+                QuestVrSettings.autoImmediateXfbSetting(),
+                R.string.quest_force_immediately_present_xfb,
+                R.string.quest_force_immediately_present_xfb_description
+            )
+        )
+        sl.add(
+            SwitchSetting(
+                context,
+                QuestVrSettings.autoVbiFromHmdSetting(),
+                R.string.quest_force_vbi_from_hmd,
+                R.string.quest_force_vbi_from_hmd_description
+            )
+        )
+        sl.add(
+            SwitchSetting(
+                context,
                 QuestVrSettings.lockHeadPoseSetting(),
                 R.string.quest_lock_head_pose,
                 R.string.quest_lock_head_pose_description
+            )
+        )
+        sl.add(
+            FloatSliderSetting(
+                context,
+                QuestVrSettings.unitsPerMeterSetting(),
+                R.string.quest_units_per_meter,
+                R.string.quest_units_per_meter_description,
+                0.1f,
+                500.0f,
+                "",
+                0.1f,
+                true
+            )
+        )
+        sl.add(
+            FloatSliderSetting(
+                context,
+                QuestVrSettings.leanBackAngleSetting(),
+                R.string.quest_lean_back_angle,
+                R.string.quest_lean_back_angle_description,
+                -45.0f,
+                45.0f,
+                "",
+                0.1f,
+                true
+            )
+        )
+        sl.add(
+            FloatSliderSetting(
+                context,
+                QuestVrSettings.cameraForwardSetting(),
+                R.string.quest_camera_forward,
+                R.string.quest_camera_forward_description,
+                -20.0f,
+                20.0f,
+                "",
+                0.1f,
+                true
+            )
+        )
+        sl.add(
+            FloatSliderSetting(
+                context,
+                QuestVrSettings.cameraHeightSetting(),
+                R.string.quest_camera_height,
+                R.string.quest_camera_height_description,
+                -20.0f,
+                20.0f,
+                "",
+                0.1f,
+                true
+            )
+        )
+        sl.add(
+            SingleChoiceSetting(
+                context,
+                QuestVrSettings.opcodeReplaySetting(),
+                R.string.quest_opcode_replay,
+                R.string.quest_opcode_replay_description,
+                R.array.questOpcodeReplayEntries,
+                R.array.questOpcodeReplayValues
+            )
+        )
+        sl.add(
+            SwitchSetting(
+                context,
+                QuestVrSettings.passthroughSetting(),
+                R.string.quest_passthrough,
+                R.string.quest_passthrough_description
+            )
+        )
+        sl.add(
+            SwitchSetting(
+                context,
+                QuestVrSettings.debugPassthroughSetting(),
+                R.string.quest_passthrough_debug,
+                R.string.quest_passthrough_debug_description
+            )
+        )
+        sl.add(
+            FloatSliderSetting(
+                context,
+                QuestVrSettings.arBackgroundAlphaSetting(),
+                R.string.quest_ar_background_alpha,
+                R.string.quest_ar_background_alpha_description,
+                0.0f,
+                1.0f,
+                "",
+                0.05f,
+                true
+            )
+        )
+        sl.add(
+            FloatSliderSetting(
+                context,
+                QuestVrSettings.vrGammaSetting(),
+                R.string.quest_vr_gamma,
+                R.string.quest_vr_gamma_description,
+                1.0f,
+                3.0f,
+                "",
+                0.1f,
+                true
+            )
+        )
+
+        sl.add(HeaderSetting(context, R.string.quest_vr_virtual_screen, 0))
+        sl.add(
+            SwitchSetting(
+                context,
+                QuestVrSettings.virtualScreenSetting(),
+                R.string.quest_virtual_screen,
+                R.string.quest_virtual_screen_description
+            )
+        )
+        sl.add(
+            FloatSliderSetting(
+                context,
+                QuestVrSettings.screenDistanceSetting(),
+                R.string.quest_screen_distance,
+                R.string.quest_screen_distance_description,
+                0.5f,
+                10.0f,
+                "",
+                0.1f,
+                true
+            )
+        )
+        sl.add(
+            FloatSliderSetting(
+                context,
+                QuestVrSettings.screenSizeSetting(),
+                R.string.quest_screen_size,
+                R.string.quest_screen_size_description,
+                0.5f,
+                5.0f,
+                "",
+                0.1f,
+                true
+            )
+        )
+        sl.add(
+            FloatSliderSetting(
+                context,
+                QuestVrSettings.headLockedCurvatureSetting(),
+                R.string.quest_head_locked_curvature,
+                R.string.quest_head_locked_curvature_description,
+                0.0f,
+                5.0f,
+                "",
+                0.01f,
+                true
+            )
+        )
+        sl.add(
+            SwitchSetting(
+                context,
+                QuestVrSettings.autoLayerSpreadSetting(),
+                R.string.quest_auto_layer_spread,
+                R.string.quest_auto_layer_spread_description
+            )
+        )
+        sl.add(
+            FloatSliderSetting(
+                context,
+                QuestVrSettings.layerOffsetSetting(),
+                R.string.quest_layer_offset,
+                R.string.quest_layer_offset_description,
+                0.0001f,
+                0.01f,
+                "",
+                0.0001f,
+                true
+            )
+        )
+        sl.add(
+            FloatSliderSetting(
+                context,
+                QuestVrSettings.elementDepthSetting(),
+                R.string.quest_element_depth,
+                R.string.quest_element_depth_description,
+                0.0f,
+                0.1f,
+                "",
+                0.0001f,
+                true
             )
         )
 
@@ -2462,25 +2669,61 @@ class SettingsFragmentPresenter(
         sl.add(
             SwitchSetting(
                 context,
-                QuestVrSettings.passthroughSetting(),
-                R.string.quest_passthrough,
-                R.string.quest_passthrough_description
-            )
-        )
-        sl.add(
-            SwitchSetting(
-                context,
-                QuestVrSettings.debugPassthroughSetting(),
-                R.string.quest_passthrough_debug,
-                R.string.quest_passthrough_debug_description
-            )
-        )
-        sl.add(
-            SwitchSetting(
-                context,
                 BooleanSetting.GFX_SHOW_FPS,
                 R.string.quest_show_perf_hud,
                 R.string.quest_show_perf_hud_description
+            )
+        )
+        sl.add(
+            SwitchSetting(
+                context,
+                QuestVrSettings.removeBarsSetting(),
+                R.string.quest_remove_cinematic_bars,
+                R.string.quest_remove_cinematic_bars_description
+            )
+        )
+        sl.add(
+            IntSliderSetting(
+                context,
+                QuestVrSettings.clearEfbCopiesSetting(),
+                R.string.quest_clear_efb_copies,
+                R.string.quest_clear_efb_copies_description,
+                0,
+                640,
+                "",
+                10
+            )
+        )
+        sl.add(
+            SwitchSetting(
+                context,
+                QuestVrSettings.dontClearScreenSetting(),
+                R.string.quest_dont_clear_screen,
+                R.string.quest_dont_clear_screen_description
+            )
+        )
+        sl.add(
+            SwitchSetting(
+                context,
+                QuestVrSettings.disableCpuCullSetting(),
+                R.string.quest_disable_cpu_culling,
+                R.string.quest_disable_cpu_culling_description
+            )
+        )
+        sl.add(
+            SwitchSetting(
+                context,
+                QuestVrSettings.loadCustomShadersSetting(),
+                R.string.quest_load_custom_shaders,
+                R.string.quest_load_custom_shaders_description
+            )
+        )
+        sl.add(
+            SwitchSetting(
+                context,
+                QuestVrSettings.openXrConfigSceneSetting(),
+                R.string.quest_enable_openxr_config_scene,
+                R.string.quest_enable_openxr_config_scene_description
             )
         )
         sl.add(

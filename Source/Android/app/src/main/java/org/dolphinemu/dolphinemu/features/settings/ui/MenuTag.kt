@@ -21,6 +21,7 @@ enum class MenuTag {
     GRAPHICS("graphics"),
     ENHANCEMENTS("enhancements"),
     COLOR_CORRECTION("color_correction"),
+    OPENXR("openxr"),
     STEREOSCOPY("stereoscopy"),
     HACKS("hacks"),
     STATISTICS("statistics"),

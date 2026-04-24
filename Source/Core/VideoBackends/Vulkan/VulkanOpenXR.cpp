@@ -106,19 +106,20 @@ static bool SelectSwapchainFormat(XrSession session, int64_t* out_format)
                  VkFormatToString(format));
   }
 
-  // Prefer sRGB formats so the OpenXR compositor correctly decodes Dolphin's
-  // gamma-encoded XFB. With a UNORM swapchain the runtime treats our sRGB bytes
-  // as linear and the image appears ~2x too bright.
-  //
-  // The image is created with MUTABLE_FORMAT_BIT so we render through a UNORM
-  // VkImageView alias — raw sRGB-encoded bytes land in memory without a double
-  // gamma encode, and the compositor reads them through the image's sRGB format.
-  // This also keeps the PostProcessing pipeline cache (keyed on AbstractTextureFormat
-  // RGBA8 / VK_FORMAT_*_UNORM) compatible with the eye framebuffer's render pass.
+#if defined(ANDROID)
+  // Quest's compositor expects sRGB swapchains for Dolphin's gamma-encoded XFB. We render through
+  // a UNORM view alias below to avoid a double gamma encode.
   static constexpr std::array<VkFormat, 6> preferred_formats = {
       VK_FORMAT_R8G8B8A8_SRGB,            VK_FORMAT_B8G8R8A8_SRGB,
       VK_FORMAT_R8G8B8A8_UNORM,           VK_FORMAT_B8G8R8A8_UNORM,
       VK_FORMAT_A2B10G10R10_UNORM_PACK32, VK_FORMAT_R16G16B16A16_SFLOAT};
+#else
+  // Prefer sRGB on PC so the OpenXR compositor decodes Dolphin's gamma-encoded XFB correctly.
+  static constexpr std::array<VkFormat, 6> preferred_formats = {
+      VK_FORMAT_R8G8B8A8_SRGB,            VK_FORMAT_B8G8R8A8_SRGB,
+      VK_FORMAT_R8G8B8A8_UNORM,           VK_FORMAT_B8G8R8A8_UNORM,
+      VK_FORMAT_A2B10G10R10_UNORM_PACK32, VK_FORMAT_R16G16B16A16_SFLOAT};
+#endif
 
   for (const VkFormat preferred : preferred_formats)
   {
@@ -186,6 +187,13 @@ bool VulkanOpenXR::PreQueryVulkanExtensions(VulkanExtensionRequirements& out)
 #if defined(ANDROID)
   extensions.push_back(XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME);
 #endif
+  // Required by the OpenXR spec when XR_SWAPCHAIN_USAGE_MUTABLE_FORMAT_BIT is used
+  // on Vulkan. The sRGB swapchain path uses a UNORM view alias to avoid double gamma.
+  if (VR::OpenXRManager::IsRuntimeExtensionSupported(
+          XR_KHR_VULKAN_SWAPCHAIN_FORMAT_LIST_EXTENSION_NAME))
+  {
+    extensions.push_back(XR_KHR_VULKAN_SWAPCHAIN_FORMAT_LIST_EXTENSION_NAME);
+  }
   const auto controller_exts = VR::OpenXRManager::GetAvailableControllerExtensions();
   extensions.insert(extensions.end(), controller_exts.begin(), controller_exts.end());
   if (!mgr->CreateInstance(extensions))
@@ -285,6 +293,11 @@ bool VulkanOpenXR::Initialize()
 #if defined(ANDROID)
     extensions.push_back(XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME);
 #endif
+    if (VR::OpenXRManager::IsRuntimeExtensionSupported(
+            XR_KHR_VULKAN_SWAPCHAIN_FORMAT_LIST_EXTENSION_NAME))
+    {
+      extensions.push_back(XR_KHR_VULKAN_SWAPCHAIN_FORMAT_LIST_EXTENSION_NAME);
+    }
     const auto controller_exts = VR::OpenXRManager::GetAvailableControllerExtensions();
     extensions.insert(extensions.end(), controller_exts.begin(), controller_exts.end());
     if (!mgr->CreateInstance(extensions))
@@ -518,9 +531,25 @@ bool VulkanOpenXR::CreateSwapchains()
     info.mipCount = 1;
     info.faceCount = 1;
     info.sampleCount = 1;
-    info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT |
-                      XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT |
-                      XR_SWAPCHAIN_USAGE_MUTABLE_FORMAT_BIT;
+    info.usageFlags =
+        XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT;
+
+    const VkFormat vk_sc_format = static_cast<VkFormat>(swapchain_format);
+    const VkFormat vk_view_format = VKTexture::GetLinearFormat(vk_sc_format);
+    const std::array<VkFormat, 2> view_formats = {vk_sc_format, vk_view_format};
+    XrVulkanSwapchainFormatListCreateInfoKHR format_list{
+        XR_TYPE_VULKAN_SWAPCHAIN_FORMAT_LIST_CREATE_INFO_KHR};
+    if (vk_view_format != vk_sc_format)
+    {
+      info.usageFlags |= XR_SWAPCHAIN_USAGE_MUTABLE_FORMAT_BIT;
+
+      if (VR::g_openxr->IsExtensionEnabled(XR_KHR_VULKAN_SWAPCHAIN_FORMAT_LIST_EXTENSION_NAME))
+      {
+        format_list.viewFormatCount = static_cast<uint32_t>(view_formats.size());
+        format_list.viewFormats = view_formats.data();
+        info.next = &format_list;
+      }
+    }
 
     XrResult result = xrCreateSwapchain(VR::g_openxr->GetSession(), &info, &sc.swapchain);
     if (XR_FAILED(result))
@@ -549,17 +578,11 @@ bool VulkanOpenXR::CreateSwapchains()
                                abstract_format, AbstractTextureFlag_RenderTarget,
                                AbstractTextureType::Texture_2D);
 
-      // Adopt the runtime-owned VkImage. For sRGB swapchains we create the
-      // VkImageView with the UNORM alias so BlitFromTexture writes raw bytes
-      // without a gamma encode — the runtime still sees the image as sRGB and
-      // the compositor decodes correctly. This relies on
-      // XR_SWAPCHAIN_USAGE_MUTABLE_FORMAT_BIT being set, which forces the
-      // runtime to create the VkImage with VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT.
-      const VkFormat view_format =
-          VKTexture::GetLinearFormat(static_cast<VkFormat>(swapchain_format));
+      // Adopt the runtime-owned VkImage. For sRGB swapchains, use a UNORM view alias so
+      // BlitFromTexture writes raw sRGB-encoded bytes without a second sRGB encode.
       sc.textures[i] =
           VKTexture::CreateAdopted(tex_config, images[i].image, VK_IMAGE_VIEW_TYPE_2D,
-                                   VK_IMAGE_LAYOUT_UNDEFINED, view_format);
+                                   VK_IMAGE_LAYOUT_UNDEFINED, vk_view_format);
       if (!sc.textures[i])
       {
         ERROR_LOG_FMT(VIDEO, "OpenXR: VKTexture::CreateAdopted failed for eye {}, image {}.", eye,
@@ -684,16 +707,37 @@ void VulkanOpenXR::ReleaseEyeTexture(uint32_t eye_index)
   if (!m_image_acquired[eye_index])
     return;
 
+#if defined(ANDROID)
   // End any active render pass so the eye image is no longer bound for rendering.
   // We defer the Vulkan submit/xrReleaseSwapchainImage pairing until SubmitFrame()
   // so both eyes stay within one command-buffer lifetime.
   StateTracker::GetInstance()->EndRenderPass();
+#else
+  // PC OpenXR runtimes are sensitive to holding runtime-owned Vulkan swapchain images
+  // across Dolphin's later frame-submit work. Preserve the original PC path: submit the
+  // blit for this eye, then immediately release the image back to the runtime.
+  StateTracker::GetInstance()->EndRenderPass();
+  g_command_buffer_mgr->SubmitCommandBuffer(false, false);
+  StateTracker::GetInstance()->InvalidateCachedState();
+
+  XrSwapchainImageReleaseInfo release_info{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+  const XrResult result =
+      xrReleaseSwapchainImage(m_eye_swapchains[eye_index].swapchain, &release_info);
+  if (XR_FAILED(result))
+  {
+    WARN_LOG_FMT(VIDEO, "OpenXR: xrReleaseSwapchainImage failed for eye {} ({}).", eye_index,
+                 static_cast<int>(result));
+  }
+
+  m_image_acquired[eye_index] = false;
+#endif
 }
 
 bool VulkanOpenXR::SubmitFrame()
 {
   ASSERT(VR::g_openxr != nullptr);
 
+#if defined(ANDROID)
   bool has_acquired_images = false;
   for (bool acquired : m_image_acquired)
   {
@@ -725,6 +769,7 @@ bool VulkanOpenXR::SubmitFrame()
       m_image_acquired[eye] = false;
     }
   }
+#endif
 
   const auto& eye_views = VR::g_openxr->GetEyeViews();
 
