@@ -56,6 +56,7 @@ private:
   QLabel* m_clear_efb_value = nullptr;
   ConfigBool* m_remove_bars = nullptr;
   ConfigBool* m_lock_head_pose = nullptr;
+  ConfigBool* m_use_vulkan_multiview = nullptr;
   ConfigBool* m_ar_mode = nullptr;
   ConfigFloatSlider* m_ar_background_alpha = nullptr;
   QLabel* m_ar_background_alpha_value = nullptr;

@@ -435,10 +435,14 @@ void PostProcessing::RecompileShader()
 
   m_default_pipeline.reset();
   m_pipeline.reset();
+  m_default_multiview_pipeline.reset();
+  m_multiview_pipeline.reset();
   m_default_pixel_shader.reset();
   m_pixel_shader.reset();
   m_default_vertex_shader.reset();
   m_vertex_shader.reset();
+  m_default_multiview_vertex_shader.reset();
+  m_multiview_vertex_shader.reset();
   if (!CompilePixelShader())
     return;
   if (!CompileVertexShader())
@@ -451,6 +455,8 @@ void PostProcessing::RecompilePipeline()
 {
   m_default_pipeline.reset();
   m_pipeline.reset();
+  m_default_multiview_pipeline.reset();
+  m_multiview_pipeline.reset();
   CompilePipeline();
 }
 
@@ -468,6 +474,12 @@ bool PostProcessing::NeedsIntermediaryBuffer() const
   // If we have no user selected post process shader,
   // there's no point in having an intermediary buffer doing nothing.
   return !m_config.GetShader().empty();
+}
+
+bool PostProcessing::CanBlitFromTextureLayeredMultiview() const
+{
+  return g_backend_info.api_type == APIType::Vulkan && g_backend_info.bSupportsMultiview &&
+         !NeedsIntermediaryBuffer() && m_multiview_vertex_shader != nullptr;
 }
 
 void PostProcessing::BlitFromTexture(const MathUtil::Rectangle<int>& dst,
@@ -605,6 +617,56 @@ void PostProcessing::BlitFromTexture(const MathUtil::Rectangle<int>& dst,
 
     g_gfx->Draw(0, 3);
   }
+}
+
+bool PostProcessing::BlitFromTextureLayeredMultiview(const MathUtil::Rectangle<int>& dst,
+                                                     const MathUtil::Rectangle<int>& src,
+                                                     const AbstractTexture* src_tex)
+{
+  AbstractFramebuffer* const current_framebuffer = g_gfx->GetCurrentFramebuffer();
+  if (!CanBlitFromTextureLayeredMultiview() || !current_framebuffer || !src_tex ||
+      current_framebuffer->GetLayers() < 2 || src_tex->GetLayers() < 2)
+  {
+    return false;
+  }
+
+  if (current_framebuffer->GetColorFormat() != m_framebuffer_format)
+  {
+    m_framebuffer_format = current_framebuffer->GetColorFormat();
+    RecompilePipeline();
+  }
+
+  g_gfx->SetSamplerState(0, RenderState::GetLinearSamplerState());
+  g_gfx->SetSamplerState(1, RenderState::GetPointSamplerState());
+  g_gfx->SetTexture(0, src_tex);
+  g_gfx->SetTexture(1, src_tex);
+
+  const bool needs_color_correction = IsColorCorrectionActive();
+  const bool needs_resampling =
+      g_ActiveConfig.output_resampling_mode > OutputResamplingMode::Default;
+  const bool needs_default_pipeline = needs_color_correction || needs_resampling;
+  const AbstractPipeline* pipeline = needs_default_pipeline ? m_default_multiview_pipeline.get() :
+                                                              m_multiview_pipeline.get();
+  std::vector<u8>* uniform_staging_buffer =
+      needs_default_pipeline ? &m_default_uniform_staging_buffer : &m_uniform_staging_buffer;
+  const bool user_post_process = !needs_default_pipeline;
+  if (!pipeline || uniform_staging_buffer->empty())
+    return false;
+
+  m_intermediary_frame_buffer.reset();
+  m_intermediary_color_texture.reset();
+
+  const MathUtil::Rectangle<int> present_rect = g_presenter->GetTargetRectangle();
+  FillUniformBuffer(src, src_tex, 0, current_framebuffer->GetRect(), present_rect,
+                    uniform_staging_buffer->data(), user_post_process, false);
+  g_vertex_manager->UploadUtilityUniforms(uniform_staging_buffer->data(),
+                                          static_cast<u32>(uniform_staging_buffer->size()));
+
+  const auto vp_rect = g_gfx->ConvertFramebufferRectangle(dst, current_framebuffer);
+  g_gfx->SetViewportAndScissor(vp_rect);
+  g_gfx->SetPipeline(pipeline);
+  g_gfx->Draw(0, 3);
+  return true;
 }
 
 std::string PostProcessing::GetUniformBufferHeader(bool user_post_process) const
@@ -809,6 +871,31 @@ static std::string GetVertexShaderBody()
   return ss.str();
 }
 
+static std::string GetMultiviewVertexShaderBody()
+{
+  std::ostringstream ss;
+  if (g_backend_info.bSupportsGeometryShaders)
+  {
+    ss << "VARYING_LOCATION(0) out VertexData {\n";
+    ss << "  float3 v_tex0;\n";
+    ss << "};\n";
+  }
+  else
+  {
+    ss << "VARYING_LOCATION(0) out float3 v_tex0;\n";
+  }
+
+  ss << "#define id gl_VertexID\n";
+  ss << "#define opos gl_Position\n";
+  ss << "void main() {\n";
+  ss << "  float2 coord = float2(float((id << 1) & 2), float(id & 2));\n";
+  ss << "  opos = float4(coord * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f), 0.0f, 1.0f);\n";
+  ss << "  v_tex0 = float3(src_rect.xy + (src_rect.zw * coord), float(gl_ViewIndex));\n";
+  ss << "  opos.y = -opos.y;\n";
+  ss << "}\n";
+  return ss.str();
+}
+
 bool PostProcessing::CompileVertexShader()
 {
   std::ostringstream ss_default;
@@ -829,6 +916,34 @@ bool PostProcessing::CompileVertexShader()
     m_default_vertex_shader.reset();
     m_vertex_shader.reset();
     return false;
+  }
+
+  m_default_multiview_vertex_shader.reset();
+  m_multiview_vertex_shader.reset();
+  if (g_backend_info.api_type == APIType::Vulkan && g_backend_info.bSupportsMultiview)
+  {
+    std::ostringstream ss_default_multiview;
+    ss_default_multiview << "#extension GL_EXT_multiview : require\n";
+    ss_default_multiview << GetUniformBufferHeader(false);
+    ss_default_multiview << GetMultiviewVertexShaderBody();
+    m_default_multiview_vertex_shader = g_gfx->CreateShaderFromSource(
+        ShaderStage::Vertex, ss_default_multiview.str(), nullptr,
+        "Default multiview post-processing vertex shader");
+
+    std::ostringstream ss_multiview;
+    ss_multiview << "#extension GL_EXT_multiview : require\n";
+    ss_multiview << GetUniformBufferHeader(true);
+    ss_multiview << GetMultiviewVertexShaderBody();
+    m_multiview_vertex_shader = g_gfx->CreateShaderFromSource(
+        ShaderStage::Vertex, ss_multiview.str(), nullptr,
+        "Multiview post-processing vertex shader");
+
+    if (!m_default_multiview_vertex_shader || !m_multiview_vertex_shader)
+    {
+      WARN_LOG_FMT(VIDEO, "Failed to compile multiview post-processing vertex shader");
+      m_default_multiview_vertex_shader.reset();
+      m_multiview_vertex_shader.reset();
+    }
   }
 
   return true;
@@ -1064,6 +1179,33 @@ bool PostProcessing::CompilePipeline()
   m_pipeline = g_gfx->CreatePipeline(config);
   if (!m_pipeline)
     return false;
+
+  if (g_backend_info.api_type == APIType::Vulkan && g_backend_info.bSupportsMultiview &&
+      !needs_intermediary_buffer && m_default_multiview_vertex_shader &&
+      m_multiview_vertex_shader)
+  {
+    AbstractPipelineConfig multiview_config = {};
+    multiview_config.vertex_shader = m_default_multiview_vertex_shader.get();
+    multiview_config.geometry_shader = nullptr;
+    multiview_config.pixel_shader = m_default_pixel_shader.get();
+    multiview_config.rasterization_state =
+        RenderState::GetNoCullRasterizationState(PrimitiveType::Triangles);
+    multiview_config.depth_state = RenderState::GetNoDepthTestingDepthState();
+    multiview_config.blending_state = RenderState::GetNoBlendingBlendState();
+    multiview_config.framebuffer_state =
+        RenderState::GetColorFramebufferState(m_framebuffer_format);
+    multiview_config.framebuffer_state.multiview = 1;
+    multiview_config.usage = AbstractPipelineUsage::Utility;
+
+    if (multiview_config.pixel_shader)
+      m_default_multiview_pipeline = g_gfx->CreatePipeline(multiview_config);
+
+    multiview_config.vertex_shader = m_multiview_vertex_shader.get();
+    multiview_config.pixel_shader = m_pixel_shader.get();
+    m_multiview_pipeline = g_gfx->CreatePipeline(multiview_config);
+    if (!m_multiview_pipeline)
+      WARN_LOG_FMT(VIDEO, "Failed to create multiview post-processing pipeline");
+  }
 
   return true;
 }

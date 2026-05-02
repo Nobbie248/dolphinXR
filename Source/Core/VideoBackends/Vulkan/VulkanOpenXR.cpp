@@ -35,10 +35,32 @@ namespace Vulkan
 {
 std::unique_ptr<VulkanOpenXR> g_openxr_vk;
 
+#if defined(ANDROID)
+static void AppendOptionalAndroidOpenXRExtensions(std::vector<const char*>* extensions)
+{
+  if (VR::OpenXRManager::IsRuntimeExtensionSupported(
+          XR_KHR_ANDROID_THREAD_SETTINGS_EXTENSION_NAME))
+  {
+    extensions->push_back(XR_KHR_ANDROID_THREAD_SETTINGS_EXTENSION_NAME);
+    INFO_LOG_FMT(VIDEO, "OpenXR: Enabling XR_KHR_android_thread_settings.");
+  }
+  if (VR::OpenXRManager::IsRuntimeExtensionSupported(XR_EXT_PERFORMANCE_SETTINGS_EXTENSION_NAME))
+  {
+    extensions->push_back(XR_EXT_PERFORMANCE_SETTINGS_EXTENSION_NAME);
+    INFO_LOG_FMT(VIDEO, "OpenXR: Enabling XR_EXT_performance_settings.");
+  }
+}
+#endif
+
 XRVkEyeSwapchain::XRVkEyeSwapchain() = default;
 XRVkEyeSwapchain::~XRVkEyeSwapchain() = default;
 XRVkEyeSwapchain::XRVkEyeSwapchain(XRVkEyeSwapchain&&) noexcept = default;
 XRVkEyeSwapchain& XRVkEyeSwapchain::operator=(XRVkEyeSwapchain&&) noexcept = default;
+
+XRVkLayeredSwapchain::XRVkLayeredSwapchain() = default;
+XRVkLayeredSwapchain::~XRVkLayeredSwapchain() = default;
+XRVkLayeredSwapchain::XRVkLayeredSwapchain(XRVkLayeredSwapchain&&) noexcept = default;
+XRVkLayeredSwapchain& XRVkLayeredSwapchain::operator=(XRVkLayeredSwapchain&&) noexcept = default;
 
 static const char* VkFormatToString(int64_t format)
 {
@@ -186,6 +208,7 @@ bool VulkanOpenXR::PreQueryVulkanExtensions(VulkanExtensionRequirements& out)
   std::vector<const char*> extensions = {XR_KHR_VULKAN_ENABLE_EXTENSION_NAME};
 #if defined(ANDROID)
   extensions.push_back(XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME);
+  AppendOptionalAndroidOpenXRExtensions(&extensions);
 #endif
   // Required by the OpenXR spec when XR_SWAPCHAIN_USAGE_MUTABLE_FORMAT_BIT is used
   // on Vulkan. The sRGB swapchain path uses a UNORM view alias to avoid double gamma.
@@ -292,6 +315,7 @@ bool VulkanOpenXR::Initialize()
     std::vector<const char*> extensions = {XR_KHR_VULKAN_ENABLE_EXTENSION_NAME};
 #if defined(ANDROID)
     extensions.push_back(XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME);
+    AppendOptionalAndroidOpenXRExtensions(&extensions);
 #endif
     if (VR::OpenXRManager::IsRuntimeExtensionSupported(
             XR_KHR_VULKAN_SWAPCHAIN_FORMAT_LIST_EXTENSION_NAME))
@@ -508,11 +532,183 @@ bool VulkanOpenXR::CreateSwapchains()
 {
   ASSERT(VR::g_openxr != nullptr);
 
-  const auto& view_cfgs = VR::g_openxr->GetViewConfigViews();
   int64_t swapchain_format = 0;
   if (!SelectSwapchainFormat(VR::g_openxr->GetSession(), &swapchain_format))
     return false;
 
+  m_use_layered_swapchain = false;
+  m_frame_uses_layered_swapchain = false;
+
+#if defined(ANDROID)
+  const auto& view_cfgs = VR::g_openxr->GetViewConfigViews();
+  const bool matching_eye_sizes =
+      view_cfgs[0].recommendedImageRectWidth == view_cfgs[1].recommendedImageRectWidth &&
+      view_cfgs[0].recommendedImageRectHeight == view_cfgs[1].recommendedImageRectHeight;
+  if (g_vulkan_context->SupportsMultiview() && g_ActiveConfig.vr_use_vulkan_multiview &&
+      g_ActiveConfig.stereo_mode == StereoMode::OpenXR)
+  {
+    if (matching_eye_sizes)
+    {
+      if (CreateLayeredSwapchain(swapchain_format))
+      {
+        m_use_layered_swapchain = true;
+      }
+      else
+      {
+        WARN_LOG_FMT(VIDEO,
+                     "OpenXR: Layered Vulkan swapchain creation failed; falling back to "
+                     "two per-eye swapchains.");
+      }
+    }
+    else
+    {
+      WARN_LOG_FMT(VIDEO,
+                   "OpenXR: Layered Vulkan swapchain disabled because eye sizes differ "
+                   "({}x{} vs {}x{}).",
+                   view_cfgs[0].recommendedImageRectWidth,
+                   view_cfgs[0].recommendedImageRectHeight,
+                   view_cfgs[1].recommendedImageRectWidth,
+                   view_cfgs[1].recommendedImageRectHeight);
+    }
+  }
+#endif
+
+  if (!CreateEyeSwapchains(swapchain_format))
+  {
+    DestroySwapchains();
+    return false;
+  }
+
+  return true;
+}
+
+bool VulkanOpenXR::CreateLayeredSwapchain(int64_t swapchain_format)
+{
+  ASSERT(VR::g_openxr != nullptr);
+
+  const auto& view_cfgs = VR::g_openxr->GetViewConfigViews();
+  const AbstractTextureFormat abstract_format =
+      VkFormatToAbstractFormat(static_cast<VkFormat>(swapchain_format));
+
+  auto& sc = m_layered_swapchain;
+  sc.width = view_cfgs[0].recommendedImageRectWidth;
+  sc.height = view_cfgs[0].recommendedImageRectHeight;
+
+  auto cleanup = [&sc]() {
+    sc.framebuffers.clear();
+    sc.textures.clear();
+    if (sc.swapchain != XR_NULL_HANDLE)
+    {
+      xrDestroySwapchain(sc.swapchain);
+      sc.swapchain = XR_NULL_HANDLE;
+    }
+    sc.width = 0;
+    sc.height = 0;
+  };
+
+  XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
+  info.arraySize = 2;
+  info.format = swapchain_format;
+  info.width = sc.width;
+  info.height = sc.height;
+  info.mipCount = 1;
+  info.faceCount = 1;
+  info.sampleCount = 1;
+  info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT;
+
+  const VkFormat vk_sc_format = static_cast<VkFormat>(swapchain_format);
+  const VkFormat vk_view_format = VKTexture::GetLinearFormat(vk_sc_format);
+  const std::array<VkFormat, 2> view_formats = {vk_sc_format, vk_view_format};
+  XrVulkanSwapchainFormatListCreateInfoKHR format_list{
+      XR_TYPE_VULKAN_SWAPCHAIN_FORMAT_LIST_CREATE_INFO_KHR};
+  if (vk_view_format != vk_sc_format)
+  {
+    info.usageFlags |= XR_SWAPCHAIN_USAGE_MUTABLE_FORMAT_BIT;
+
+    if (VR::g_openxr->IsExtensionEnabled(XR_KHR_VULKAN_SWAPCHAIN_FORMAT_LIST_EXTENSION_NAME))
+    {
+      format_list.viewFormatCount = static_cast<uint32_t>(view_formats.size());
+      format_list.viewFormats = view_formats.data();
+      info.next = &format_list;
+    }
+  }
+
+  XrResult result = xrCreateSwapchain(VR::g_openxr->GetSession(), &info, &sc.swapchain);
+  if (XR_FAILED(result))
+  {
+    WARN_LOG_FMT(VIDEO, "OpenXR: xrCreateSwapchain failed for layered Vulkan swapchain ({}).",
+                 static_cast<int>(result));
+    cleanup();
+    return false;
+  }
+
+  uint32_t image_count = 0;
+  result = xrEnumerateSwapchainImages(sc.swapchain, 0, &image_count, nullptr);
+  if (XR_FAILED(result) || image_count == 0)
+  {
+    WARN_LOG_FMT(VIDEO,
+                 "OpenXR: xrEnumerateSwapchainImages failed for layered Vulkan swapchain ({}).",
+                 static_cast<int>(result));
+    cleanup();
+    return false;
+  }
+
+  std::vector<XrSwapchainImageVulkanKHR> images(image_count,
+                                                 {XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR});
+  result = xrEnumerateSwapchainImages(
+      sc.swapchain, image_count, &image_count,
+      reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data()));
+  if (XR_FAILED(result))
+  {
+    WARN_LOG_FMT(VIDEO,
+                 "OpenXR: xrEnumerateSwapchainImages data failed for layered Vulkan swapchain "
+                 "({}).",
+                 static_cast<int>(result));
+    cleanup();
+    return false;
+  }
+
+  sc.textures.resize(image_count);
+  sc.framebuffers.resize(image_count);
+
+  for (uint32_t i = 0; i < image_count; ++i)
+  {
+    TextureConfig tex_config(sc.width, sc.height, /*levels=*/1, /*layers=*/2, /*samples=*/1,
+                             abstract_format, AbstractTextureFlag_RenderTarget,
+                             AbstractTextureType::Texture_2DArray);
+
+    sc.textures[i] = VKTexture::CreateAdopted(tex_config, images[i].image,
+                                              VK_IMAGE_VIEW_TYPE_2D_ARRAY,
+                                              VK_IMAGE_LAYOUT_UNDEFINED, vk_view_format);
+    if (!sc.textures[i])
+    {
+      WARN_LOG_FMT(VIDEO,
+                   "OpenXR: VKTexture::CreateAdopted failed for layered Vulkan image {}.", i);
+      cleanup();
+      return false;
+    }
+
+    sc.framebuffers[i] = VKFramebuffer::CreateMultiview(sc.textures[i].get(), nullptr, {});
+    if (!sc.framebuffers[i])
+    {
+      WARN_LOG_FMT(VIDEO,
+                   "OpenXR: VKFramebuffer::CreateMultiview failed for layered Vulkan image {}.",
+                   i);
+      cleanup();
+      return false;
+    }
+  }
+
+  INFO_LOG_FMT(VIDEO, "OpenXR: Layered Vulkan swapchain ready: {}x{}, {} images, arraySize=2.",
+               sc.width, sc.height, image_count);
+  return true;
+}
+
+bool VulkanOpenXR::CreateEyeSwapchains(int64_t swapchain_format)
+{
+  ASSERT(VR::g_openxr != nullptr);
+
+  const auto& view_cfgs = VR::g_openxr->GetViewConfigViews();
   const AbstractTextureFormat abstract_format =
       VkFormatToAbstractFormat(static_cast<VkFormat>(swapchain_format));
 
@@ -611,6 +807,39 @@ void VulkanOpenXR::DestroySwapchains()
   if (g_vulkan_context)
     vkDeviceWaitIdle(g_vulkan_context->GetDevice());
 
+  if (m_layered_image_acquired && m_layered_swapchain.swapchain != XR_NULL_HANDLE)
+  {
+    XrSwapchainImageReleaseInfo release_info{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+    const XrResult release_result =
+        xrReleaseSwapchainImage(m_layered_swapchain.swapchain, &release_info);
+    if (XR_FAILED(release_result))
+    {
+      WARN_LOG_FMT(VIDEO,
+                   "OpenXR: xrReleaseSwapchainImage during shutdown failed for layered "
+                   "swapchain ({}).",
+                   static_cast<int>(release_result));
+    }
+    m_layered_image_acquired = false;
+  }
+
+  m_layered_swapchain.framebuffers.clear();
+  m_layered_swapchain.textures.clear();
+
+  if (m_layered_swapchain.swapchain != XR_NULL_HANDLE)
+  {
+    const XrResult destroy_result = xrDestroySwapchain(m_layered_swapchain.swapchain);
+    if (XR_FAILED(destroy_result))
+    {
+      WARN_LOG_FMT(VIDEO, "OpenXR: xrDestroySwapchain failed for layered swapchain ({}).",
+                   static_cast<int>(destroy_result));
+    }
+    m_layered_swapchain.swapchain = XR_NULL_HANDLE;
+  }
+  m_layered_swapchain.width = 0;
+  m_layered_swapchain.height = 0;
+  m_use_layered_swapchain = false;
+  m_frame_uses_layered_swapchain = false;
+
   for (uint32_t eye = 0; eye < 2; ++eye)
   {
     auto& sc = m_eye_swapchains[eye];
@@ -651,6 +880,7 @@ AbstractFramebuffer* VulkanOpenXR::AcquireEyeFramebuffer(uint32_t eye_index)
   ASSERT(eye_index < 2);
   static unsigned int s_openxr_vk_acquire_log_count = 0;
   auto& sc = m_eye_swapchains[eye_index];
+  m_frame_uses_layered_swapchain = false;
 
   XrSwapchainImageAcquireInfo acquire_info{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
   if (XR_FAILED(
@@ -701,6 +931,61 @@ AbstractFramebuffer* VulkanOpenXR::AcquireEyeFramebuffer(uint32_t eye_index)
   return sc.framebuffers[idx].get();
 }
 
+AbstractFramebuffer* VulkanOpenXR::AcquireLayeredFramebuffer()
+{
+  static unsigned int s_openxr_vk_layered_acquire_log_count = 0;
+  auto& sc = m_layered_swapchain;
+  if (!m_use_layered_swapchain || sc.swapchain == XR_NULL_HANDLE)
+    return nullptr;
+
+  XrSwapchainImageAcquireInfo acquire_info{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
+  if (XR_FAILED(xrAcquireSwapchainImage(sc.swapchain, &acquire_info,
+                                        &m_acquired_layered_image_index)))
+  {
+    ERROR_LOG_FMT(VIDEO, "OpenXR: xrAcquireSwapchainImage failed for layered swapchain.");
+    m_frame_uses_layered_swapchain = false;
+    return nullptr;
+  }
+  m_layered_image_acquired = true;
+
+  XrSwapchainImageWaitInfo wait_info{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
+  wait_info.timeout = XR_INFINITE_DURATION;
+  if (XR_FAILED(xrWaitSwapchainImage(sc.swapchain, &wait_info)))
+  {
+    ERROR_LOG_FMT(VIDEO, "OpenXR: xrWaitSwapchainImage failed for layered swapchain.");
+
+    XrSwapchainImageReleaseInfo release_info{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+    const XrResult release_result = xrReleaseSwapchainImage(sc.swapchain, &release_info);
+    if (XR_FAILED(release_result))
+    {
+      WARN_LOG_FMT(VIDEO,
+                   "OpenXR: xrReleaseSwapchainImage after layered wait failure failed ({}).",
+                   static_cast<int>(release_result));
+    }
+    m_layered_image_acquired = false;
+    m_frame_uses_layered_swapchain = false;
+    return nullptr;
+  }
+
+  const uint32_t idx = m_acquired_layered_image_index;
+  sc.textures[idx]->OverrideImageLayout(VK_IMAGE_LAYOUT_UNDEFINED);
+  m_frame_uses_layered_swapchain = true;
+
+  if (s_openxr_vk_layered_acquire_log_count < 12)
+  {
+    INFO_LOG_FMT(OPENXR,
+                 "OpenXR VK layered acquire #{}: image={} format={} size={}x{} layers={} "
+                 "layout={} gfx_queue_family={}",
+                 s_openxr_vk_layered_acquire_log_count + 1, idx,
+                 static_cast<int>(sc.textures[idx]->GetFormat()), sc.width, sc.height,
+                 sc.textures[idx]->GetLayers(), static_cast<int>(sc.textures[idx]->GetLayout()),
+                 g_vulkan_context->GetGraphicsQueueFamilyIndex());
+    s_openxr_vk_layered_acquire_log_count++;
+  }
+
+  return sc.framebuffers[idx].get();
+}
+
 void VulkanOpenXR::ReleaseEyeTexture(uint32_t eye_index)
 {
   ASSERT(eye_index < 2);
@@ -737,12 +1022,40 @@ void VulkanOpenXR::ReleaseEyeTexture(uint32_t eye_index)
 #endif
 }
 
+void VulkanOpenXR::ReleaseLayeredTexture()
+{
+  if (!m_layered_image_acquired)
+    return;
+
+#if defined(ANDROID)
+  StateTracker::GetInstance()->EndRenderPass();
+#else
+  StateTracker::GetInstance()->EndRenderPass();
+  const bool wait_for_completion =
+      VR::g_openxr && !VR::g_openxr->ShouldUseVulkanLegacyProjectionFallback();
+  g_command_buffer_mgr->SubmitCommandBuffer(false, wait_for_completion);
+  StateTracker::GetInstance()->InvalidateCachedState();
+
+  XrSwapchainImageReleaseInfo release_info{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+  const XrResult result =
+      xrReleaseSwapchainImage(m_layered_swapchain.swapchain, &release_info);
+  if (XR_FAILED(result))
+  {
+    WARN_LOG_FMT(VIDEO, "OpenXR: xrReleaseSwapchainImage failed for layered swapchain ({}).",
+                 static_cast<int>(result));
+  }
+
+  m_layered_image_acquired = false;
+#endif
+}
+
 bool VulkanOpenXR::SubmitFrame()
 {
   ASSERT(VR::g_openxr != nullptr);
 
 #if defined(ANDROID)
   bool has_acquired_images = false;
+  has_acquired_images |= m_layered_image_acquired;
   for (bool acquired : m_image_acquired)
   {
     has_acquired_images |= acquired;
@@ -751,12 +1064,29 @@ bool VulkanOpenXR::SubmitFrame()
   if (has_acquired_images)
   {
     // Submit the eye rendering work once per frame before releasing the swapchain
-    // images back to the runtime.
+    // images back to the runtime. Do not wait for GPU completion here; waiting
+    // serializes the emulator, GPU, and Quest compositor every frame. We still
+    // advance the Vulkan frame resources because the Quest direct-to-HMD path
+    // skips PresentBackbuffer(), which normally resets descriptor pools.
     StateTracker::GetInstance()->EndRenderPass();
-    g_command_buffer_mgr->SubmitCommandBuffer(false, true);
+    g_command_buffer_mgr->SubmitCommandBuffer(false, false, true);
     StateTracker::GetInstance()->InvalidateCachedState();
 
     XrSwapchainImageReleaseInfo release_info{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+    if (m_layered_image_acquired)
+    {
+      const XrResult result =
+          xrReleaseSwapchainImage(m_layered_swapchain.swapchain, &release_info);
+      if (XR_FAILED(result))
+      {
+        WARN_LOG_FMT(VIDEO,
+                     "OpenXR: xrReleaseSwapchainImage failed for layered swapchain ({}).",
+                     static_cast<int>(result));
+      }
+
+      m_layered_image_acquired = false;
+    }
+
     for (uint32_t eye = 0; eye < 2; ++eye)
     {
       if (!m_image_acquired[eye])
@@ -776,6 +1106,9 @@ bool VulkanOpenXR::SubmitFrame()
 #endif
 
   const auto& eye_views = VR::g_openxr->GetEyeViews();
+  const bool submit_layered =
+      m_frame_uses_layered_swapchain && m_use_layered_swapchain &&
+      m_layered_swapchain.swapchain != XR_NULL_HANDLE;
 
   for (uint32_t eye = 0; eye < 2; ++eye)
   {
@@ -783,12 +1116,23 @@ bool VulkanOpenXR::SubmitFrame()
     pv = {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};
     pv.pose = eye_views[eye].pose;
     pv.fov = eye_views[eye].fov;
-    pv.subImage.swapchain = m_eye_swapchains[eye].swapchain;
-    pv.subImage.imageArrayIndex = 0;
-    pv.subImage.imageRect = {
-        {0, 0},
-        {static_cast<int32_t>(m_eye_swapchains[eye].width),
-         static_cast<int32_t>(m_eye_swapchains[eye].height)}};
+    if (submit_layered)
+    {
+      pv.subImage.swapchain = m_layered_swapchain.swapchain;
+      pv.subImage.imageArrayIndex = eye;
+      pv.subImage.imageRect = {{0, 0},
+                               {static_cast<int32_t>(m_layered_swapchain.width),
+                                static_cast<int32_t>(m_layered_swapchain.height)}};
+    }
+    else
+    {
+      pv.subImage.swapchain = m_eye_swapchains[eye].swapchain;
+      pv.subImage.imageArrayIndex = 0;
+      pv.subImage.imageRect = {
+          {0, 0},
+          {static_cast<int32_t>(m_eye_swapchains[eye].width),
+           static_cast<int32_t>(m_eye_swapchains[eye].height)}};
+    }
   }
 
   m_projection_layer = {XR_TYPE_COMPOSITION_LAYER_PROJECTION};
@@ -805,7 +1149,9 @@ bool VulkanOpenXR::SubmitFrame()
   const std::vector<XrCompositionLayerBaseHeader*> layers = {
       reinterpret_cast<XrCompositionLayerBaseHeader*>(&m_projection_layer)};
 
-  return VR::g_openxr->EndFrame(layers);
+  const bool result = VR::g_openxr->EndFrame(layers);
+  m_frame_uses_layered_swapchain = false;
+  return result;
 }
 
 }  // namespace Vulkan

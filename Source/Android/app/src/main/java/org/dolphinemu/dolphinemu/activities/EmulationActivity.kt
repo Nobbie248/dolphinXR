@@ -82,6 +82,7 @@ class EmulationActivity : AppCompatActivity(), ThemeProvider {
     private var riivolution = false
     private var launchSystemMenu = false
     private var menuToastShown = false
+    private var stopRequestedForFinish = false
 
     private var skylanderData = Skylander(-1, -1, "Slot")
     private var infinityFigureData = Figure(-1, "Position")
@@ -318,6 +319,10 @@ class EmulationActivity : AppCompatActivity(), ThemeProvider {
     override fun onStop() {
         super.onStop()
         settings.saveSettings()
+
+        if (isFinishing) {
+            stopEmulationForActivityFinish()
+        }
     }
 
     fun onTitleChanged() {
@@ -340,8 +345,25 @@ class EmulationActivity : AppCompatActivity(), ThemeProvider {
     }
 
     override fun onDestroy() {
+        if (!isChangingConfigurations) {
+            stopEmulationForActivityFinish()
+        }
+
         super.onDestroy()
         settings.close()
+    }
+
+    private fun stopEmulationForActivityFinish() {
+        if (stopRequestedForFinish) {
+            return
+        }
+
+        stopRequestedForFinish = true
+        stopIgnoringLaunchRequests()
+
+        if (NativeLibrary.IsRunning()) {
+            emulationFragment?.stopEmulation()
+        }
     }
 
     override fun onBackPressed() {

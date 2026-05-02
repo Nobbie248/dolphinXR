@@ -196,8 +196,14 @@ bool ObjectCache::CreateDescriptorSetLayouts()
        static_cast<u32>(compute_set_bindings.size()), compute_set_bindings.data()},
   }};
 
+  // The VS-readable GSBlock UBO is needed when:
+  //  - VS-side line/point expansion is in use (no GS), or
+  //  - VK_KHR_multiview VR is in use (VS does per-eye projection via gl_ViewIndex).
+  const bool vs_needs_gs_ubo =
+      g_ActiveConfig.UseVSForLinePointExpand() || g_backend_info.bSupportsMultiview;
+
   // Don't set the GS bit if geometry shaders aren't available.
-  if (g_ActiveConfig.UseVSForLinePointExpand())
+  if (vs_needs_gs_ubo)
   {
     if (g_backend_info.bSupportsGeometryShaders)
       ubo_bindings[UBO_DESCRIPTOR_SET_BINDING_GS].stageFlags |= VK_SHADER_STAGE_VERTEX_BIT;
@@ -411,10 +417,10 @@ VkSampler ObjectCache::GetSampler(const SamplerState& info)
 
 VkRenderPass ObjectCache::GetRenderPass(VkFormat color_format, VkFormat depth_format,
                                         u32 multisamples, VkAttachmentLoadOp load_op,
-                                        u8 additional_attachment_count)
+                                        u8 additional_attachment_count, bool multiview)
 {
-  auto key =
-      std::tie(color_format, depth_format, multisamples, load_op, additional_attachment_count);
+  auto key = std::tie(color_format, depth_format, multisamples, load_op,
+                      additional_attachment_count, multiview);
   auto it = m_render_pass_cache.find(key);
   if (it != m_render_pass_cache.end())
     return it->second;
@@ -480,6 +486,22 @@ VkRenderPass ObjectCache::GetRenderPass(VkFormat color_format, VkFormat depth_fo
                                       &subpass,
                                       0,
                                       nullptr};
+
+  // VR stereo: render both eyes in a single pass via VK_KHR_multiview. The view mask
+  // 0b11 replicates the subpass into layers 0 and 1; gl_ViewIndex selects per-eye state
+  // in the vertex shader. We deliberately omit a correlation mask — some mobile (Adreno)
+  // drivers handle that hint poorly, and skipping it costs at most a small optimization.
+  VkRenderPassMultiviewCreateInfo multiview_info = {};
+  const uint32_t view_mask = 0x3;
+  if (multiview)
+  {
+    multiview_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_MULTIVIEW_CREATE_INFO;
+    multiview_info.subpassCount = 1;
+    multiview_info.pViewMasks = &view_mask;
+    multiview_info.correlationMaskCount = 0;
+    multiview_info.pCorrelationMasks = nullptr;
+    pass_info.pNext = &multiview_info;
+  }
 
   VkRenderPass pass;
   VkResult res = vkCreateRenderPass(g_vulkan_context->GetDevice(), &pass_info, nullptr, &pass);

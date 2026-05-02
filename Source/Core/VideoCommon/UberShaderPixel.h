@@ -19,6 +19,8 @@ struct pixel_ubershader_uid_data
   u32 per_pixel_depth : 1;
   u32 uint_output : 1;
   u32 no_dual_src : 1;
+  // Bump when PS code generation logic changes to invalidate stale shader cache entries.
+  u32 code_version : 4;
 
   u32 NumValues() const { return sizeof(pixel_ubershader_uid_data); }
 };
@@ -44,7 +46,8 @@ struct fmt::formatter<UberShader::pixel_ubershader_uid_data>
   auto format(const UberShader::pixel_ubershader_uid_data& uid, FormatContext& ctx) const
   {
     return fmt::format_to(
-        ctx.out(), "Pixel UberShader for {} texgens{}{}{}{}", uid.num_texgens,
+        ctx.out(), "Pixel UberShader ver {} for {} texgens{}{}{}{}", uid.code_version,
+        uid.num_texgens,
         uid.early_depth ? ", early-depth" : "", uid.per_pixel_depth ? ", per-pixel depth" : "",
         uid.uint_output ? ", uint output" : "", uid.no_dual_src ? ", no dual-source blending" : "");
   }

@@ -41,10 +41,14 @@ VulkanContext::PhysicalDeviceInfo::PhysicalDeviceInfo(VkPhysicalDevice device)
   {
     VkPhysicalDeviceSubgroupProperties properties_subgroup = {};
     VkPhysicalDeviceVulkan12Properties properties_vk12 = {};
+    VkPhysicalDeviceMultiviewProperties properties_multiview = {};
     properties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
     properties2.pNext = nullptr;
     properties_subgroup.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
     InsertIntoChain(&properties2, &properties_subgroup);
+
+    properties_multiview.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_PROPERTIES;
+    InsertIntoChain(&properties2, &properties_multiview);
 
     if (apiVersion >= VK_API_VERSION_1_2)
     {
@@ -71,6 +75,17 @@ VulkanContext::PhysicalDeviceInfo::PhysicalDeviceInfo(VkPhysicalDevice device)
     shaderSubgroupOperations =
         (properties_subgroup.supportedOperations & required_operations) == required_operations &&
         properties_subgroup.supportedStages & VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    maxMultiviewViewCount = properties_multiview.maxMultiviewViewCount;
+    maxMultiviewInstanceIndex = properties_multiview.maxMultiviewInstanceIndex;
+
+    VkPhysicalDeviceFeatures2 features2 = {};
+    VkPhysicalDeviceMultiviewFeatures features_multiview = {};
+    features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    features_multiview.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES;
+    InsertIntoChain(&features2, &features_multiview);
+    vkGetPhysicalDeviceFeatures2(device, &features2);
+    multiview = features_multiview.multiview != VK_FALSE && maxMultiviewViewCount >= 2;
   }
 
   memcpy(deviceName, properties.deviceName, sizeof(deviceName));
@@ -499,6 +514,7 @@ void VulkanContext::PopulateBackendInfoFeatures(BackendInfo* backend_info, VkPhy
       info.fragmentStoresAndAtomics;
   backend_info->bSupportsSSAA = info.sampleRateShading;
   backend_info->bSupportsLogicOp = info.logicOp;
+  backend_info->bSupportsMultiview = info.multiview;
 
   // Metal doesn't support this.
   backend_info->bSupportsLodBiasInSampler = info.driverID != VK_DRIVER_ID_MOLTENVK;
@@ -828,7 +844,29 @@ bool VulkanContext::CreateDevice(VkSurfaceKHR surface, bool enable_validation_la
   WarnMissingDeviceFeatures();
 
   VkPhysicalDeviceFeatures device_features = m_device_info.features();
-  device_info.pEnabledFeatures = &device_features;
+
+  // When the device exposes Vulkan 1.1+ and supports multiview, enable it via a
+  // pNext chain so the VS can use gl_ViewIndex for OpenXR stereo. Otherwise fall
+  // back to the legacy pEnabledFeatures pointer.
+  VkPhysicalDeviceFeatures2 features2 = {};
+  VkPhysicalDeviceMultiviewFeatures multiview_features = {};
+  const bool use_multiview =
+      m_device_info.apiVersion >= VK_API_VERSION_1_1 && m_device_info.multiview;
+  if (use_multiview)
+  {
+    features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    features2.features = device_features;
+    multiview_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES;
+    multiview_features.multiview = VK_TRUE;
+    InsertIntoChain(&features2, &multiview_features);
+    device_info.pNext = &features2;
+    device_info.pEnabledFeatures = nullptr;
+    m_multiview_enabled = true;
+  }
+  else
+  {
+    device_info.pEnabledFeatures = &device_features;
+  }
 
   // Enable debug layer on debug builds
   if (enable_validation_layer)

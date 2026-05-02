@@ -50,6 +50,24 @@ struct XRVkEyeSwapchain
   std::vector<std::unique_ptr<VKFramebuffer>> framebuffers;
 };
 
+struct XRVkLayeredSwapchain
+{
+  XRVkLayeredSwapchain();
+  ~XRVkLayeredSwapchain();
+  XRVkLayeredSwapchain(XRVkLayeredSwapchain&&) noexcept;
+  XRVkLayeredSwapchain& operator=(XRVkLayeredSwapchain&&) noexcept;
+
+  XRVkLayeredSwapchain(const XRVkLayeredSwapchain&) = delete;
+  XRVkLayeredSwapchain& operator=(const XRVkLayeredSwapchain&) = delete;
+
+  XrSwapchain swapchain = XR_NULL_HANDLE;
+  uint32_t width = 0;
+  uint32_t height = 0;
+
+  std::vector<std::unique_ptr<VKTexture>> textures;
+  std::vector<std::unique_ptr<VKFramebuffer>> framebuffers;
+};
+
 // Vulkan-specific OpenXR backend. Implements VR::IOpenXRSwapchain so that
 // Presenter::RenderXFBToScreen() can acquire/release eye images and submit
 // frames using only VideoCommon-visible types (AbstractFramebuffer*).
@@ -92,11 +110,21 @@ public:
   // Release the current swapchain image back to the runtime.
   void ReleaseEyeTexture(uint32_t eye_index) override;
 
+  bool SupportsLayeredRendering() const override { return m_use_layered_swapchain; }
+  AbstractFramebuffer* AcquireLayeredFramebuffer() override;
+  void ReleaseLayeredTexture() override;
+
   // Build the XrCompositionLayerProjection and call xrEndFrame.
   bool SubmitFrame() override;
 
-  uint32_t GetEyeWidth() const override { return m_eye_swapchains[0].width; }
-  uint32_t GetEyeHeight() const override { return m_eye_swapchains[0].height; }
+  uint32_t GetEyeWidth() const override
+  {
+    return m_use_layered_swapchain ? m_layered_swapchain.width : m_eye_swapchains[0].width;
+  }
+  uint32_t GetEyeHeight() const override
+  {
+    return m_use_layered_swapchain ? m_layered_swapchain.height : m_eye_swapchains[0].height;
+  }
 
   const XRVkEyeSwapchain& GetEyeSwapchain(uint32_t eye) const { return m_eye_swapchains[eye]; }
 
@@ -106,14 +134,21 @@ private:
 
   // Allocates m_eye_swapchains and wraps images as VKTexture / VKFramebuffer.
   bool CreateSwapchains();
+  bool CreateLayeredSwapchain(int64_t swapchain_format);
+  bool CreateEyeSwapchains(int64_t swapchain_format);
 
   void DestroySwapchains();
 
   std::array<XRVkEyeSwapchain, 2> m_eye_swapchains{};
+  XRVkLayeredSwapchain m_layered_swapchain{};
 
   // Image index selected by xrAcquireSwapchainImage for the current frame.
   std::array<uint32_t, 2> m_acquired_image_index{0, 0};
   std::array<bool, 2> m_image_acquired{false, false};
+  uint32_t m_acquired_layered_image_index = 0;
+  bool m_layered_image_acquired = false;
+  bool m_use_layered_swapchain = false;
+  bool m_frame_uses_layered_swapchain = false;
 
   // Reused per-frame composition data (avoids per-frame heap allocation).
   std::array<XrCompositionLayerProjectionView, 2> m_projection_views{};

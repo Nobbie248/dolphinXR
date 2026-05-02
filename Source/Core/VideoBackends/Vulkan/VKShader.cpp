@@ -29,6 +29,22 @@ VKShader::VKShader(ShaderStage stage, std::vector<u32> spv, VkShaderModule mod,
   }
 }
 
+VKShader::VKShader(ShaderStage stage, std::vector<u32> spv, VkShaderModule mod,
+                   std::string_view name, std::string source)
+    : AbstractShader(stage), m_spv(std::move(spv)), m_module(mod),
+      m_compute_pipeline(VK_NULL_HANDLE), m_name(name), m_source(std::move(source))
+{
+  if (!m_name.empty() && g_backend_info.bSupportsSettingObjectNames)
+  {
+    VkDebugUtilsObjectNameInfoEXT name_info = {};
+    name_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+    name_info.objectType = VK_OBJECT_TYPE_SHADER_MODULE;
+    name_info.objectHandle = reinterpret_cast<uint64_t>(m_module);
+    name_info.pObjectName = m_name.data();
+    vkSetDebugUtilsObjectNameEXT(g_vulkan_context->GetDevice(), &name_info);
+  }
+}
+
 VKShader::VKShader(std::vector<u32> spv, VkPipeline compute_pipeline, std::string_view name)
     : AbstractShader(ShaderStage::Compute), m_spv(std::move(spv)), m_module(VK_NULL_HANDLE),
       m_compute_pipeline(compute_pipeline), m_name(name)
@@ -60,7 +76,8 @@ AbstractShader::BinaryData VKShader::GetBinary() const
 }
 
 static std::unique_ptr<VKShader>
-CreateShaderObject(ShaderStage stage, ShaderCompiler::SPIRVCodeVector spv, std::string_view name)
+CreateShaderObject(ShaderStage stage, ShaderCompiler::SPIRVCodeVector spv, std::string_view name,
+                   std::string source = {})
 {
   VkShaderModuleCreateInfo info = {};
   info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -77,7 +94,9 @@ CreateShaderObject(ShaderStage stage, ShaderCompiler::SPIRVCodeVector spv, std::
 
   // If it's a graphics shader, we defer pipeline creation.
   if (stage != ShaderStage::Compute)
-    return std::make_unique<VKShader>(stage, std::move(spv), mod, name);
+    return source.empty() ? std::make_unique<VKShader>(stage, std::move(spv), mod, name) :
+                            std::make_unique<VKShader>(stage, std::move(spv), mod, name,
+                                                       std::move(source));
 
   // If it's a compute shader, we create the pipeline straight away.
   const VkComputePipelineCreateInfo pipeline_info = {
@@ -132,7 +151,7 @@ std::unique_ptr<VKShader> VKShader::CreateFromSource(ShaderStage stage, std::str
   if (!spv)
     return nullptr;
 
-  return CreateShaderObject(stage, std::move(*spv), name);
+  return CreateShaderObject(stage, std::move(*spv), name, std::string(source));
 }
 
 std::unique_ptr<VKShader> VKShader::CreateFromBinary(ShaderStage stage, const void* data,

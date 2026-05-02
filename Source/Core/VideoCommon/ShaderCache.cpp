@@ -469,7 +469,9 @@ std::unique_ptr<AbstractShader> ShaderCache::CompileVertexShader(const VertexSha
   if (TryLoadCustomShader(uid.GetUidDataRaw(), uid.GetUidDataSize(), "vs", custom_source))
     return g_gfx->CreateShaderFromSource(ShaderStage::Vertex, custom_source);
 
-  return g_gfx->CreateShaderFromSource(ShaderStage::Vertex, source_code.GetBuffer());
+  const u32 hash = Common::ComputeCRC32(uid.GetUidDataRaw(), static_cast<u32>(uid.GetUidDataSize()));
+  return g_gfx->CreateShaderFromSource(ShaderStage::Vertex, source_code.GetBuffer(), nullptr,
+                                       fmt::format("Vertex shader: {:08x}", hash));
 }
 
 std::unique_ptr<AbstractShader>
@@ -490,7 +492,9 @@ std::unique_ptr<AbstractShader> ShaderCache::CompilePixelShader(const PixelShade
   if (TryLoadCustomShader(uid.GetUidDataRaw(), uid.GetUidDataSize(), "ps", custom_source))
     return g_gfx->CreateShaderFromSource(ShaderStage::Pixel, custom_source);
 
-  return g_gfx->CreateShaderFromSource(ShaderStage::Pixel, source_code.GetBuffer());
+  const u32 hash = Common::ComputeCRC32(uid.GetUidDataRaw(), static_cast<u32>(uid.GetUidDataSize()));
+  return g_gfx->CreateShaderFromSource(ShaderStage::Pixel, source_code.GetBuffer(), nullptr,
+                                       fmt::format("Pixel shader: {:08x}", hash));
 }
 
 std::unique_ptr<AbstractShader>
@@ -627,11 +631,16 @@ const AbstractShader* ShaderCache::CreateGeometryShader(const GeometryShaderUid&
 
 bool ShaderCache::NeedsGeometryShader(const GeometryShaderUid& uid) const
 {
+  if (m_host_config.vk_multiview)
+    return false;
+
   return m_host_config.backend_geometry_shaders && !uid.GetUidData()->IsPassthrough();
 }
 
 bool ShaderCache::UseGeometryShaderForEFBCopies() const
 {
+  // EFB/XFB copies target regular 2-layer textures even when the main EFB uses multiview.
+  // Keep the passthrough GS so those copies write both eye layers through gl_Layer.
   return m_host_config.backend_geometry_shaders && m_host_config.stereo;
 }
 

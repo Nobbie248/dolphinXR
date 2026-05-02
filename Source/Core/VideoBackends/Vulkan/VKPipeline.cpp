@@ -4,9 +4,14 @@
 #include "VideoBackends/Vulkan/VKPipeline.h"
 
 #include <array>
+#include <cctype>
+
+#include <fmt/format.h>
 
 #include "Common/Assert.h"
 #include "Common/EnumMap.h"
+#include "Common/FileUtil.h"
+#include "Common/Logging/Log.h"
 #include "Common/MsgHandler.h"
 
 #include "VideoBackends/Vulkan/ObjectCache.h"
@@ -35,6 +40,33 @@ static bool IsStripPrimitiveTopology(VkPrimitiveTopology topology)
          topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP ||
          topology == VK_PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY ||
          topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY;
+}
+
+static std::string GetSafeShaderDumpName(const VKShader* shader, const char* stage)
+{
+  std::string name = shader && !shader->GetName().empty() ? std::string(shader->GetName()) :
+                                                            std::string(stage);
+  for (char& c : name)
+  {
+    const unsigned char value = static_cast<unsigned char>(c);
+    if (!std::isalnum(value))
+      c = '_';
+  }
+  return name;
+}
+
+static void DumpFailedPipelineShaderSource(const VKShader* shader, const char* stage)
+{
+  if (!shader || shader->GetSource().empty())
+    return;
+
+  const std::string dump_dir = File::GetUserPath(D_DUMP_IDX) + "VulkanPipelineFailures/";
+  File::CreateFullPath(dump_dir);
+
+  const std::string filename =
+      fmt::format("{}{}_{}.glsl", dump_dir, stage, GetSafeShaderDumpName(shader, stage));
+  if (File::WriteStringToFile(filename, shader->GetSource()))
+    ERROR_LOG_FMT(VIDEO, "Dumped failed Vulkan {} shader source to '{}'", stage, filename);
 }
 
 static VkPipelineRasterizationStateCreateInfo
@@ -242,12 +274,15 @@ std::unique_ptr<VKPipeline> VKPipeline::Create(const AbstractPipelineConfig& con
 {
   DEBUG_ASSERT(config.vertex_shader && config.pixel_shader);
 
-  // Get render pass for config.
+  // Get render pass for config. Pipelines targeting the EFB in VR multiview mode must be
+  // built against a multiview-compatible render pass — pipelines and framebuffers must
+  // agree on view masks for compatibility (Vulkan render-pass-compatibility rules).
+  const bool multiview_pass = config.framebuffer_state.multiview != 0;
   VkRenderPass render_pass = g_object_cache->GetRenderPass(
       VKTexture::GetVkFormatForHostTextureFormat(config.framebuffer_state.color_texture_format),
       VKTexture::GetVkFormatForHostTextureFormat(config.framebuffer_state.depth_texture_format),
       config.framebuffer_state.samples, VK_ATTACHMENT_LOAD_OP_LOAD,
-      config.framebuffer_state.additional_color_attachment_count);
+      config.framebuffer_state.additional_color_attachment_count, multiview_pass);
 
   if (render_pass == VK_NULL_HANDLE)
   {
@@ -428,6 +463,24 @@ std::unique_ptr<VKPipeline> VKPipeline::Create(const AbstractPipelineConfig& con
   if (res != VK_SUCCESS)
   {
     LOG_VULKAN_ERROR(res, "vkCreateGraphicsPipelines failed: ");
+    const auto* vertex_shader = static_cast<const VKShader*>(config.vertex_shader);
+    const auto* geometry_shader = static_cast<const VKShader*>(config.geometry_shader);
+    const auto* pixel_shader = static_cast<const VKShader*>(config.pixel_shader);
+    DumpFailedPipelineShaderSource(vertex_shader, "vs");
+    DumpFailedPipelineShaderSource(geometry_shader, "gs");
+    DumpFailedPipelineShaderSource(pixel_shader, "ps");
+    ERROR_LOG_FMT(VIDEO,
+                  "Vulkan pipeline failed: usage={} primitive={} multiview={} has_gs={} "
+                  "samples={} color_format={} depth_format={} vs='{}' gs='{}' ps='{}'",
+                  static_cast<int>(config.usage),
+                  static_cast<int>(config.rasterization_state.primitive.Value()),
+                  static_cast<int>(config.framebuffer_state.multiview.Value()),
+                  config.geometry_shader != nullptr, config.framebuffer_state.samples.Value(),
+                  static_cast<int>(config.framebuffer_state.color_texture_format.Value()),
+                  static_cast<int>(config.framebuffer_state.depth_texture_format.Value()),
+                  vertex_shader ? vertex_shader->GetName() : std::string_view{},
+                  geometry_shader ? geometry_shader->GetName() : std::string_view{},
+                  pixel_shader ? pixel_shader->GetName() : std::string_view{});
     return VK_NULL_HANDLE;
   }
 

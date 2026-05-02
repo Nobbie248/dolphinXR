@@ -76,6 +76,8 @@ object QuestVrSettings {
 
     fun removeBarsSetting() = vrBooleanSetting("RemoveCinematicBars", true)
 
+    fun useVulkanMultiviewSetting() = vrBooleanSetting("UseVulkanMultiview", true)
+
     fun virtualScreenSetting() = vrBooleanSetting("VirtualScreen", false)
 
     fun screenDistanceSetting() = vrFloatSetting("ScreenDistance", 1.5f)

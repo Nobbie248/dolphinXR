@@ -19,11 +19,15 @@ class VKShader final : public AbstractShader
 {
 public:
   VKShader(ShaderStage stage, std::vector<u32> spv, VkShaderModule mod, std::string_view name);
+  VKShader(ShaderStage stage, std::vector<u32> spv, VkShaderModule mod, std::string_view name,
+           std::string source);
   VKShader(std::vector<u32> spv, VkPipeline compute_pipeline, std::string_view name);
   ~VKShader() override;
 
   VkShaderModule GetShaderModule() const { return m_module; }
   VkPipeline GetComputePipeline() const { return m_compute_pipeline; }
+  std::string_view GetName() const { return m_name; }
+  std::string_view GetSource() const { return m_source; }
   BinaryData GetBinary() const override;
 
   static std::unique_ptr<VKShader> CreateFromSource(ShaderStage stage, std::string_view source,
@@ -37,6 +41,7 @@ private:
   VkShaderModule m_module;
   VkPipeline m_compute_pipeline;
   std::string m_name;
+  std::string m_source;
 };
 
 }  // namespace Vulkan

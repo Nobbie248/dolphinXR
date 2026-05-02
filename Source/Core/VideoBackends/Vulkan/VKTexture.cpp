@@ -22,6 +22,7 @@
 #include "VideoBackends/Vulkan/VulkanContext.h"
 
 #include "VideoCommon/DriverDetails.h"
+#include "VideoCommon/FramebufferManager.h"
 #include "VideoCommon/VideoConfig.h"
 
 namespace Vulkan
@@ -1078,11 +1079,13 @@ VKFramebuffer::~VKFramebuffer()
   g_command_buffer_mgr->DeferFramebufferDestruction(m_fb);
 }
 
-std::unique_ptr<VKFramebuffer>
-VKFramebuffer::Create(VKTexture* color_attachment, VKTexture* depth_attachment,
-                      std::vector<AbstractTexture*> additional_color_attachments)
+static std::unique_ptr<VKFramebuffer>
+CreateFramebufferInternal(VKTexture* color_attachment, VKTexture* depth_attachment,
+                          std::vector<AbstractTexture*> additional_color_attachments,
+                          bool force_multiview)
 {
-  if (!ValidateConfig(color_attachment, depth_attachment, additional_color_attachments))
+  if (!AbstractFramebuffer::ValidateConfig(color_attachment, depth_attachment,
+                                           additional_color_attachments))
     return nullptr;
 
   const VkFormat vk_color_format =
@@ -1107,15 +1110,38 @@ VKFramebuffer::Create(VKTexture* color_attachment, VKTexture* depth_attachment,
     attachment_views.push_back(static_cast<VKTexture*>(attachment)->GetView());
   }
 
+  // When the EFB has 2 layers (stereo) and VK_KHR_multiview is active, use a
+  // multiview render pass with view mask 0b11 so the draw is replicated to both
+  // eyes in one pass via gl_ViewIndex. Vulkan requires framebuffer.layers = 1 in
+  // that case — the layer count comes from the view mask, not the framebuffer.
+  const bool is_current_efb =
+      g_framebuffer_manager && color_attachment == g_framebuffer_manager->GetEFBColorTexture() &&
+      depth_attachment == g_framebuffer_manager->GetEFBDepthTexture();
+  const bool can_use_multiview =
+      layers == 2 && samples == 1 && g_vulkan_context->SupportsMultiview();
+  const bool automatic_efb_multiview =
+      is_current_efb && can_use_multiview && g_ActiveConfig.vr_use_vulkan_multiview &&
+      g_ActiveConfig.stereo_mode == StereoMode::OpenXR;
+  const bool use_multiview = force_multiview || automatic_efb_multiview;
+  if (use_multiview && !can_use_multiview)
+  {
+    ERROR_LOG_FMT(VIDEO,
+                  "VKFramebuffer::CreateMultiview requested for unsupported framebuffer: "
+                  "layers={} samples={} supports_multiview={}.",
+                  layers, samples, g_vulkan_context->SupportsMultiview() ? 1 : 0);
+    return nullptr;
+  }
+  const u32 fb_layers = use_multiview ? 1u : layers;
+
   VkRenderPass load_render_pass = g_object_cache->GetRenderPass(
       vk_color_format, vk_depth_format, samples, VK_ATTACHMENT_LOAD_OP_LOAD,
-      static_cast<u8>(additional_color_attachments.size()));
+      static_cast<u8>(additional_color_attachments.size()), use_multiview);
   VkRenderPass discard_render_pass = g_object_cache->GetRenderPass(
       vk_color_format, vk_depth_format, samples, VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-      static_cast<u8>(additional_color_attachments.size()));
+      static_cast<u8>(additional_color_attachments.size()), use_multiview);
   VkRenderPass clear_render_pass = g_object_cache->GetRenderPass(
       vk_color_format, vk_depth_format, samples, VK_ATTACHMENT_LOAD_OP_CLEAR,
-      static_cast<u8>(additional_color_attachments.size()));
+      static_cast<u8>(additional_color_attachments.size()), use_multiview);
   if (load_render_pass == VK_NULL_HANDLE || discard_render_pass == VK_NULL_HANDLE ||
       clear_render_pass == VK_NULL_HANDLE)
   {
@@ -1130,7 +1156,7 @@ VKFramebuffer::Create(VKTexture* color_attachment, VKTexture* depth_attachment,
                                               attachment_views.data(),
                                               width,
                                               height,
-                                              layers};
+                                              fb_layers};
 
   VkFramebuffer fb;
   VkResult res =
@@ -1144,6 +1170,22 @@ VKFramebuffer::Create(VKTexture* color_attachment, VKTexture* depth_attachment,
   return std::make_unique<VKFramebuffer>(
       color_attachment, depth_attachment, std::move(additional_color_attachments), width, height,
       layers, samples, fb, load_render_pass, discard_render_pass, clear_render_pass);
+}
+
+std::unique_ptr<VKFramebuffer>
+VKFramebuffer::Create(VKTexture* color_attachment, VKTexture* depth_attachment,
+                      std::vector<AbstractTexture*> additional_color_attachments)
+{
+  return CreateFramebufferInternal(color_attachment, depth_attachment,
+                                   std::move(additional_color_attachments), false);
+}
+
+std::unique_ptr<VKFramebuffer>
+VKFramebuffer::CreateMultiview(VKTexture* color_attachment, VKTexture* depth_attachment,
+                               std::vector<AbstractTexture*> additional_color_attachments)
+{
+  return CreateFramebufferInternal(color_attachment, depth_attachment,
+                                   std::move(additional_color_attachments), true);
 }
 
 void VKFramebuffer::Unbind()

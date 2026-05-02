@@ -31,7 +31,16 @@ bool geometry_shader_uid_data::IsPassthrough() const
 {
   const bool stereo = g_ActiveConfig.stereo_mode != StereoMode::Off;
   const bool wireframe = g_ActiveConfig.bWireFrame;
-  return primitive_type >= static_cast<u32>(PrimitiveType::Triangles) && !stereo && !wireframe;
+  const bool triangle = primitive_type >= static_cast<u32>(PrimitiveType::Triangles);
+  if (triangle && !stereo && !wireframe)
+    return true;
+  // VK_KHR_multiview path: stereo expansion is handled at the render-pass level via
+  // gl_ViewIndex in the VS. For triangle primitives without wireframe, the GS would be
+  // a pure passthrough — skip the stage entirely on the Vulkan multiview path.
+  const bool multiview = ShaderHostConfig::GetCurrent().vk_multiview;
+  if (triangle && !wireframe && multiview)
+    return true;
+  return false;
 }
 
 GeometryShaderUid GetGeometryShaderUid(PrimitiveType primitive_type)
@@ -39,7 +48,7 @@ GeometryShaderUid GetGeometryShaderUid(PrimitiveType primitive_type)
   GeometryShaderUid out;
 
   geometry_shader_uid_data* const uid_data = out.GetUidData();
-  uid_data->code_version = 15;
+  uid_data->code_version = 16;
   uid_data->primitive_type = static_cast<u32>(primitive_type);
   uid_data->numTexGens = xfmem.numTexGen.numTexGens;
 
@@ -62,7 +71,11 @@ ShaderCode GenerateGeometryShaderCode(APIType api_type, const ShaderHostConfig& 
   const bool wireframe = host_config.wireframe;
   const bool msaa = host_config.msaa;
   const bool ssaa = host_config.ssaa;
-  const bool stereo = host_config.stereo;
+  // Under VK_KHR_multiview, the render-pass replicates each draw to both layers via
+  // gl_ViewIndex. The VS handles per-eye projection, so the GS must NOT duplicate the
+  // primitive — treat stereo as off inside the GS body. This keeps line/point/wireframe
+  // expansion working while skipping the eye-loop and the manual gl_Layer write.
+  const bool stereo = host_config.stereo && !host_config.vk_multiview;
   const auto primitive_type = static_cast<PrimitiveType>(uid_data->primitive_type);
   const u32 vertex_in = vertex_in_map[primitive_type];
   u32 vertex_out = vertex_out_map[primitive_type];

@@ -182,16 +182,6 @@ void EnableCaptureForNextFrame(double display_period_ms)
     s_state.scheduled_replay_frame_index = INVALID_FRAME_INDEX;
     s_state.scheduled_replay_count = 0;
   }
-
-  static int enable_count = 0;
-  if (++enable_count % 60 == 1)
-  {
-    INFO_LOG_FMT(VIDEO,
-                 "OpcodeReplay EnableCaptureForNextFrame (count={}) capture_enabled={} "
-                 "replaying={} → replay_log_frame_active={}",
-                 enable_count, s_state.capture_enabled, s_state.replaying,
-                 s_state.replay_log_frame_active);
-  }
 }
 
 void CaptureCommand(bool is_preprocess, const u8* data, u32 size)
@@ -304,16 +294,8 @@ void NotifyFrameBoundary()
   s_state.capture_frame_index = INVALID_FRAME_INDEX;
   s_state.scheduled_replay_frame_index = INVALID_FRAME_INDEX;
   s_state.scheduled_replay_count = 0;
-
-  static int refresh_count = 0;
-  if (++refresh_count % 60 == 1)
-  {
-    INFO_LOG_FMT(VIDEO,
-                 "OpcodeReplay NotifyFrameBoundary: promoted (count={}) replay_idx={} "
-                 "replay_count={} pre={} main={}",
-                 refresh_count, s_state.replay_frame_index, s_state.replay_count, cap_pre,
-                 cap_main);
-  }
+  static_cast<void>(cap_pre);
+  static_cast<void>(cap_main);
 }
 
 void Clear()
@@ -353,16 +335,6 @@ int GetReplayCount(double display_period_ms)
     return 0;
 
   s_state.last_decided_frame_index = s_state.replay_frame_index;
-
-  static int decision_count = 0;
-  if (++decision_count % 60 == 1)
-  {
-    INFO_LOG_FMT(VIDEO,
-                 "OpcodeReplay GetReplayCount (count={}) replay_idx={} display_period_ms={:.3f} "
-                 "replay_count={}",
-                 decision_count, s_state.replay_frame_index, display_period_ms, s_state.replay_count);
-  }
-
   return s_state.replay_count;
 }
 
@@ -384,15 +356,6 @@ bool BeginReplayIteration()
   s_state.pending_fb_stride = 0;
   s_state.pending_fb_height = 0;
   s_state.replay_xfb_count = 0;
-
-  static int begin_count = 0;
-  if (++begin_count % 60 == 1)
-  {
-    INFO_LOG_FMT(VIDEO,
-                 "OpcodeReplay BeginReplayIteration (count={}) replay_idx={} pre={} main={}",
-                 begin_count, s_state.replay_frame_index, s_state.replay_preprocess.size(),
-                 s_state.replay_main.size());
-  }
   return true;
 }
 
@@ -426,13 +389,7 @@ void DiscardReplayFrame()
   s_state.pending_fb_stride = 0;
   s_state.pending_fb_height = 0;
   s_state.replay_xfb_count = 0;
-
-  static int discard_count = 0;
-  if (discarded_frame_index != INVALID_FRAME_INDEX && ++discard_count % 60 == 1)
-  {
-    INFO_LOG_FMT(VIDEO, "OpcodeReplay DiscardReplayFrame (count={}) replay_idx={}", discard_count,
-                 discarded_frame_index);
-  }
+  static_cast<void>(discarded_frame_index);
 }
 
 void ApplyReplayClearState(bool frame_just_rendered, bool* color_enable, bool* alpha_enable,

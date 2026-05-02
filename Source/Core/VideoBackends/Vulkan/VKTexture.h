@@ -161,6 +161,9 @@ public:
   static std::unique_ptr<VKFramebuffer>
   Create(VKTexture* color_attachments, VKTexture* depth_attachment,
          std::vector<AbstractTexture*> additional_color_attachments);
+  static std::unique_ptr<VKFramebuffer>
+  CreateMultiview(VKTexture* color_attachment, VKTexture* depth_attachment,
+                  std::vector<AbstractTexture*> additional_color_attachments);
 
 protected:
   VkFramebuffer m_fb;

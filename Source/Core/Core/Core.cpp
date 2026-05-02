@@ -90,6 +90,9 @@
 #include "VideoCommon/PerformanceMetrics.h"
 #include "VideoCommon/VideoBackendBase.h"
 #include "VideoCommon/VideoEvents.h"
+#if defined(ANDROID) && defined(ENABLE_VR)
+#include "VideoCommon/VR/OpenXRManager.h"
+#endif
 
 namespace Core
 {
@@ -114,6 +117,15 @@ static std::atomic<State> s_state = State::Uninitialized;
 
 #ifdef USE_MEMORYWATCHER
 static std::unique_ptr<MemoryWatcher> s_memory_watcher;
+#endif
+
+#if defined(ANDROID) && defined(ENABLE_VR)
+static void RegisterCurrentThreadWithOpenXR(VR::OpenXRManager::AndroidThreadType type,
+                                            const char* label)
+{
+  if (VR::g_openxr)
+    VR::g_openxr->RegisterCurrentAndroidThread(type, label);
+}
 #endif
 
 static void Callback_FramePresented(const PresentInfo& present_info);
@@ -328,6 +340,13 @@ static void CpuThread(Core::System& system, const std::optional<std::string>& sa
   else
     Common::SetCurrentThreadName("CPU-GPU thread");
 
+#if defined(ANDROID) && defined(ENABLE_VR)
+  RegisterCurrentThreadWithOpenXR(system.IsDualCoreMode() ?
+                                      VR::OpenXRManager::AndroidThreadType::ApplicationMain :
+                                      VR::OpenXRManager::AndroidThreadType::RendererMain,
+                                  system.IsDualCoreMode() ? "CPU thread" : "CPU-GPU thread");
+#endif
+
   // This needs to be delayed until after the video backend is ready.
   DolphinAnalytics::Instance().ReportGameStart();
 
@@ -410,6 +429,14 @@ static void FifoPlayerThread(Core::System& system, const std::optional<std::stri
   else
     Common::SetCurrentThreadName("FIFO-GPU thread");
 
+#if defined(ANDROID) && defined(ENABLE_VR)
+  RegisterCurrentThreadWithOpenXR(system.IsDualCoreMode() ?
+                                      VR::OpenXRManager::AndroidThreadType::ApplicationMain :
+                                      VR::OpenXRManager::AndroidThreadType::RendererMain,
+                                  system.IsDualCoreMode() ? "FIFO player thread" :
+                                                            "FIFO-GPU thread");
+#endif
+
   // Enter CPU run loop. When we leave it - we are done.
   if (auto cpu_core = system.GetFifoPlayer().GetCPUCore())
   {
@@ -473,6 +500,13 @@ static void FifoPlayerThread(Core::System& system, const std::optional<std::stri
       Common::SetCurrentThreadName("Video thread");
 
       const bool is_init = init_video();
+#if defined(ANDROID) && defined(ENABLE_VR)
+      if (is_init)
+      {
+        RegisterCurrentThreadWithOpenXR(VR::OpenXRManager::AndroidThreadType::RendererMain,
+                                        "Video thread");
+      }
+#endif
       init_from_thread.set_value(is_init);
 
       if (!is_init)

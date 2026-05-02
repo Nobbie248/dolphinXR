@@ -2683,6 +2683,14 @@ class SettingsFragmentPresenter(
             )
         )
         sl.add(
+            SwitchSetting(
+                context,
+                QuestVrSettings.useVulkanMultiviewSetting(),
+                R.string.quest_use_vulkan_multiview,
+                R.string.quest_use_vulkan_multiview_description
+            )
+        )
+        sl.add(
             IntSliderSetting(
                 context,
                 QuestVrSettings.clearEfbCopiesSetting(),

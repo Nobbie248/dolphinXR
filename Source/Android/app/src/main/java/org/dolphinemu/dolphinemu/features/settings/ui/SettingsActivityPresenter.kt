@@ -5,6 +5,8 @@ package org.dolphinemu.dolphinemu.features.settings.ui
 import android.os.Bundle
 import android.text.TextUtils
 import androidx.appcompat.app.AppCompatActivity
+import org.dolphinemu.dolphinemu.NativeLibrary
+import org.dolphinemu.dolphinemu.R
 import org.dolphinemu.dolphinemu.features.settings.model.Settings
 import org.dolphinemu.dolphinemu.utils.AfterDirectoryInitializationRunner
 import org.dolphinemu.dolphinemu.utils.Log
@@ -49,6 +51,14 @@ class SettingsActivityPresenter(
         activityView.hideLoading()
         if (!settings!!.areSettingsLoaded()) {
             if (!TextUtils.isEmpty(gameId)) {
+                if (!NativeLibrary.IsUninitialized()) {
+                    activityView.showToastMessage(
+                        activity.getString(R.string.setting_not_runtime_editable)
+                    )
+                    activityView.finish()
+                    return
+                }
+
                 settings!!.loadSettings(gameId!!, revision, isWii)
                 if (settings!!.gameIniContainsJunk()) {
                     activityView.showGameIniJunkDeletionQuestion()

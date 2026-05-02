@@ -215,6 +215,7 @@ const Info<bool> GFX_VR_AR_MODE_DEBUG{{System::GFX, "VR", "ARModeDebug"}, false}
 const Info<float> GFX_VR_AR_BACKGROUND_ALPHA{{System::GFX, "VR", "ARBackgroundAlpha"}, 0.0f};
 const Info<float> GFX_VR_GAMMA{{System::GFX, "VR", "Gamma"}, 1.0f};
 const Info<int> GFX_VR_CLEAR_EFB_COPIES{{System::GFX, "VR", "ClearEFBCopies"}, 0};
+const Info<bool> GFX_VR_USE_VULKAN_MULTIVIEW{{System::GFX, "VR", "UseVulkanMultiview"}, true};
 // Graphics.Hacks
 
 const Info<bool> GFX_HACK_EFB_ACCESS_ENABLE{{System::GFX, "Hacks", "EFBAccessEnable"}, false};

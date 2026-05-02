@@ -962,32 +962,62 @@ void Presenter::BlitCurrentSourceToOpenXREyes(const AbstractTexture* source_text
     g_ActiveConfig.color_correction.fSDRDisplayCustomGamma = vr_gamma;
   }
 
+  auto restore_post_process_state = [&] {
+    if (apply_gamma)
+    {
+      g_ActiveConfig.color_correction.bCorrectGamma = saved_correct_gamma;
+      g_ActiveConfig.color_correction.bSDRDisplayGammaSRGB = saved_sdr_gamma_srgb;
+      g_ActiveConfig.color_correction.fSDRDisplayCustomGamma = saved_custom_gamma;
+    }
+
+    if (saved_fb)
+      g_gfx->SetFramebuffer(saved_fb);
+  };
+
+  const MathUtil::Rectangle<int> eye_rect{
+      0, 0, static_cast<int>(sc->GetEyeWidth()), static_cast<int>(sc->GetEyeHeight())};
+  const float clear_alpha =
+      g_ActiveConfig.vr_ar_mode ? g_ActiveConfig.vr_ar_background_alpha : 1.0f;
+
+  if (sc->SupportsLayeredRendering() && m_post_processor->CanBlitFromTextureLayeredMultiview())
+  {
+    AbstractFramebuffer* layered_fb = sc->AcquireLayeredFramebuffer();
+    if (layered_fb)
+    {
+      g_gfx->SetAndClearFramebuffer(layered_fb, {0.f, 0.f, 0.f, clear_alpha});
+      if (m_post_processor->BlitFromTextureLayeredMultiview(eye_rect, source_rc, source_texture))
+      {
+        sc->ReleaseLayeredTexture();
+        restore_post_process_state();
+        return;
+      }
+
+      static bool s_logged_layered_blit_fallback = false;
+      if (!s_logged_layered_blit_fallback)
+      {
+        WARN_LOG_FMT(VIDEO,
+                     "OpenXR: layered multiview post-process blit failed; falling back to "
+                     "per-eye swapchains.");
+        s_logged_layered_blit_fallback = true;
+      }
+      sc->ReleaseLayeredTexture();
+    }
+  }
+
   for (uint32_t eye = 0; eye < 2; ++eye)
   {
     AbstractFramebuffer* eye_fb = sc->AcquireEyeFramebuffer(eye);
     if (!eye_fb)
       continue;
 
-    const MathUtil::Rectangle<int> eye_rect{
-        0, 0, static_cast<int>(sc->GetEyeWidth()), static_cast<int>(sc->GetEyeHeight())};
     // Replay submits must also populate the acquired OpenXR image; binding it without a blit can
     // leak stale swapchain contents from an older frame.
-    const float clear_alpha =
-        g_ActiveConfig.vr_ar_mode ? g_ActiveConfig.vr_ar_background_alpha : 1.0f;
     g_gfx->SetAndClearFramebuffer(eye_fb, {0.f, 0.f, 0.f, clear_alpha});
     m_post_processor->BlitFromTexture(eye_rect, source_rc, source_texture, static_cast<int>(eye));
     sc->ReleaseEyeTexture(eye);
   }
 
-  if (apply_gamma)
-  {
-    g_ActiveConfig.color_correction.bCorrectGamma = saved_correct_gamma;
-    g_ActiveConfig.color_correction.bSDRDisplayGammaSRGB = saved_sdr_gamma_srgb;
-    g_ActiveConfig.color_correction.fSDRDisplayCustomGamma = saved_custom_gamma;
-  }
-
-  if (saved_fb)
-    g_gfx->SetFramebuffer(saved_fb);
+  restore_post_process_state();
 }
 
 bool Presenter::SubmitOpenXRFrameFromCurrentSource(const AbstractTexture* source_texture,
@@ -1055,16 +1085,6 @@ bool Presenter::MaybeRunOpenXROpcodeReplayFrames()
   const double native_period_ms = VR::g_openxr->GetNativeDisplayPeriodMs();
   const int replay_count = VideoCommon::OpenXROpcodeReplay::GetReplayCount(native_period_ms);
 
-  static int call_count = 0;
-  if (++call_count % 60 == 1)
-  {
-    INFO_LOG_FMT(VIDEO,
-                 "OpcodeReplay MaybeRun (count={}) native_period_ms={:.3f} replay_idx={} "
-                 "replay_count={}",
-                 call_count, native_period_ms, VideoCommon::OpenXROpcodeReplay::GetReplayFrameIndex(),
-                 replay_count);
-  }
-
   if (replay_count <= 0)
   {
     VideoCommon::OpenXROpcodeReplay::DiscardReplayFrame();
@@ -1073,14 +1093,6 @@ bool Presenter::MaybeRunOpenXROpcodeReplayFrames()
 
   auto preprocess_cmds = VideoCommon::OpenXROpcodeReplay::GetReplayCommands(true);
   auto main_cmds = VideoCommon::OpenXROpcodeReplay::GetReplayCommands(false);
-
-  static int iter_count = 0;
-  if (++iter_count % 60 == 1)
-  {
-    INFO_LOG_FMT(VIDEO,
-                 "OpcodeReplay MaybeRun executing (count={}) replay_count={} pre={} main={}",
-                 iter_count, replay_count, preprocess_cmds.size(), main_cmds.size());
-  }
 
   bool replay_submitted = false;
   for (int replay_i = 0; replay_i < replay_count; ++replay_i)
@@ -1129,16 +1141,6 @@ bool Presenter::MaybeRunOpenXROpcodeReplayFrames()
 
     if (has_replay_xfb)
     {
-      static int consumed = 0;
-      if (++consumed % 60 == 1)
-      {
-        INFO_LOG_FMT(VIDEO,
-                     "OpcodeReplay: replay_idx={} iter {} consumed xfb addr=0x{:08x} {}x{} "
-                     "stride={} xfb_count={}",
-                     VideoCommon::OpenXROpcodeReplay::GetReplayFrameIndex(), replay_i,
-                     replay_xfb_addr, replay_fb_width, replay_fb_height, replay_fb_stride,
-                     VideoCommon::OpenXROpcodeReplay::GetReplayXFBCount());
-      }
       FetchXFB(replay_xfb_addr, replay_fb_width, replay_fb_stride, replay_fb_height,
                m_next_swap_estimated_ticks);
       PresentReplayOpenXRFrame();
@@ -1245,6 +1247,11 @@ void Presenter::Present(PresentInfo* present_info)
   //
   // First real frame: if no pre-begun frame exists, start it here.
   const bool is_replay_present = VideoCommon::OpenXROpcodeReplay::IsReplaying();
+#if defined(ANDROID)
+  const bool openxr_direct_to_hmd = g_ActiveConfig.stereo_mode == StereoMode::OpenXR && VR::g_openxr;
+#else
+  constexpr bool openxr_direct_to_hmd = false;
+#endif
   bool vr_frame_started = false;
   if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR && VR::g_openxr)
   {
@@ -1281,10 +1288,14 @@ void Presenter::Present(PresentInfo* present_info)
     }
   }
 #endif
+#ifndef ENABLE_VR
+  constexpr bool is_replay_present = false;
+  constexpr bool openxr_direct_to_hmd = false;
+#endif
 
   g_gfx->BeginUtilityDrawing();
-  const bool backbuffer_bound =
-      !is_replay_present && g_gfx->BindBackbuffer({{0.0f, 0.0f, 0.0f, 1.0f}});
+  const bool backbuffer_bound = !is_replay_present && !openxr_direct_to_hmd &&
+                                g_gfx->BindBackbuffer({{0.0f, 0.0f, 0.0f, 1.0f}});
 
   // Render the XFB to the screen.
   if (backbuffer_bound && m_xfb_entry)
@@ -1297,7 +1308,7 @@ void Presenter::Present(PresentInfo* present_info)
     RenderXFBToScreen(render_target_rc, m_xfb_entry->texture.get(), render_source_rc);
   }
 #ifdef ENABLE_VR
-  else if (is_replay_present && vr_frame_started && m_xfb_entry)
+  else if ((is_replay_present || openxr_direct_to_hmd) && vr_frame_started && m_xfb_entry)
   {
     auto replay_target_rc = GetTargetRectangle();
     auto replay_source_rc = m_xfb_rect;
@@ -1315,9 +1326,6 @@ void Presenter::Present(PresentInfo* present_info)
   }
 
   // Present to the window system.
-#ifdef ENABLE_VR
-  auto vr_t0 = std::chrono::high_resolution_clock::now();
-#endif
   {
     std::lock_guard<std::mutex> guard(m_swap_mutex);
 
@@ -1332,13 +1340,11 @@ void Presenter::Present(PresentInfo* present_info)
       present_info->present_time_accuracy = PresentInfo::PresentTimeAccuracy::PresentInProgress;
     }
 
-    if (!is_replay_present)
+    if (!is_replay_present && !openxr_direct_to_hmd)
       g_gfx->PresentBackbuffer();
   }
 
 #ifdef ENABLE_VR
-  auto vr_t1 = std::chrono::high_resolution_clock::now();
-
   if (vr_frame_started)
   {
     SubmitOpenXRFrameFromCurrentSource(m_xfb_entry ? m_xfb_entry->texture.get() : nullptr,
@@ -1355,8 +1361,6 @@ void Presenter::Present(PresentInfo* present_info)
     else
       VR::g_openxr->EndFrame({});  // No swapchain yet — submit empty frame
   }
-
-  auto vr_t2 = std::chrono::high_resolution_clock::now();
 
   // --- Immediately prepare the NEXT VR frame ---
   // By calling WaitFrame+BeginFrame+LocateViews here, the entire game render time
@@ -1404,31 +1408,6 @@ void Presenter::Present(PresentInfo* present_info)
     }
   }
 
-  auto vr_t3 = std::chrono::high_resolution_clock::now();
-
-  // Frame timing debug log — fires every ~90 frames (~1s at 90Hz) to avoid spam.
-  {
-    static int vr_timing_counter = 0;
-    static auto vr_last_present = std::chrono::high_resolution_clock::now();
-    const auto vr_now = vr_t3;
-    const float frame_total_ms =
-        std::chrono::duration<float, std::milli>(vr_now - vr_last_present).count();
-    vr_last_present = vr_now;
-
-    if (++vr_timing_counter >= 90)
-    {
-      vr_timing_counter = 0;
-      const float present_ms =
-          std::chrono::duration<float, std::milli>(vr_t1 - vr_t0).count();
-      const float endframe_ms =
-          std::chrono::duration<float, std::milli>(vr_t2 - vr_t1).count();
-      INFO_LOG_FMT(VIDEO,
-                   "VR Timing: total={:.1f}ms  WaitFrame={:.1f}ms  PresentBB={:.1f}ms  "
-                   "EndFrame={:.1f}ms  LocateViews={:.1f}ms",
-                   frame_total_ms, m_last_openxr_wait_frame_ms, present_ms, endframe_ms,
-                   m_last_openxr_locate_views_ms);
-    }
-  }
 #endif
 
   if (m_xfb_entry)
@@ -1458,29 +1437,6 @@ void Presenter::Present(PresentInfo* present_info)
     {
       VideoCommon::OpenXROpcodeReplay::EnableCaptureForNextFrame(
           VR::g_openxr ? VR::g_openxr->GetNativeDisplayPeriodMs() : 0.0);
-    }
-
-    {
-      static int vr_timing_counter = 0;
-      static auto vr_last_present = std::chrono::high_resolution_clock::now();
-      const auto vr_t3_replay = std::chrono::high_resolution_clock::now();
-      const float frame_total_ms =
-          std::chrono::duration<float, std::milli>(vr_t3_replay - vr_last_present).count();
-      vr_last_present = vr_t3_replay;
-
-      if (++vr_timing_counter >= 90)
-      {
-        vr_timing_counter = 0;
-        const float present_ms =
-            std::chrono::duration<float, std::milli>(vr_t1 - vr_t0).count();
-        const float endframe_ms =
-            std::chrono::duration<float, std::milli>(vr_t2 - vr_t1).count();
-        INFO_LOG_FMT(VIDEO,
-                     "VR Timing: total={:.1f}ms  WaitFrame={:.1f}ms  PresentBB={:.1f}ms  "
-                     "EndFrame={:.1f}ms  LocateViews={:.1f}ms",
-                     frame_total_ms, m_last_openxr_wait_frame_ms, present_ms, endframe_ms,
-                     m_last_openxr_locate_views_ms);
-      }
     }
   }
   else

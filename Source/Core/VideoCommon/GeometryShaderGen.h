@@ -20,7 +20,7 @@ struct geometry_shader_uid_data
   bool IsPassthrough() const;
 
   // Bump when GS code generation logic changes to invalidate stale shader cache entries.
-  u32 code_version : 4;
+  u32 code_version : 5;
   u32 numTexGens : 4;
   u32 primitive_type : 2;
 };

@@ -112,6 +112,10 @@ public:
 
   void BlitFromTexture(const MathUtil::Rectangle<int>& dst, const MathUtil::Rectangle<int>& src,
                        const AbstractTexture* src_tex, int src_layer = -1);
+  bool CanBlitFromTextureLayeredMultiview() const;
+  bool BlitFromTextureLayeredMultiview(const MathUtil::Rectangle<int>& dst,
+                                       const MathUtil::Rectangle<int>& src,
+                                       const AbstractTexture* src_tex);
 
   bool IsColorCorrectionActive() const;
   bool NeedsIntermediaryBuffer() const;
@@ -139,6 +143,8 @@ protected:
   std::unique_ptr<AbstractShader> m_default_vertex_shader;
   std::unique_ptr<AbstractShader> m_default_pixel_shader;
   std::unique_ptr<AbstractPipeline> m_default_pipeline;
+  std::unique_ptr<AbstractShader> m_default_multiview_vertex_shader;
+  std::unique_ptr<AbstractPipeline> m_default_multiview_pipeline;
   std::unique_ptr<AbstractFramebuffer> m_intermediary_frame_buffer;
   std::unique_ptr<AbstractTexture> m_intermediary_color_texture;
   std::vector<u8> m_default_uniform_staging_buffer;
@@ -147,6 +153,8 @@ protected:
   std::unique_ptr<AbstractShader> m_vertex_shader;
   std::unique_ptr<AbstractShader> m_pixel_shader;
   std::unique_ptr<AbstractPipeline> m_pipeline;
+  std::unique_ptr<AbstractShader> m_multiview_vertex_shader;
+  std::unique_ptr<AbstractPipeline> m_multiview_pipeline;
   std::vector<u8> m_uniform_staging_buffer;
 
   AbstractTextureFormat m_framebuffer_format = AbstractTextureFormat::Undefined;

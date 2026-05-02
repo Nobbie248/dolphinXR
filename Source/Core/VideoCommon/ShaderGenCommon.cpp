@@ -48,6 +48,9 @@ ShaderHostConfig ShaderHostConfig::GetCurrent()
   bits.backend_gl_layer_in_fs = g_backend_info.bSupportsGLLayerInFS;
 #ifdef ENABLE_VR
   bits.vr_stereo = g_ActiveConfig.stereo_mode == StereoMode::OpenXR;
+  bits.vk_multiview = bits.vr_stereo && g_backend_info.bSupportsMultiview &&
+                      g_ActiveConfig.vr_use_vulkan_multiview &&
+                      g_ActiveConfig.iMultisamples == 1;
 #endif
   return bits;
 }
@@ -227,7 +230,7 @@ void GenerateVSOutputMembers(ShaderCode& object, APIType api_type, u32 texgens,
     DefineOutputMember(object, api_type, qualifier, "float4", "colors_", 0, stage, "COLOR", 0);
     DefineOutputMember(object, api_type, qualifier, "float4", "colors_", 1, stage, "COLOR", 1);
 
-    if (host_config.backend_geometry_shaders)
+    if (host_config.backend_geometry_shaders && !host_config.vk_multiview)
     {
       DefineOutputMember(object, api_type, qualifier, "float", "clipDist", 0, stage,
                          "SV_ClipDistance", 0);
@@ -282,7 +285,7 @@ void AssignVSOutputMembers(ShaderCode& object, std::string_view a, std::string_v
   if (host_config.vr_stereo)
     object.Write("\t{}.viewPos = {}.viewPos;\n", a, b);
 
-  if (host_config.backend_geometry_shaders)
+  if (host_config.backend_geometry_shaders && !host_config.vk_multiview)
   {
     object.Write("\t{}.clipDist0 = {}.clipDist0;\n", a, b);
     object.Write("\t{}.clipDist1 = {}.clipDist1;\n", a, b);

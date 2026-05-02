@@ -83,6 +83,8 @@ union FramebufferState
   // TODO: in the future improve this so every attachment
   // can specify its own format
   BitField<25, 3, u32> additional_color_attachment_count;
+  // Set when this pipeline targets a multiview render pass (VR stereo via VK_KHR_multiview).
+  BitField<28, 1, u32> multiview;
 
   u32 hex = 0;
 };

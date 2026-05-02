@@ -189,6 +189,7 @@ struct BackendInfo
   bool bSupportsGLLayerInFS = true;
   bool bSupportsHDROutput = false;
   bool bSupportsUnrestrictedDepthRange = false;
+  bool bSupportsMultiview = false;  // VK_KHR_multiview (Vulkan only); used for OpenXR stereo path
 };
 
 extern BackendInfo g_backend_info;
@@ -348,6 +349,7 @@ struct VideoConfig final
   float vr_layer_offset = 0.002f;
   float vr_element_depth = 0.001f;
   int vr_clear_efb_min_width = 0;  // 0=disabled, >0=clear EFB copies wider than this
+  bool vr_use_vulkan_multiview = true;  // Render OpenXR stereo via VK_KHR_multiview (Quest perf path)
   // D3D only config, mostly to be merged into the above
   int iAdapter = 0;
 
@@ -386,6 +388,10 @@ struct VideoConfig final
   {
     if (!g_backend_info.bSupportsVSLinePointExpand)
       return false;
+#ifdef ENABLE_VR
+    if (stereo_mode == StereoMode::OpenXR && vr_use_vulkan_multiview)
+      return true;
+#endif
     if (!g_backend_info.bSupportsGeometryShaders)
       return true;
     return bPreferVSForLinePointExpansion;

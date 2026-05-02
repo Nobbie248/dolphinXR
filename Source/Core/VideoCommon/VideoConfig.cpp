@@ -227,6 +227,7 @@ void VideoConfig::Refresh()
   vr_clear_efb_min_width = std::clamp(Config::Get(Config::GFX_VR_CLEAR_EFB_COPIES),
                                       Config::GFX_VR_CLEAR_EFB_MIN,
                                       Config::GFX_VR_CLEAR_EFB_MAX);
+  vr_use_vulkan_multiview = Config::Get(Config::GFX_VR_USE_VULKAN_MULTIVIEW);
   bEFBAccessEnable = Config::Get(Config::GFX_HACK_EFB_ACCESS_ENABLE);
   bEFBAccessDeferInvalidation = Config::Get(Config::GFX_HACK_EFB_DEFER_INVALIDATION);
   bBBoxEnable = Config::Get(Config::GFX_HACK_BBOX_ENABLE);

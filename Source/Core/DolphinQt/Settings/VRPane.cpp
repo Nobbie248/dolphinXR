@@ -48,8 +48,22 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   auto* openxr_group = new QGroupBox(tr("OpenXR"));
   auto* openxr_layout = new QGridLayout;
   openxr_group->setLayout(openxr_layout);
+  auto* camera_group = new QGroupBox(tr("Camera"));
+  auto* camera_layout = new QGridLayout;
+  camera_group->setLayout(camera_layout);
+  auto* virtual_screen_group = new QGroupBox(tr("Virtual Screen"));
+  auto* virtual_screen_layout = new QGridLayout;
+  virtual_screen_group->setLayout(virtual_screen_layout);
+  auto* framerate_group = new QGroupBox(tr("Framerate"));
+  auto* framerate_layout = new QGridLayout;
+  framerate_group->setLayout(framerate_layout);
+  auto* rendering_group = new QGroupBox(tr("Rendering"));
+  auto* rendering_layout = new QGridLayout;
+  rendering_group->setLayout(rendering_layout);
 
   m_enable_openxr = new ConfigBool(tr("Enable OpenXR"), Config::GFX_VR_ENABLE_OPENXR);
+  m_use_vulkan_multiview = new ConfigBool(tr("Use Vulkan Multiview"),
+                                          Config::GFX_VR_USE_VULKAN_MULTIVIEW);
   m_auto_immediate_xfb =
       new ConfigBool(tr("Force Immediately Present XFB"),
                      Config::GFX_VR_AUTO_IMMEDIATE_XFB);
@@ -75,9 +89,10 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   m_camera_height_value = new QLabel();
 
   openxr_layout->addWidget(m_enable_openxr, 0, 0, 1, 3);
+  openxr_layout->addWidget(m_use_vulkan_multiview, 1, 0, 1, 3);
 
   m_ar_mode = new ConfigBool(tr("AR Mode (Passthrough)"), Config::GFX_VR_AR_MODE);
-  openxr_layout->addWidget(m_ar_mode, 1, 0, 1, 3);
+  openxr_layout->addWidget(m_ar_mode, 2, 0, 1, 3);
 
   m_ar_background_alpha =
       new ConfigFloatSlider(Config::GFX_VR_AR_BACKGROUND_ALPHA_MIN,
@@ -86,9 +101,9 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
                             Config::GFX_VR_AR_BACKGROUND_ALPHA_STEP);
   m_ar_background_alpha_value = new QLabel();
   openxr_layout->addWidget(
-      new ConfigFloatLabel(tr("AR Background Alpha:"), m_ar_background_alpha), 19, 0);
-  openxr_layout->addWidget(m_ar_background_alpha, 19, 1);
-  openxr_layout->addWidget(m_ar_background_alpha_value, 19, 2);
+      new ConfigFloatLabel(tr("AR Background Alpha:"), m_ar_background_alpha), 3, 0);
+  openxr_layout->addWidget(m_ar_background_alpha, 3, 1);
+  openxr_layout->addWidget(m_ar_background_alpha_value, 3, 2);
   m_ar_background_alpha_value->setText(
       QString::asprintf("%.2f", m_ar_background_alpha->GetValue()));
   connect(m_ar_background_alpha, &ConfigFloatSlider::valueChanged, this, [this] {
@@ -96,19 +111,20 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
         QString::asprintf("%.2f", m_ar_background_alpha->GetValue()));
   });
 
-  openxr_layout->addWidget(new ConfigFloatLabel(tr("Units per Meter:"), m_units_per_meter), 2, 0);
-  openxr_layout->addWidget(m_units_per_meter, 2, 1);
-  openxr_layout->addWidget(m_units_per_meter_value, 2, 2);
-  openxr_layout->addWidget(new ConfigFloatLabel(tr("Lean Back Angle (deg):"), m_lean_back_angle), 3,
+  openxr_layout->addWidget(new ConfigFloatLabel(tr("Units per Meter:"), m_units_per_meter), 4, 0);
+  openxr_layout->addWidget(m_units_per_meter, 4, 1);
+  openxr_layout->addWidget(m_units_per_meter_value, 4, 2);
+
+  camera_layout->addWidget(new ConfigFloatLabel(tr("Lean Back Angle (deg):"), m_lean_back_angle), 0,
                            0);
-  openxr_layout->addWidget(m_lean_back_angle, 3, 1);
-  openxr_layout->addWidget(m_lean_back_angle_value, 3, 2);
-  openxr_layout->addWidget(new ConfigFloatLabel(tr("Camera Forward (m):"), m_camera_forward), 4, 0);
-  openxr_layout->addWidget(m_camera_forward, 4, 1);
-  openxr_layout->addWidget(m_camera_forward_value, 4, 2);
-  openxr_layout->addWidget(new ConfigFloatLabel(tr("Camera Height (m):"), m_camera_height), 5, 0);
-  openxr_layout->addWidget(m_camera_height, 5, 1);
-  openxr_layout->addWidget(m_camera_height_value, 5, 2);
+  camera_layout->addWidget(m_lean_back_angle, 0, 1);
+  camera_layout->addWidget(m_lean_back_angle_value, 0, 2);
+  camera_layout->addWidget(new ConfigFloatLabel(tr("Camera Forward (m):"), m_camera_forward), 1, 0);
+  camera_layout->addWidget(m_camera_forward, 1, 1);
+  camera_layout->addWidget(m_camera_forward_value, 1, 2);
+  camera_layout->addWidget(new ConfigFloatLabel(tr("Camera Height (m):"), m_camera_height), 2, 0);
+  camera_layout->addWidget(m_camera_height, 2, 1);
+  camera_layout->addWidget(m_camera_height_value, 2, 2);
 
   m_units_per_meter_value->setText(QString::asprintf("%.1f", m_units_per_meter->GetValue()));
   connect(m_units_per_meter, &ConfigFloatSlider::valueChanged, this, [this] {
@@ -128,8 +144,9 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   });
 
   // Virtual screen settings
-  m_virtual_screen = new ConfigBool(tr("Virtual Screen for 2D Content"), Config::GFX_VR_VIRTUAL_SCREEN);
-  openxr_layout->addWidget(m_virtual_screen, 6, 0, 1, 3);
+  m_virtual_screen =
+      new ConfigBool(tr("Virtual Screen for 2D Content"), Config::GFX_VR_VIRTUAL_SCREEN);
+  virtual_screen_layout->addWidget(m_virtual_screen, 0, 0, 1, 3);
 
   m_screen_distance = new ConfigFloatSlider(Config::GFX_VR_SCREEN_DISTANCE_MIN,
                                             Config::GFX_VR_SCREEN_DISTANCE_MAX,
@@ -148,16 +165,18 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
                             Config::GFX_VR_HEAD_LOCKED_CURVATURE_STEP);
   m_head_locked_curvature_value = new QLabel();
 
-  openxr_layout->addWidget(new ConfigFloatLabel(tr("Screen Distance (m):"), m_screen_distance), 7, 0);
-  openxr_layout->addWidget(m_screen_distance, 7, 1);
-  openxr_layout->addWidget(m_screen_distance_value, 7, 2);
-  openxr_layout->addWidget(new ConfigFloatLabel(tr("Screen Size (m):"), m_screen_size), 8, 0);
-  openxr_layout->addWidget(m_screen_size, 8, 1);
-  openxr_layout->addWidget(m_screen_size_value, 8, 2);
-  openxr_layout->addWidget(
-      new ConfigFloatLabel(tr("Head Locked Curvature:"), m_head_locked_curvature), 9, 0);
-  openxr_layout->addWidget(m_head_locked_curvature, 9, 1);
-  openxr_layout->addWidget(m_head_locked_curvature_value, 9, 2);
+  virtual_screen_layout->addWidget(
+      new ConfigFloatLabel(tr("Screen Distance (m):"), m_screen_distance), 1, 0);
+  virtual_screen_layout->addWidget(m_screen_distance, 1, 1);
+  virtual_screen_layout->addWidget(m_screen_distance_value, 1, 2);
+  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("Screen Size (m):"), m_screen_size), 2,
+                                   0);
+  virtual_screen_layout->addWidget(m_screen_size, 2, 1);
+  virtual_screen_layout->addWidget(m_screen_size_value, 2, 2);
+  virtual_screen_layout->addWidget(
+      new ConfigFloatLabel(tr("Head Locked Curvature:"), m_head_locked_curvature), 3, 0);
+  virtual_screen_layout->addWidget(m_head_locked_curvature, 3, 1);
+  virtual_screen_layout->addWidget(m_head_locked_curvature_value, 3, 2);
 
   m_screen_distance_value->setText(QString::asprintf("%.1f", m_screen_distance->GetValue()));
   connect(m_screen_distance, &ConfigFloatSlider::valueChanged, this, [this] {
@@ -179,22 +198,22 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
        {tr("60 to 90"), OpenXROpcodeReplayMode::Replay60To90},
        {tr("30 to 90"), OpenXROpcodeReplayMode::Replay30To90}},
       Config::GFX_VR_OPCODE_REPLAY);
-  openxr_layout->addWidget(new QLabel(tr("Opcode Replay:")), 10, 0);
-  openxr_layout->addWidget(m_opcode_replay_mode, 10, 1, 1, 2);
+  framerate_layout->addWidget(new QLabel(tr("Opcode Replay:")), 0, 0);
+  framerate_layout->addWidget(m_opcode_replay_mode, 0, 1, 1, 2);
 
   m_auto_vbi_from_hmd = new ConfigBool(tr("Force VBI Frequency to 90 Hz in VR"),
                                        Config::GFX_VR_AUTO_VBI_FROM_HMD);
-  openxr_layout->addWidget(m_auto_vbi_from_hmd, 11, 0, 1, 3);
+  framerate_layout->addWidget(m_auto_vbi_from_hmd, 1, 0, 1, 3);
 
   m_clear_efb_slider = new ConfigSlider(Config::GFX_VR_CLEAR_EFB_MIN,
                                         Config::GFX_VR_CLEAR_EFB_MAX,
                                         Config::GFX_VR_CLEAR_EFB_COPIES,
                                         Config::GFX_VR_CLEAR_EFB_STEP);
   m_clear_efb_value = new QLabel();
-  openxr_layout->addWidget(new ConfigSliderLabel(tr("Clear EFB (min width):"), m_clear_efb_slider),
-                           12, 0);
-  openxr_layout->addWidget(m_clear_efb_slider, 12, 1);
-  openxr_layout->addWidget(m_clear_efb_value, 12, 2);
+  rendering_layout->addWidget(
+      new ConfigSliderLabel(tr("Clear EFB (min width):"), m_clear_efb_slider), 0, 0);
+  rendering_layout->addWidget(m_clear_efb_slider, 0, 1);
+  rendering_layout->addWidget(m_clear_efb_value, 0, 2);
 
   auto update_clear_efb_label = [this] {
     const int val = m_clear_efb_slider->value();
@@ -207,9 +226,9 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   m_vr_gamma = new ConfigFloatSlider(Config::GFX_VR_GAMMA_MIN, Config::GFX_VR_GAMMA_MAX,
                                      Config::GFX_VR_GAMMA, Config::GFX_VR_GAMMA_STEP);
   m_vr_gamma_value = new QLabel();
-  openxr_layout->addWidget(new ConfigFloatLabel(tr("VR Gamma:"), m_vr_gamma), 13, 0);
-  openxr_layout->addWidget(m_vr_gamma, 13, 1);
-  openxr_layout->addWidget(m_vr_gamma_value, 13, 2);
+  rendering_layout->addWidget(new ConfigFloatLabel(tr("VR Gamma:"), m_vr_gamma), 1, 0);
+  rendering_layout->addWidget(m_vr_gamma, 1, 1);
+  rendering_layout->addWidget(m_vr_gamma_value, 1, 2);
 
   auto update_gamma_label = [this] {
     const float val = m_vr_gamma->GetValue();
@@ -221,16 +240,17 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   // Auto Layer Spread
   m_auto_layer_spread =
       new ConfigBool(tr("Auto Layer Spread"), Config::GFX_VR_AUTO_LAYER_SPREAD);
-  openxr_layout->addWidget(m_auto_layer_spread, 14, 0, 1, 3);
+  virtual_screen_layout->addWidget(m_auto_layer_spread, 4, 0, 1, 3);
 
   m_layer_offset = new ConfigFloatSlider(Config::GFX_VR_LAYER_OFFSET_MIN,
                                           Config::GFX_VR_LAYER_OFFSET_MAX,
                                           Config::GFX_VR_LAYER_OFFSET,
                                           Config::GFX_VR_LAYER_OFFSET_STEP);
   m_layer_offset_value = new QLabel();
-  openxr_layout->addWidget(new ConfigFloatLabel(tr("Layer Offset:"), m_layer_offset), 15, 0);
-  openxr_layout->addWidget(m_layer_offset, 15, 1);
-  openxr_layout->addWidget(m_layer_offset_value, 15, 2);
+  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("Layer Offset:"), m_layer_offset), 5,
+                                   0);
+  virtual_screen_layout->addWidget(m_layer_offset, 5, 1);
+  virtual_screen_layout->addWidget(m_layer_offset_value, 5, 2);
 
   m_layer_offset_value->setText(QString::asprintf("%.4f", m_layer_offset->GetValue()));
   connect(m_layer_offset, &ConfigFloatSlider::valueChanged, this, [this] {
@@ -242,9 +262,10 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
                                            Config::GFX_VR_ELEMENT_DEPTH,
                                            Config::GFX_VR_ELEMENT_DEPTH_STEP);
   m_element_depth_value = new QLabel();
-  openxr_layout->addWidget(new ConfigFloatLabel(tr("Element Depth:"), m_element_depth), 16, 0);
-  openxr_layout->addWidget(m_element_depth, 16, 1);
-  openxr_layout->addWidget(m_element_depth_value, 16, 2);
+  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("Element Depth:"), m_element_depth), 6,
+                                   0);
+  virtual_screen_layout->addWidget(m_element_depth, 6, 1);
+  virtual_screen_layout->addWidget(m_element_depth_value, 6, 2);
 
   m_element_depth_value->setText(QString::asprintf("%.4f", m_element_depth->GetValue()));
   connect(m_element_depth, &ConfigFloatSlider::valueChanged, this, [this] {
@@ -252,6 +273,10 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   });
 
   general_layout->addWidget(openxr_group);
+  general_layout->addWidget(camera_group);
+  general_layout->addWidget(virtual_screen_group);
+  general_layout->addWidget(framerate_group);
+  general_layout->addWidget(rendering_group);
 
   auto* hacks_group = new QGroupBox(tr("VR Hacks"));
   auto* hacks_group_layout = new QVBoxLayout;
@@ -411,6 +436,12 @@ void VRPane::AddDescriptions()
       "<br><br>When enabled, Dolphin uses OpenXR instead of Stereoscopic 3D output modes."
       "<br><br>This setting cannot be changed while emulation is active."
       "<br><br><dolphin_emphasis>If unsure, leave this unchecked.</dolphin_emphasis>");
+  static constexpr char TR_USE_VULKAN_MULTIVIEW_DESCRIPTION[] = QT_TR_NOOP(
+      "Uses Vulkan multiview for OpenXR stereo rendering when the GPU and runtime support it."
+      "<br><br>This renders both eyes through a multiview render pass instead of using "
+      "geometry-shader stereo expansion, which can be much faster on Quest/Adreno."
+      "<br><br>This setting only affects the Vulkan backend and requires restarting emulation."
+      "<br><br><dolphin_emphasis>If unsure on Quest, leave this checked.</dolphin_emphasis>");
   static constexpr char TR_AUTO_IMMEDIATE_XFB_DESCRIPTION[] = QT_TR_NOOP(
       "Forces Immediately Present XFB on while OpenXR is enabled."
       "<br><br>This improves head-tracking responsiveness and reduces latency in VR by presenting "
@@ -558,6 +589,7 @@ void VRPane::AddDescriptions()
       "<br><br><dolphin_emphasis>If unsure, leave this unchecked.</dolphin_emphasis>");
 
   m_enable_openxr->SetDescription(tr(TR_ENABLE_OPENXR_DESCRIPTION));
+  m_use_vulkan_multiview->SetDescription(tr(TR_USE_VULKAN_MULTIVIEW_DESCRIPTION));
   m_auto_immediate_xfb->SetDescription(tr(TR_AUTO_IMMEDIATE_XFB_DESCRIPTION));
   m_units_per_meter->SetDescription(tr(TR_UNITS_PER_METER_DESCRIPTION));
   m_lean_back_angle->SetDescription(tr(TR_LEAN_BACK_ANGLE_DESCRIPTION));
@@ -588,4 +620,5 @@ void VRPane::OnEmulationStateChanged(Core::State state)
 {
   const bool running = state != Core::State::Uninitialized;
   m_enable_openxr->setEnabled(!running);
+  m_use_vulkan_multiview->setEnabled(!running);
 }

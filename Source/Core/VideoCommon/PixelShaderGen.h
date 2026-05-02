@@ -27,7 +27,8 @@ struct pixel_shader_uid_data
 
   u32 num_values;  // TODO: Shouldn't be a u32
   u32 NumValues() const { return num_values; }
-  u32 pad0 : 4;
+  // Bump when PS code generation logic changes to invalidate stale shader cache entries.
+  u32 code_version : 4;
   u32 useDstAlpha : 1;
   u32 no_dual_src : 1;
   AlphaTestResult Pretest : 2;

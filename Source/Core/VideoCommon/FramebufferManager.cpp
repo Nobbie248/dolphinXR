@@ -171,6 +171,13 @@ FramebufferState FramebufferManager::GetEFBFramebufferState() const
   ret.depth_texture_format = m_efb_depth_texture->GetFormat();
   ret.per_sample_shading = IsEFBMultisampled() && g_ActiveConfig.bSSAA;
   ret.samples = m_efb_color_texture->GetSamples();
+  // EFB multiview: when stereo is rendered via VK_KHR_multiview, pipelines targeting
+  // the EFB must use a multiview-compatible render pass. The actual capability check
+  // happens backend-side; this flag merely propagates intent through pipeline config.
+  ret.multiview = (m_efb_color_texture->GetLayers() == 2 && ret.samples == 1 &&
+                   g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
+                   g_ActiveConfig.vr_use_vulkan_multiview &&
+                   g_backend_info.bSupportsMultiview) ? 1u : 0u;
   return ret;
 }
 
@@ -425,6 +432,7 @@ bool FramebufferManager::CompileConversionPipelines()
     config.depth_state = RenderState::GetNoDepthTestingDepthState();
     config.blending_state = RenderState::GetNoBlendingBlendState();
     config.framebuffer_state = GetEFBFramebufferState();
+    config.framebuffer_state.multiview = 0;
     config.usage = AbstractPipelineUsage::Utility;
     m_format_conversion_pipelines[i] = g_gfx->CreatePipeline(config);
     if (!m_format_conversion_pipelines[i])

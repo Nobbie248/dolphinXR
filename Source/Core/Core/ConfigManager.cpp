@@ -172,6 +172,7 @@ static void ApplyGameVRConfigOverrides(std::string_view game_id)
   ApplyVRSetting(values, "LayerOffset", Config::GFX_VR_LAYER_OFFSET);
   ApplyVRSetting(values, "ElementDepth", Config::GFX_VR_ELEMENT_DEPTH);
   ApplyVRSetting(values, "ClearEFBCopies", Config::GFX_VR_CLEAR_EFB_COPIES);
+  ApplyVRSetting(values, "UseVulkanMultiview", Config::GFX_VR_USE_VULKAN_MULTIVIEW);
   ApplyVRSetting(values, "ARMode", Config::GFX_VR_AR_MODE);
   ApplyVRSetting(values, "ARModeDebug", Config::GFX_VR_AR_MODE_DEBUG);
   ApplyVRSetting(values, "ARBackgroundAlpha", Config::GFX_VR_AR_BACKGROUND_ALPHA);

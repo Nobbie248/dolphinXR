@@ -54,6 +54,9 @@ public:
     bool depthClamp;
     bool textureCompressionBC;
     bool shaderSubgroupOperations = false;
+    bool multiview = false;
+    u32 maxMultiviewViewCount = 0;
+    u32 maxMultiviewInstanceIndex = 0;
   };
 
   VulkanContext(VkInstance instance, VkPhysicalDevice physical_device);
@@ -114,6 +117,8 @@ public:
   bool SupportsPreciseOcclusionQueries() const { return m_device_info.occlusionQueryPrecise; }
   u32 GetShaderSubgroupSize() const { return m_device_info.subgroupSize; }
   bool SupportsShaderSubgroupOperations() const { return m_device_info.shaderSubgroupOperations; }
+  bool SupportsMultiview() const { return m_multiview_enabled; }
+  u32 GetMaxMultiviewViewCount() const { return m_device_info.maxMultiviewViewCount; }
 
   // Helpers for getting constants
   VkDeviceSize GetUniformBufferAlignment() const
@@ -165,6 +170,8 @@ private:
 
   std::vector<std::string> m_device_extensions;
   std::vector<std::string> m_extra_device_extensions;
+
+  bool m_multiview_enabled = false;
 };
 
 extern std::unique_ptr<VulkanContext> g_vulkan_context;

@@ -162,11 +162,14 @@ constexpr Common::EnumMap<const char*, TevOutput::Color2> tev_a_output_table{
 
 constexpr Common::EnumMap<char, ColorChannel::Alpha> rgba_swizzle{'r', 'g', 'b', 'a'};
 
+static constexpr u32 PIXEL_SHADER_CODE_VERSION = 1;
+
 PixelShaderUid GetPixelShaderUid()
 {
   PixelShaderUid out;
 
   pixel_shader_uid_data* const uid_data = out.GetUidData();
+  uid_data->code_version = PIXEL_SHADER_CODE_VERSION;
   uid_data->useDstAlpha = bpmem.dstalpha.enable && bpmem.blendmode.alpha_update &&
                           bpmem.zcontrol.pixel_format == PixelFormat::RGBA6_Z24;
 
@@ -546,6 +549,15 @@ uint WrapCoord(int coord, uint wrap, int size) {{
 
   out.Write("\nint4 sampleTexture(uint texmap, in sampler2DArray tex, int2 uv, int layer) {{\n");
 
+  if (host_config.vr_stereo && host_config.vk_multiview &&
+      (api_type == APIType::OpenGL || api_type == APIType::Vulkan))
+  {
+    // Multiview renders one fragment shader invocation per eye, but most game textures are still
+    // single-layer sampler2DArray views. Clamp per sampled texture so EFB/XFB/effect copies can
+    // use layer 1 while ordinary game textures safely stay on layer 0.
+    out.Write("  layer = clamp(layer, 0, textureSize(tex, 0).z - 1);\n");
+  }
+
   if (!host_config.manual_texture_sampling)
   {
     out.Write("  float size_s = float(" I_TEXDIMS "[texmap].x * 128);\n"
@@ -757,6 +769,12 @@ ShaderCode GeneratePixelShaderCode(APIType api_type, const ShaderHostConfig& hos
   const bool stereo = host_config.stereo;
   const u32 numStages = uid_data->genMode_numtevstages + 1;
 
+  if (host_config.vr_stereo && host_config.vk_multiview &&
+      (api_type == APIType::OpenGL || api_type == APIType::Vulkan))
+  {
+    out.Write("#extension GL_EXT_multiview : require\n");
+  }
+
   out.Write("// Pixel Shader for TEV stages\n");
   out.Write("// {} TEV stages, {} texgens, {} IND stages\n", numStages,
             uid_data->genMode_numtexgens, uid_data->genMode_numindstages);
@@ -953,7 +971,14 @@ ShaderCode GeneratePixelShaderCode(APIType api_type, const ShaderHostConfig& hos
     out.Write("\tfloat4 ocol1;\n");
   }
 
-  if (host_config.backend_geometry_shaders && stereo)
+  if (host_config.vr_stereo && host_config.vk_multiview &&
+      (api_type == APIType::OpenGL || api_type == APIType::Vulkan))
+  {
+    // Use the active multiview eye for stereo render targets. sampleTexture() clamps against the
+    // actual texture depth, so normal single-layer textures stay on layer 0.
+    out.Write("\tint layer = int(gl_ViewIndex);\n");
+  }
+  else if (host_config.backend_geometry_shaders && stereo)
   {
     if (host_config.backend_gl_layer_in_fs)
       out.Write("\tint layer = gl_Layer;\n");
