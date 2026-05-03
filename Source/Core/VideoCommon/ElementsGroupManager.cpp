@@ -13,8 +13,10 @@
 
 #include <fmt/format.h>
 
+#include "Common/CommonPaths.h"
 #include "Common/FileUtil.h"
 #include "Common/Logging/Log.h"
+#include "Core/ConfigLoaders/GameConfigLoader.h"
 #include "VideoCommon/RuntimeElementMatcher.h"
 
 namespace
@@ -23,6 +25,18 @@ std::string GetVRGameSettingsPath(const std::string& game_id)
 {
   return File::GetUserPath(D_GAMESETTINGSVR_IDX) + game_id + ".ini";
 }
+
+std::string GetSysVRGameSettingsPath(const std::string& filename)
+{
+  return File::GetSysDirectory() + GAMESETTINGSVR_DIR DIR_SEP + filename;
+}
+
+struct ParsedElementGroupOverrideFile
+{
+  std::vector<ElementsGroupManager::ElementGroupOverride> entries;
+  bool has_enable_section = false;
+  std::set<std::string> enabled_names;
+};
 
 std::string ReadFileWithoutElementSections(const std::string& path)
 {
@@ -523,20 +537,20 @@ size_t ElementsGroupManager::CounterKeyHasher::operator()(const CounterKey& key)
   return std::hash<u64>{}(key.value);
 }
 
-std::vector<ElementsGroupManager::ElementGroupOverride>
-ElementsGroupManager::LoadOverridesFromINI(const std::string& game_id)
+ParsedElementGroupOverrideFile
+LoadElementGroupOverridesFromINIFile(const std::string& path)
 {
-  std::vector<ElementGroupOverride> result;
-  if (game_id.empty())
-    return result;
+  using ElementGroupOverride = ElementsGroupManager::ElementGroupOverride;
+  using StableSubMatchSignature = ElementsGroupManager::StableSubMatchSignature;
+  using SelectedSubgroupSignature = ElementsGroupManager::SelectedSubgroupSignature;
+  using ShaderType = ElementsGroupManager::ShaderType;
+  using HandlingType = ElementsGroupManager::HandlingType;
 
-  const std::string path = GetVRGameSettingsPath(game_id);
+  ParsedElementGroupOverrideFile parsed;
   std::ifstream file(path);
   if (!file.is_open())
-    return result;
+    return parsed;
 
-  std::set<std::string> enabled_names;
-  bool has_enable_section = false;
   {
     bool in_section = false;
     std::string line;
@@ -547,7 +561,7 @@ ElementsGroupManager::LoadOverridesFromINI(const std::string& game_id)
       if (line == "[ElementsGroupOverride_Enable]")
       {
         in_section = true;
-        has_enable_section = true;
+        parsed.has_enable_section = true;
         continue;
       }
       if (in_section && !line.empty() && line[0] == '[')
@@ -555,7 +569,7 @@ ElementsGroupManager::LoadOverridesFromINI(const std::string& game_id)
       if (!in_section || line.empty())
         continue;
       if (line[0] == '$')
-        enabled_names.insert(line.substr(1));
+        parsed.enabled_names.insert(line.substr(1));
     }
   }
 
@@ -574,7 +588,8 @@ ElementsGroupManager::LoadOverridesFromINI(const std::string& game_id)
         (current_format != "element_only_v2" && current_format != "element_only_v3" &&
          current_format != "element_only_v4" && current_format != "element_only_v5"))
       return;
-    current.enabled = has_enable_section ? (enabled_names.count(current.name) > 0) : true;
+    current.enabled = parsed.has_enable_section ? (parsed.enabled_names.count(current.name) > 0) :
+                                                  true;
     current.selected_match_filter.clear();
     if (current_format == "element_only_v3")
     {
@@ -620,7 +635,7 @@ ElementsGroupManager::LoadOverridesFromINI(const std::string& game_id)
       }
     }
     if (current.runtime_element.valid)
-      result.push_back(current);
+      parsed.entries.push_back(current);
   };
 
   std::string line;
@@ -754,6 +769,51 @@ ElementsGroupManager::LoadOverridesFromINI(const std::string& game_id)
   }
 
   commit_entry();
+  return parsed;
+}
+
+static void MergeParsedElementGroupOverrideFile(
+    std::vector<ElementsGroupManager::ElementGroupOverride>* result,
+    std::map<std::string, size_t>* index_by_name, ParsedElementGroupOverrideFile parsed)
+{
+  for (auto& entry : parsed.entries)
+  {
+    const auto it = index_by_name->find(entry.name);
+    if (it != index_by_name->end())
+      (*result)[it->second] = std::move(entry);
+    else
+    {
+      const size_t index = result->size();
+      index_by_name->emplace(entry.name, index);
+      result->push_back(std::move(entry));
+    }
+  }
+
+  if (parsed.has_enable_section)
+  {
+    for (auto& entry : *result)
+      entry.enabled = parsed.enabled_names.count(entry.name) > 0;
+  }
+}
+
+std::vector<ElementsGroupManager::ElementGroupOverride>
+ElementsGroupManager::LoadOverridesFromINI(const std::string& game_id, std::optional<u16> revision)
+{
+  if (game_id.empty())
+    return {};
+
+  std::vector<ElementGroupOverride> result;
+  std::map<std::string, size_t> index_by_name;
+
+  for (const std::string& filename : ConfigLoaders::GetGameIniFilenames(game_id, revision))
+    MergeParsedElementGroupOverrideFile(
+        &result, &index_by_name, LoadElementGroupOverridesFromINIFile(GetSysVRGameSettingsPath(filename)));
+
+  for (const std::string& filename : ConfigLoaders::GetGameIniFilenames(game_id, revision))
+    MergeParsedElementGroupOverrideFile(
+        &result, &index_by_name,
+        LoadElementGroupOverridesFromINIFile(File::GetUserPath(D_GAMESETTINGSVR_IDX) + filename));
+
   return result;
 }
 
@@ -862,9 +922,25 @@ void ElementsGroupManager::LoadOverrides(const std::string& game_id)
   m_stable_submatch_occurrence_counters.clear();
   m_current_stable_submatch = {};
   if (game_id.empty())
+  {
+    m_has_overrides.store(false);
     return;
-  m_overrides = LoadOverridesFromINI(game_id);
-  INFO_LOG_FMT(VIDEO, "ElementsGroup: loaded {} overrides for {}", m_overrides.size(), game_id);
+  }
+
+  const auto all_overrides = LoadOverridesFromINI(game_id);
+  for (const auto& entry : all_overrides)
+  {
+    if (entry.enabled)
+      m_overrides.push_back(entry);
+  }
+
+  m_has_overrides.store(!m_overrides.empty());
+
+  if (!m_overrides.empty())
+  {
+    INFO_LOG_FMT(VIDEO, "ElementsGroup: loaded {} enabled overrides for {}", m_overrides.size(),
+                 game_id);
+  }
 }
 
 void ElementsGroupManager::LoadOverridesIfNeeded(const std::string& game_id)
@@ -879,8 +955,7 @@ void ElementsGroupManager::LoadOverridesIfNeeded(const std::string& game_id)
 
 bool ElementsGroupManager::HasOverrides() const
 {
-  std::lock_guard lock(m_mutex);
-  return !m_overrides.empty();
+  return m_has_overrides.load();
 }
 
 void ElementsGroupManager::SetPopupOpen(bool open)
@@ -914,12 +989,13 @@ void ElementsGroupManager::SetPopupOpen(bool open)
     m_current_stable_submatch = {};
     ClearSeedSelectionLocked();
   }
+
+  m_popup_open.store(m_popup_open_count > 0);
 }
 
 bool ElementsGroupManager::IsPopupOpen() const
 {
-  std::lock_guard lock(m_mutex);
-  return m_popup_open_count > 0;
+  return m_popup_open.load();
 }
 
 void ElementsGroupManager::SetHuntEnabled(bool enabled)

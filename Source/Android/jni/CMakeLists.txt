@@ -62,6 +62,7 @@ PRIVATE
     ${CMAKE_SOURCE_DIR}/Externals/VulkanMemoryAllocator/include
 )
 
+file(GLOB_RECURSE android_sys_assets CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/Data/Sys/*")
 file(MAKE_DIRECTORY ${CMAKE_SOURCE_DIR}/Source/Android/app/src/main/assets/)
 file(REMOVE_RECURSE ${CMAKE_SOURCE_DIR}/Source/Android/app/src/main/assets/Sys/)
 file(COPY ${CMAKE_SOURCE_DIR}/Data/Sys DESTINATION ${CMAKE_SOURCE_DIR}/Source/Android/app/src/main/assets/)

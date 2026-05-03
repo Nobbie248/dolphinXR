@@ -27,6 +27,7 @@
 #include "Common/StringUtil.h"
 
 #include "Core/Config/GraphicsSettings.h"
+#include "Core/ConfigLoaders/GameConfigLoader.h"
 #include "Core/ConfigManager.h"
 #include "DolphinQt/Config/GameConfigEdit.h"
 #include "DolphinQt/QtUtils/QtUtils.h"
@@ -48,10 +49,34 @@ void ResetTabPages(QTabWidget* tab)
     delete page;
   }
 }
+
+void PopulateVRConfigTab(QTabWidget* tab, const std::string& path, const std::string& game_id,
+                         std::optional<u16> revision, bool read_only)
+{
+  for (const std::string& filename : ConfigLoaders::GetGameIniFilenames(game_id, revision))
+  {
+    const std::string ini_path = path + filename;
+    if (File::Exists(ini_path))
+    {
+      auto* edit = new GameConfigEdit(nullptr, QString::fromStdString(ini_path), read_only);
+      tab->addTab(edit, QString::fromStdString(filename));
+    }
+  }
+}
+
+bool HasTab(QTabWidget* tab, const QString& name)
+{
+  for (int i = 0; i < tab->count(); ++i)
+  {
+    if (tab->tabText(i) == name)
+      return true;
+  }
+  return false;
+}
 }  // namespace
 
-VRConfigWidget::VRConfigWidget(std::string game_id, QWidget* parent)
-    : QWidget(parent), m_game_id(std::move(game_id))
+VRConfigWidget::VRConfigWidget(std::string game_id, std::optional<u16> revision, QWidget* parent)
+    : QWidget(parent), m_game_id(std::move(game_id)), m_revision(revision)
 {
   CreateWidgets();
   LoadFromFile();
@@ -192,6 +217,14 @@ void VRConfigWidget::CreateWidgets()
   auto* const editor_widget = new QWidget;
   editor_widget->setLayout(editor_layout);
 
+  auto* default_group = new QGroupBox(tr("VR Default Config"));
+  auto* default_layout = new QVBoxLayout;
+  m_default_tab = new QTabWidget;
+  default_layout->addWidget(m_default_tab);
+  default_group->setLayout(default_layout);
+
+  editor_layout->insertWidget(0, default_group);
+
   auto* const tabs = new QTabWidget;
   tabs->addTab(general_widget, tr("General"));
   const int editor_index = tabs->addTab(editor_widget, tr("Editor"));
@@ -270,7 +303,7 @@ void VRConfigWidget::CreateWidgets()
 
 void VRConfigWidget::LoadFromFile()
 {
-  const ValueMap values = ReadVRSectionValues(GetINIPath());
+  const ValueMap values = ReadMergedVRSectionValues();
 
   m_updating = true;
 
@@ -443,7 +476,7 @@ void VRConfigWidget::SaveToFile()
   }
   append_bool("AutoVBIFromHMD", GetBoolMode(m_force_vbi_90hz_mode));
 
-  const std::string path = GetINIPath();
+  const std::string path = GetLocalINIPath();
   std::string base = ReadFileWithoutVRSection(path);
   while (!base.empty() &&
          (base.back() == '\n' || base.back() == '\r' ||
@@ -479,19 +512,55 @@ void VRConfigWidget::SaveToFile()
 
 void VRConfigWidget::RefreshEditorTabs()
 {
-  if (!m_local_tab || m_game_id.empty())
+  if (!m_default_tab || !m_local_tab || m_game_id.empty())
     return;
 
+  ResetTabPages(m_default_tab);
   ResetTabPages(m_local_tab);
 
-  const std::string local_path = GetINIPath();
-  m_local_tab->addTab(new GameConfigEdit(nullptr, QString::fromStdString(local_path), false),
-                      QString::fromStdString(m_game_id + ".ini"));
+  PopulateVRConfigTab(m_default_tab, File::GetSysDirectory() + GAMESETTINGSVR_DIR DIR_SEP,
+                      m_game_id, m_revision, true);
+  PopulateVRConfigTab(m_local_tab, File::GetUserPath(D_GAMESETTINGSVR_IDX), m_game_id, m_revision,
+                      false);
+
+  const std::string local_path = GetLocalINIPath();
+  const QString local_tab_name = QString::fromStdString(m_game_id + ".ini");
+  if (!HasTab(m_local_tab, local_tab_name))
+  {
+    m_local_tab->addTab(new GameConfigEdit(nullptr, QString::fromStdString(local_path), false),
+                        local_tab_name);
+  }
 }
 
-std::string VRConfigWidget::GetINIPath() const
+std::string VRConfigWidget::GetLocalINIPath() const
 {
   return File::GetUserPath(D_GAMESETTINGSVR_IDX) + m_game_id + ".ini";
+}
+
+VRConfigWidget::ValueMap VRConfigWidget::ReadMergedVRSectionValues() const
+{
+  ValueMap values;
+
+  if (m_game_id.empty())
+    return values;
+
+  for (const std::string& filename : ConfigLoaders::GetGameIniFilenames(m_game_id, m_revision))
+  {
+    const ValueMap file_values =
+        ReadVRSectionValues(File::GetSysDirectory() + GAMESETTINGSVR_DIR DIR_SEP + filename);
+    for (const auto& [key, value] : file_values)
+      values.insert_or_assign(key, value);
+  }
+
+  for (const std::string& filename : ConfigLoaders::GetGameIniFilenames(m_game_id, m_revision))
+  {
+    const ValueMap file_values =
+        ReadVRSectionValues(File::GetUserPath(D_GAMESETTINGSVR_IDX) + filename);
+    for (const auto& [key, value] : file_values)
+      values.insert_or_assign(key, value);
+  }
+
+  return values;
 }
 
 bool VRConfigWidget::IsVRSectionHeader(std::string_view line)

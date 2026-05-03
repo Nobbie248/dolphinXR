@@ -67,7 +67,7 @@ class SettingsActivityPresenter(
                 settings!!.loadSettings(isWii)
             }
         }
-        activityView.showSettingsFragment(menuTag!!, null, false, gameId!!)
+        activityView.showSettingsFragment(menuTag!!, fragmentExtrasWithRevision(null), false, gameId!!)
         activityView.onSettingsFileLoaded(settings!!)
     }
 
@@ -100,7 +100,7 @@ class SettingsActivityPresenter(
             if (value != 0 && value != 255) {
                 val bundle = Bundle()
                 bundle.putInt(SettingsFragmentPresenter.ARG_SERIALPORT1_TYPE, value)
-                activityView.showSettingsFragment(menuTag, bundle, true, gameId!!)
+                activityView.showSettingsFragment(menuTag, fragmentExtrasWithRevision(bundle), true, gameId!!)
             }
         }
         if (menuTag.isGCPadMenu) {
@@ -109,13 +109,13 @@ class SettingsActivityPresenter(
             {
                 val bundle = Bundle()
                 bundle.putInt(SettingsFragmentPresenter.ARG_CONTROLLER_TYPE, value)
-                activityView.showSettingsFragment(menuTag, bundle, true, gameId!!)
+                activityView.showSettingsFragment(menuTag, fragmentExtrasWithRevision(bundle), true, gameId!!)
             }
         }
         if (menuTag.isWiimoteMenu) {
             // Emulated Wii Remote
             if (value == 1) {
-                activityView.showSettingsFragment(menuTag, null, true, gameId!!)
+                activityView.showSettingsFragment(menuTag, fragmentExtrasWithRevision(null), true, gameId!!)
             }
         }
         if (menuTag.isWiimoteExtensionMenu) {
@@ -123,7 +123,7 @@ class SettingsActivityPresenter(
             if (value != 0) {
                 val bundle = Bundle()
                 bundle.putInt(SettingsFragmentPresenter.ARG_CONTROLLER_TYPE, value)
-                activityView.showSettingsFragment(menuTag, bundle, true, gameId!!)
+                activityView.showSettingsFragment(menuTag, fragmentExtrasWithRevision(bundle), true, gameId!!)
             }
         }
     }
@@ -145,5 +145,11 @@ class SettingsActivityPresenter(
             // Not disabled
             value != 0
         } else false
+    }
+
+    private fun fragmentExtrasWithRevision(extras: Bundle?): Bundle {
+        val bundle = extras ?: Bundle()
+        bundle.putInt(SettingsFragmentPresenter.ARG_REVISION, revision)
+        return bundle
     }
 }

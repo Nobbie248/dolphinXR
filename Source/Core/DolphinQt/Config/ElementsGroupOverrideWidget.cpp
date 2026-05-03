@@ -92,8 +92,9 @@ std::optional<ShaderHunter::ShaderOverride> SelectShaderOverrideForImport(
 }
 }  // namespace
 
-ElementsGroupOverrideWidget::ElementsGroupOverrideWidget(std::string game_id)
-    : m_game_id(std::move(game_id))
+ElementsGroupOverrideWidget::ElementsGroupOverrideWidget(std::string game_id,
+                                                         std::optional<u16> revision)
+    : m_game_id(std::move(game_id)), m_revision(revision)
 {
   CreateWidgets();
   ConnectWidgets();
@@ -155,7 +156,7 @@ void ElementsGroupOverrideWidget::ConnectWidgets()
 
 void ElementsGroupOverrideWidget::LoadOverrides()
 {
-  m_overrides = ElementsGroupManager::LoadOverridesFromINI(m_game_id);
+  m_overrides = ElementsGroupManager::LoadOverridesFromINI(m_game_id, m_revision);
   UpdateList();
   m_code_edit->setEnabled(false);
   m_code_remove->setEnabled(false);

@@ -4,6 +4,7 @@
 #include "DolphinQt/Config/PropertiesDialog.h"
 
 #include <memory>
+#include <optional>
 
 #include <QDialogButtonBox>
 #include <QPushButton>
@@ -42,7 +43,11 @@ PropertiesDialog::PropertiesDialog(QWidget* parent, const UICommon::GameFile& ga
       new GeckoCodeWidget(game.GetGameID(), game.GetGameTDBID(), game.GetRevision());
   auto* const patches = new PatchesWidget(game);
   auto* const game_config = new GameConfigWidget(game);
-  auto* const vr_config = new VRConfigWidget(game.GetGameID());
+  const auto game_revision = game.GetRevision();
+  std::optional<u16> revision;
+  if (game_revision != 0)
+    revision = game_revision;
+  auto* const vr_config = new VRConfigWidget(game.GetGameID(), revision);
   auto* const graphics_mod_list = new GraphicsModListWidget(game);
 
   connect(gecko, &GeckoCodeWidget::OpenGeneralSettings, this,
@@ -70,13 +75,14 @@ PropertiesDialog::PropertiesDialog(QWidget* parent, const UICommon::GameFile& ga
   AddPane(gecko, tr("Gecko Codes"));
   AddWrappedPane(graphics_mod_list, tr("Graphics Mods"));
 
-  auto* const shader_overrides = new ShaderOverrideWidget(game.GetGameID());
+  auto* const shader_overrides = new ShaderOverrideWidget(game.GetGameID(), revision);
   AddPane(shader_overrides, tr("Shader Overrides"));
 
-  auto* const element_group_overrides = new ElementsGroupOverrideWidget(game.GetGameID());
+  auto* const element_group_overrides =
+      new ElementsGroupOverrideWidget(game.GetGameID(), revision);
   AddPane(element_group_overrides, tr("Elements Group Overrides"));
 
-  auto* const hide_objects = new HideObjectWidget(game.GetGameID());
+  auto* const hide_objects = new HideObjectWidget(game.GetGameID(), revision);
   AddPane(hide_objects, tr("Hide Objects"));
 
   if (game.GetPlatform() != DiscIO::Platform::ELFOrDOL)

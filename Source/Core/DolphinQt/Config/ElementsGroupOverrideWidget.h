@@ -6,6 +6,7 @@
 #include <QPointer>
 #include <QWidget>
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -20,7 +21,8 @@ class ElementsGroupOverrideWidget : public QWidget
 {
   Q_OBJECT
 public:
-  explicit ElementsGroupOverrideWidget(std::string game_id);
+  explicit ElementsGroupOverrideWidget(std::string game_id,
+                                       std::optional<u16> revision = std::nullopt);
   ~ElementsGroupOverrideWidget() override;
 
 private:
@@ -42,6 +44,7 @@ private:
   void OnHuntClicked();
 
   std::string m_game_id;
+  std::optional<u16> m_revision;
   QListWidget* m_code_list = nullptr;
   QPushButton* m_code_add = nullptr;
   QPushButton* m_code_import = nullptr;

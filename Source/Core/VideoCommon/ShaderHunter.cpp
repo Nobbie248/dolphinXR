@@ -6,11 +6,15 @@
 #include <algorithm>
 #include <cctype>
 #include <fstream>
+#include <map>
+#include <set>
 #include <sstream>
 
+#include "Common/CommonPaths.h"
 #include "Common/FileUtil.h"
 #include "Common/Hash.h"
 #include "Common/Logging/Log.h"
+#include "Core/ConfigLoaders/GameConfigLoader.h"
 #include "VideoCommon/GeometryShaderGen.h"
 #include "VideoCommon/PixelShaderGen.h"
 #include "VideoCommon/ShaderGenCommon.h"
@@ -815,21 +819,32 @@ static std::string GetVRGameSettingsPath(const std::string& game_id)
   return File::GetUserPath(D_GAMESETTINGSVR_IDX) + game_id + ".ini";
 }
 
-std::vector<ShaderHunter::ShaderOverride>
-ShaderHunter::LoadOverridesFromINI(const std::string& game_id)
+static std::string GetSysVRGameSettingsPath(const std::string& filename)
 {
-  std::vector<ShaderOverride> result;
-  if (game_id.empty())
-    return result;
+  return File::GetSysDirectory() + GAMESETTINGSVR_DIR DIR_SEP + filename;
+}
 
-  const std::string path = GetVRGameSettingsPath(game_id);
+struct ParsedShaderOverrideFile
+{
+  std::vector<ShaderHunter::ShaderOverride> entries;
+  bool has_enable_section = false;
+  std::set<std::string> enabled_names;
+};
+
+ParsedShaderOverrideFile
+LoadShaderOverridesFromINIFile(const std::string& path)
+{
+  using ShaderOverride = ShaderHunter::ShaderOverride;
+  using ShaderType = ShaderHunter::ShaderType;
+  using HandlingType = ShaderHunter::HandlingType;
+  using MatchMode = ShaderHunter::MatchMode;
+
+  ParsedShaderOverrideFile parsed;
   std::ifstream file(path);
   if (!file.is_open())
-    return result;
+    return parsed;
 
   // First pass: read [ShaderOverride_Enable] to get enabled names
-  std::set<std::string> enabled_names;
-  bool has_enable_section = false;
   {
     bool in_section = false;
     std::string line;
@@ -841,7 +856,7 @@ ShaderHunter::LoadOverridesFromINI(const std::string& game_id)
       if (line == "[ShaderOverride_Enable]")
       {
         in_section = true;
-        has_enable_section = true;
+        parsed.has_enable_section = true;
         continue;
       }
       if (in_section && !line.empty() && line[0] == '[')
@@ -849,7 +864,7 @@ ShaderHunter::LoadOverridesFromINI(const std::string& game_id)
       if (!in_section || line.empty())
         continue;
       if (line[0] == '$')
-        enabled_names.insert(line.substr(1));
+        parsed.enabled_names.insert(line.substr(1));
     }
   }
 
@@ -871,8 +886,9 @@ ShaderHunter::LoadOverridesFromINI(const std::string& game_id)
         current.texture_hashes.end());
     // Backward compatibility: old INIs may not have [ShaderOverride_Enable].
     // In that case, treat all entries as enabled.
-    current.enabled = has_enable_section ? (enabled_names.count(current.name) > 0) : true;
-    result.push_back(current);
+    current.enabled = parsed.has_enable_section ? (parsed.enabled_names.count(current.name) > 0) :
+                                                  true;
+    parsed.entries.push_back(current);
   };
 
   std::string line;
@@ -1061,6 +1077,51 @@ ShaderHunter::LoadOverridesFromINI(const std::string& game_id)
   }
 
   commit_entry();
+  return parsed;
+}
+
+static void MergeParsedShaderOverrideFile(std::vector<ShaderHunter::ShaderOverride>* result,
+                                          std::map<std::string, size_t>* index_by_name,
+                                          ParsedShaderOverrideFile parsed)
+{
+  for (auto& entry : parsed.entries)
+  {
+    const auto it = index_by_name->find(entry.name);
+    if (it != index_by_name->end())
+      (*result)[it->second] = std::move(entry);
+    else
+    {
+      const size_t index = result->size();
+      index_by_name->emplace(entry.name, index);
+      result->push_back(std::move(entry));
+    }
+  }
+
+  if (parsed.has_enable_section)
+  {
+    for (auto& entry : *result)
+      entry.enabled = parsed.enabled_names.count(entry.name) > 0;
+  }
+}
+
+std::vector<ShaderHunter::ShaderOverride>
+ShaderHunter::LoadOverridesFromINI(const std::string& game_id, std::optional<u16> revision)
+{
+  if (game_id.empty())
+    return {};
+
+  std::vector<ShaderOverride> result;
+  std::map<std::string, size_t> index_by_name;
+
+  for (const std::string& filename : ConfigLoaders::GetGameIniFilenames(game_id, revision))
+    MergeParsedShaderOverrideFile(&result, &index_by_name,
+                                  LoadShaderOverridesFromINIFile(GetSysVRGameSettingsPath(filename)));
+
+  for (const std::string& filename : ConfigLoaders::GetGameIniFilenames(game_id, revision))
+    MergeParsedShaderOverrideFile(
+        &result, &index_by_name,
+        LoadShaderOverridesFromINIFile(File::GetUserPath(D_GAMESETTINGSVR_IDX) + filename));
+
   return result;
 }
 
@@ -1191,16 +1252,32 @@ void ShaderHunter::LoadOverrides(const std::string& game_id)
   m_override_draw_totals_prev.clear();
   m_runtime_element_reference_totals.clear();
   m_loaded_game_id = game_id;
+  m_has_overrides.store(false, std::memory_order_relaxed);
+  m_needs_shader_family_signatures.store(false, std::memory_order_relaxed);
+  m_needs_texture_hashes.store(false, std::memory_order_relaxed);
+  m_needs_override_draw_counters.store(false, std::memory_order_relaxed);
 
   if (game_id.empty())
     return;
 
   auto all = LoadOverridesFromINI(game_id);
+  bool has_overrides = false;
+  bool needs_shader_family_signatures = false;
+  bool needs_texture_hashes = false;
+  bool needs_override_draw_counters = false;
 
   for (auto& ovr : all)
   {
     if (!ovr.enabled)
       continue;
+
+    has_overrides = true;
+    if (ovr.hash_family_match)
+      needs_shader_family_signatures = true;
+    if (!ovr.texture_hashes.empty())
+      needs_texture_hashes = true;
+    if (ovr.element_start >= 0 && ovr.element_end >= 0)
+      needs_override_draw_counters = true;
 
     m_all_override_hashes.insert(ovr.hash);
     // Any override with a flag_group sets a flag when drawn (regardless of handling type)
@@ -1290,6 +1367,13 @@ void ShaderHunter::LoadOverrides(const std::string& game_id)
 
     m_overrides.push_back(std::move(ovr));
   }
+
+  m_has_overrides.store(has_overrides, std::memory_order_relaxed);
+  m_needs_shader_family_signatures.store(needs_shader_family_signatures,
+                                         std::memory_order_relaxed);
+  m_needs_texture_hashes.store(needs_texture_hashes, std::memory_order_relaxed);
+  m_needs_override_draw_counters.store(needs_override_draw_counters,
+                                       std::memory_order_relaxed);
 
   if (!m_overrides.empty())
   {
@@ -1385,7 +1469,22 @@ void ShaderHunter::AddAndSaveOverride(const std::string& game_id, const std::str
 
 bool ShaderHunter::HasOverrides() const
 {
-  return !m_overrides.empty();
+  return m_has_overrides.load(std::memory_order_relaxed);
+}
+
+bool ShaderHunter::NeedsShaderFamilySignatures() const
+{
+  return m_needs_shader_family_signatures.load(std::memory_order_relaxed);
+}
+
+bool ShaderHunter::NeedsTextureHashes() const
+{
+  return m_needs_texture_hashes.load(std::memory_order_relaxed);
+}
+
+bool ShaderHunter::NeedsOverrideDrawCounters() const
+{
+  return m_needs_override_draw_counters.load(std::memory_order_relaxed);
 }
 
 void ShaderHunter::CheckClearEFBForDraw(u64 vs_hash, u64 ps_hash, u64 gs_hash)

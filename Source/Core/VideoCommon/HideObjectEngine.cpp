@@ -5,11 +5,14 @@
 
 #include <algorithm>
 #include <fstream>
+#include <map>
 #include <set>
 #include <sstream>
 
+#include "Common/CommonPaths.h"
 #include "Common/FileUtil.h"
 #include "Common/Logging/Log.h"
+#include "Core/ConfigLoaders/GameConfigLoader.h"
 
 namespace HideObjectEngine
 {
@@ -96,19 +99,26 @@ static std::string GetVRGameSettingsPath(const std::string& game_id)
   return File::GetUserPath(D_GAMESETTINGSVR_IDX) + game_id + ".ini";
 }
 
-std::vector<HideObject> LoadFromINI(const std::string& game_id)
+static std::string GetSysVRGameSettingsPath(const std::string& filename)
 {
-  std::vector<HideObject> result;
-  if (game_id.empty())
-    return result;
+  return File::GetSysDirectory() + GAMESETTINGSVR_DIR DIR_SEP + filename;
+}
 
-  const std::string path = GetVRGameSettingsPath(game_id);
+struct ParsedHideObjectFile
+{
+  std::vector<HideObject> entries;
+  bool has_enable_section = false;
+  std::set<std::string> enabled_names;
+};
+
+static ParsedHideObjectFile LoadFromINIFile(const std::string& path)
+{
+  ParsedHideObjectFile parsed;
   std::ifstream file(path);
   if (!file.is_open())
-    return result;
+    return parsed;
 
   // First pass: read [HideObjectCodes_Enabled] for enabled names
-  std::set<std::string> enabled_names;
   {
     bool in_section = false;
     std::string line;
@@ -120,6 +130,7 @@ std::vector<HideObject> LoadFromINI(const std::string& game_id)
       if (line == "[HideObjectCodes_Enabled]")
       {
         in_section = true;
+        parsed.has_enable_section = true;
         continue;
       }
       if (in_section && !line.empty() && line[0] == '[')
@@ -127,7 +138,7 @@ std::vector<HideObject> LoadFromINI(const std::string& game_id)
       if (!in_section || line.empty())
         continue;
       if (line[0] == '$')
-        enabled_names.insert(line.substr(1));
+        parsed.enabled_names.insert(line.substr(1));
     }
   }
 
@@ -152,9 +163,9 @@ std::vector<HideObject> LoadFromINI(const std::string& game_id)
     commit_entry();
     if (!has_code || current.name.empty())
       return;
-    current.active = enabled_names.count(current.name) > 0;
+    current.active = parsed.enabled_names.count(current.name) > 0;
     if (!current.entries.empty())
-      result.push_back(current);
+      parsed.entries.push_back(current);
   };
 
   std::string line;
@@ -235,6 +246,49 @@ std::vector<HideObject> LoadFromINI(const std::string& game_id)
   }
 
   commit_code();
+  return parsed;
+}
+
+static void MergeParsedHideObjectFile(std::vector<HideObject>* result,
+                                      std::map<std::string, size_t>* index_by_name,
+                                      ParsedHideObjectFile parsed)
+{
+  for (auto& entry : parsed.entries)
+  {
+    const auto it = index_by_name->find(entry.name);
+    if (it != index_by_name->end())
+      (*result)[it->second] = std::move(entry);
+    else
+    {
+      const size_t index = result->size();
+      index_by_name->emplace(entry.name, index);
+      result->push_back(std::move(entry));
+    }
+  }
+
+  if (parsed.has_enable_section)
+  {
+    for (auto& entry : *result)
+      entry.active = parsed.enabled_names.count(entry.name) > 0;
+  }
+}
+
+std::vector<HideObject> LoadFromINI(const std::string& game_id, std::optional<u16> revision)
+{
+  if (game_id.empty())
+    return {};
+
+  std::vector<HideObject> result;
+  std::map<std::string, size_t> index_by_name;
+
+  for (const std::string& filename : ConfigLoaders::GetGameIniFilenames(game_id, revision))
+    MergeParsedHideObjectFile(&result, &index_by_name,
+                              LoadFromINIFile(GetSysVRGameSettingsPath(filename)));
+
+  for (const std::string& filename : ConfigLoaders::GetGameIniFilenames(game_id, revision))
+    MergeParsedHideObjectFile(&result, &index_by_name,
+                              LoadFromINIFile(File::GetUserPath(D_GAMESETTINGSVR_IDX) + filename));
+
   return result;
 }
 

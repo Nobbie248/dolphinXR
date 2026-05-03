@@ -140,7 +140,9 @@ class SettingsFragment : Fragment(), SettingsFragmentView {
 
         activityView!!.showSettingsFragment(
             menuKey,
-            null,
+            Bundle().apply {
+                putInt(SettingsFragmentPresenter.ARG_REVISION, requireArguments().getInt(ARGUMENT_REVISION))
+            },
             true,
             requireArguments().getString(ARGUMENT_GAME_ID)!!
         )
@@ -256,6 +258,7 @@ class SettingsFragment : Fragment(), SettingsFragmentView {
     companion object {
         private const val ARGUMENT_MENU_TAG = "menu_tag"
         private const val ARGUMENT_GAME_ID = "game_id"
+        private const val ARGUMENT_REVISION = SettingsFragmentPresenter.ARG_REVISION
         private val titles: MutableMap<MenuTag, Int> = EnumMap(MenuTag::class.java)
 
         init {
@@ -279,6 +282,10 @@ class SettingsFragment : Fragment(), SettingsFragmentView {
             titles[MenuTag.HACKS] = R.string.hacks_submenu
             titles[MenuTag.STATISTICS] = R.string.statistics_submenu
             titles[MenuTag.ADVANCED_GRAPHICS] = R.string.advanced_graphics_submenu
+            titles[MenuTag.QUEST_VR_CONFIG] = R.string.quest_vr_config
+            titles[MenuTag.QUEST_HIDE_OBJECTS] = R.string.quest_hide_objects
+            titles[MenuTag.QUEST_SHADER_OVERRIDES] = R.string.quest_shader_overrides
+            titles[MenuTag.QUEST_ELEMENTS_GROUP_OVERRIDES] = R.string.quest_elements_group_overrides
             titles[MenuTag.CONFIG_LOG] = R.string.log_submenu
             titles[MenuTag.GCPAD_TYPE] = R.string.gcpad_settings
             titles[MenuTag.WIIMOTE] = R.string.wiimote_settings

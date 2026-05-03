@@ -4,10 +4,12 @@
 #pragma once
 
 #include <map>
+#include <optional>
 #include <string>
 
 #include <QWidget>
 
+#include "Common/CommonTypes.h"
 #include "Common/StringUtil.h"
 
 class QCheckBox;
@@ -20,7 +22,8 @@ class VRConfigWidget final : public QWidget
   Q_OBJECT
 
 public:
-  explicit VRConfigWidget(std::string game_id, QWidget* parent = nullptr);
+  explicit VRConfigWidget(std::string game_id, std::optional<u16> revision = std::nullopt,
+                          QWidget* parent = nullptr);
 
 private:
   enum class BoolMode
@@ -45,7 +48,8 @@ private:
   void SaveToFile();
   void RefreshEditorTabs();
 
-  std::string GetINIPath() const;
+  std::string GetLocalINIPath() const;
+  ValueMap ReadMergedVRSectionValues() const;
   static bool IsVRSectionHeader(std::string_view line);
   static std::string ReadFileWithoutVRSection(const std::string& path);
   static ValueMap ReadVRSectionValues(const std::string& path);
@@ -59,6 +63,7 @@ private:
   static void PopulateReplayModeCombo(QComboBox* combo);
 
   const std::string m_game_id;
+  const std::optional<u16> m_revision;
   bool m_updating = false;
 
   QCheckBox* m_override_units_per_meter = nullptr;
@@ -78,6 +83,7 @@ private:
   QComboBox* m_opcode_replay_mode = nullptr;
   QComboBox* m_force_vbi_90hz_mode = nullptr;
 
+  QTabWidget* m_default_tab = nullptr;
   QTabWidget* m_local_tab = nullptr;
   int m_prev_tab_index = 0;
 };

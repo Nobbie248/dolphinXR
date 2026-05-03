@@ -856,6 +856,8 @@ It can efficiently compress both junk data and encrypted Wii data.
     <string name="quest_remove_cinematic_bars_description">Expands perspective rendering to remove cinematic letterbox bars while in VR.</string>
     <string name="quest_use_vulkan_multiview">Vulkan Multiview (Quest perf)</string>
     <string name="quest_use_vulkan_multiview_description">Renders both eyes in a single pass via VK_KHR_multiview. Disable to fall back to the geometry-shader stereo path if the multiview path produces broken visuals.</string>
+    <string name="quest_android_direct_to_hmd">Android direct-to-HMD</string>
+    <string name="quest_android_direct_to_hmd_description">Skips the normal Android backbuffer present and submits the XFB directly to OpenXR. Faster in some scenes, but can freeze or black-screen games that stop producing XFB frames during transitions.</string>
     <string name="quest_clear_efb_copies">Clear EFB Copies</string>
     <string name="quest_clear_efb_copies_description">Clears large EFB copy textures to transparent at or above the selected native width. Set 0 to disable.</string>
     <string name="quest_dont_clear_screen">Don\'t Clear Screen</string>
@@ -868,6 +870,16 @@ It can efficiently compress both junk data and encrypted Wii data.
     <string name="quest_enable_openxr_config_scene_description">Starts a temporary OpenXR scene while configuring controller bindings outside emulation.</string>
     <string name="quest_recenter_now">Recenter VR view now</string>
     <string name="quest_recenter_now_description">Requests an OpenXR recenter while emulation is running.</string>
+    <string name="quest_vr_config">VR Config</string>
+    <string name="quest_vr_config_description">Merged default and user GameSettingsVR profile values for this game. Editing writes to the user profile only.</string>
+    <string name="quest_no_stored_vr_config">No stored VR config found for this game.</string>
+    <string name="quest_hide_objects">Hide Objects</string>
+    <string name="quest_hide_objects_description">Enable or disable stored Hide Object codes for this game.</string>
+    <string name="quest_shader_overrides">Shader Overrides</string>
+    <string name="quest_shader_overrides_description">Enable or disable stored Shader Overrides for this game.</string>
+    <string name="quest_elements_group_overrides">Elements Group Overrides</string>
+    <string name="quest_elements_group_overrides_description">Enable or disable stored Elements Group Overrides for this game.</string>
+    <string name="quest_no_stored_overrides">No stored overrides found for this game.</string>
 
     <!-- Aspect Ratio Preference -->
     <string name="aspect_ratio_auto">Auto</string>

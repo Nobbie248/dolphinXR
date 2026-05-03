@@ -13,7 +13,8 @@
 #include "DolphinQt/QtUtils/NonDefaultQPushButton.h"
 #include "VideoCommon/HideObjectEngine.h"
 
-HideObjectWidget::HideObjectWidget(std::string game_id) : m_game_id(std::move(game_id))
+HideObjectWidget::HideObjectWidget(std::string game_id, std::optional<u16> revision)
+    : m_game_id(std::move(game_id)), m_revision(revision)
 {
   CreateWidgets();
   ConnectWidgets();
@@ -69,7 +70,7 @@ void HideObjectWidget::ConnectWidgets()
 
 void HideObjectWidget::LoadCodes()
 {
-  m_codes = HideObjectEngine::LoadFromINI(m_game_id);
+  m_codes = HideObjectEngine::LoadFromINI(m_game_id, m_revision);
 
   m_code_list->setEnabled(!m_game_id.empty());
   m_code_edit->setEnabled(false);

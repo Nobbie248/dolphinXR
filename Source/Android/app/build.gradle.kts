@@ -94,6 +94,23 @@ android {
             versionNameSuffix = "-debug"
             isJniDebuggable = true
         }
+
+        // Diagnostic release variants. These keep the release application ID so they can be
+        // tested against the same Quest package data/runtime profile as the real release build.
+        // They require the same release signing properties as questRelease.
+        create("releaseNoMinify") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+            isMinifyEnabled = false
+            isShrinkResources = false
+        }
+
+        create("releaseDebuggable") {
+            initWith(getByName("releaseNoMinify"))
+            matchingFallbacks += listOf("release")
+            isDebuggable = true
+            isJniDebuggable = true
+        }
     }
 
     productFlavors {

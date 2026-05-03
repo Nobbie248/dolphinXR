@@ -78,6 +78,8 @@ object QuestVrSettings {
 
     fun useVulkanMultiviewSetting() = vrBooleanSetting("UseVulkanMultiview", true)
 
+    fun androidDirectToHmdSetting() = vrBooleanSetting("AndroidDirectToHMD", false)
+
     fun virtualScreenSetting() = vrBooleanSetting("VirtualScreen", false)
 
     fun screenDistanceSetting() = vrFloatSetting("ScreenDistance", 1.5f)

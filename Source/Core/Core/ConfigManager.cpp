@@ -9,6 +9,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -65,10 +66,13 @@ constexpr std::string_view VR_SECTION_NAME = "Graphics.VR";
 constexpr std::string_view LEGACY_VR_SECTION_NAME = "GFX.VR";
 
 using VRSettingMap = std::map<std::string, std::string, Common::CaseInsensitiveLess>;
+using VRSettingSet = std::set<std::string, Common::CaseInsensitiveLess>;
 
-static std::string GetVRGameINIPath(std::string_view game_id)
+static VRSettingSet s_applied_vr_settings;
+
+static std::string GetSysVRGameINIPath(const std::string& filename)
 {
-  return File::GetUserPath(D_GAMESETTINGSVR_IDX) + std::string(game_id) + ".ini";
+  return File::GetSysDirectory() + GAMESETTINGSVR_DIR DIR_SEP + filename;
 }
 
 static bool IsVRSectionHeader(std::string_view line)
@@ -81,16 +85,11 @@ static bool IsVRSectionHeader(std::string_view line)
          Common::CaseInsensitiveEquals(section_name, LEGACY_VR_SECTION_NAME);
 }
 
-static VRSettingMap LoadVRSettingsFromINI(std::string_view game_id)
+static void MergeVRSettingsFromINIFile(VRSettingMap* values, const std::string& path)
 {
-  VRSettingMap values;
-
-  if (game_id.empty() || game_id == DEFAULT_GAME_ID)
-    return values;
-
-  std::ifstream file(GetVRGameINIPath(game_id));
+  std::ifstream file(path);
   if (!file.is_open())
-    return values;
+    return;
 
   bool in_vr_section = false;
   std::string line;
@@ -128,10 +127,58 @@ static VRSettingMap LoadVRSettingsFromINI(std::string_view game_id)
     std::string value;
     Common::IniFile::ParseLine(trimmed, &key, &value);
     if (!key.empty())
-      values.insert_or_assign(std::move(key), std::move(value));
+      values->insert_or_assign(std::move(key), std::move(value));
   }
+}
+
+static VRSettingMap LoadVRSettingsFromINI(std::string_view game_id, std::optional<u16> revision)
+{
+  VRSettingMap values;
+
+  if (game_id.empty() || game_id == DEFAULT_GAME_ID)
+    return values;
+
+  for (const std::string& filename : ConfigLoaders::GetGameIniFilenames(game_id, revision))
+    MergeVRSettingsFromINIFile(&values, GetSysVRGameINIPath(filename));
+
+  for (const std::string& filename : ConfigLoaders::GetGameIniFilenames(game_id, revision))
+    MergeVRSettingsFromINIFile(&values, File::GetUserPath(D_GAMESETTINGSVR_IDX) + filename);
 
   return values;
+}
+
+template <typename T>
+static void ClearAppliedVRSetting(const char* key, const Config::Info<T>& info)
+{
+  if (s_applied_vr_settings.erase(key) > 0)
+    Config::DeleteKey(Config::LayerType::CurrentRun, info);
+}
+
+static void ClearAppliedVRSettings()
+{
+  ClearAppliedVRSetting("EnableOpenXR", Config::GFX_VR_ENABLE_OPENXR);
+  ClearAppliedVRSetting("UnitsPerMeter", Config::GFX_VR_UNITS_PER_METER);
+  ClearAppliedVRSetting("LeanBackAngle", Config::GFX_VR_LEAN_BACK_ANGLE);
+  ClearAppliedVRSetting("CameraForward", Config::GFX_VR_CAMERA_FORWARD);
+  ClearAppliedVRSetting("CameraHeight", Config::GFX_VR_CAMERA_HEIGHT);
+  ClearAppliedVRSetting("VirtualScreen", Config::GFX_VR_VIRTUAL_SCREEN);
+  ClearAppliedVRSetting("ScreenDistance", Config::GFX_VR_SCREEN_DISTANCE);
+  ClearAppliedVRSetting("ScreenSize", Config::GFX_VR_SCREEN_SIZE);
+  ClearAppliedVRSetting("HeadLockedCurvature", Config::GFX_VR_HEAD_LOCKED_CURVATURE);
+  ClearAppliedVRSetting("DontClearScreen", Config::GFX_VR_DONT_CLEAR_SCREEN);
+  ClearAppliedVRSetting("LoadCustomShaders", Config::GFX_VR_LOAD_CUSTOM_SHADERS);
+  ClearAppliedVRSetting("DisableCPUCull", Config::GFX_VR_DISABLE_CPU_CULL);
+  ClearAppliedVRSetting("OpcodeReplay", Config::GFX_VR_OPCODE_REPLAY);
+  ClearAppliedVRSetting("AutoVBIFromHMD", Config::GFX_VR_AUTO_VBI_FROM_HMD);
+  ClearAppliedVRSetting("AutoLayerSpread", Config::GFX_VR_AUTO_LAYER_SPREAD);
+  ClearAppliedVRSetting("LayerOffset", Config::GFX_VR_LAYER_OFFSET);
+  ClearAppliedVRSetting("ElementDepth", Config::GFX_VR_ELEMENT_DEPTH);
+  ClearAppliedVRSetting("ClearEFBCopies", Config::GFX_VR_CLEAR_EFB_COPIES);
+  ClearAppliedVRSetting("UseVulkanMultiview", Config::GFX_VR_USE_VULKAN_MULTIVIEW);
+  ClearAppliedVRSetting("AndroidDirectToHMD", Config::GFX_VR_ANDROID_DIRECT_TO_HMD);
+  ClearAppliedVRSetting("ARMode", Config::GFX_VR_AR_MODE);
+  ClearAppliedVRSetting("ARModeDebug", Config::GFX_VR_AR_MODE_DEBUG);
+  ClearAppliedVRSetting("ARBackgroundAlpha", Config::GFX_VR_AR_BACKGROUND_ALPHA);
 }
 
 template <typename T>
@@ -139,22 +186,23 @@ static void ApplyVRSetting(const VRSettingMap& values, const char* key, const Co
 {
   const auto it = values.find(key);
   if (it == values.end())
-  {
-    Config::DeleteKey(Config::LayerType::CurrentRun, info);
     return;
-  }
 
   T parsed_value{};
   if (TryParse(it->second, &parsed_value))
+  {
     Config::SetCurrent(info, parsed_value);
+    s_applied_vr_settings.insert(key);
+  }
   else
     Config::DeleteKey(Config::LayerType::CurrentRun, info);
 }
 
-static void ApplyGameVRConfigOverrides(std::string_view game_id)
+static void ApplyGameVRConfigOverrides(std::string_view game_id, std::optional<u16> revision)
 {
   const Config::ConfigChangeCallbackGuard guard;
-  const VRSettingMap values = LoadVRSettingsFromINI(game_id);
+  ClearAppliedVRSettings();
+  const VRSettingMap values = LoadVRSettingsFromINI(game_id, revision);
 
   ApplyVRSetting(values, "EnableOpenXR", Config::GFX_VR_ENABLE_OPENXR);
   ApplyVRSetting(values, "UnitsPerMeter", Config::GFX_VR_UNITS_PER_METER);
@@ -164,15 +212,18 @@ static void ApplyGameVRConfigOverrides(std::string_view game_id)
   ApplyVRSetting(values, "VirtualScreen", Config::GFX_VR_VIRTUAL_SCREEN);
   ApplyVRSetting(values, "ScreenDistance", Config::GFX_VR_SCREEN_DISTANCE);
   ApplyVRSetting(values, "ScreenSize", Config::GFX_VR_SCREEN_SIZE);
+  ApplyVRSetting(values, "HeadLockedCurvature", Config::GFX_VR_HEAD_LOCKED_CURVATURE);
   ApplyVRSetting(values, "DontClearScreen", Config::GFX_VR_DONT_CLEAR_SCREEN);
   ApplyVRSetting(values, "LoadCustomShaders", Config::GFX_VR_LOAD_CUSTOM_SHADERS);
   ApplyVRSetting(values, "DisableCPUCull", Config::GFX_VR_DISABLE_CPU_CULL);
+  ApplyVRSetting(values, "OpcodeReplay", Config::GFX_VR_OPCODE_REPLAY);
   ApplyVRSetting(values, "AutoVBIFromHMD", Config::GFX_VR_AUTO_VBI_FROM_HMD);
   ApplyVRSetting(values, "AutoLayerSpread", Config::GFX_VR_AUTO_LAYER_SPREAD);
   ApplyVRSetting(values, "LayerOffset", Config::GFX_VR_LAYER_OFFSET);
   ApplyVRSetting(values, "ElementDepth", Config::GFX_VR_ELEMENT_DEPTH);
   ApplyVRSetting(values, "ClearEFBCopies", Config::GFX_VR_CLEAR_EFB_COPIES);
   ApplyVRSetting(values, "UseVulkanMultiview", Config::GFX_VR_USE_VULKAN_MULTIVIEW);
+  ApplyVRSetting(values, "AndroidDirectToHMD", Config::GFX_VR_ANDROID_DIRECT_TO_HMD);
   ApplyVRSetting(values, "ARMode", Config::GFX_VR_AR_MODE);
   ApplyVRSetting(values, "ARModeDebug", Config::GFX_VR_AR_MODE_DEBUG);
   ApplyVRSetting(values, "ARBackgroundAlpha", Config::GFX_VR_AR_BACKGROUND_ALPHA);
@@ -374,7 +425,7 @@ void SConfig::SetRunningGameMetadata(const std::string& game_id, const std::stri
 
   Config::AddLayer(ConfigLoaders::GenerateGlobalGameConfigLoader(game_id, revision));
   Config::AddLayer(ConfigLoaders::GenerateLocalGameConfigLoader(game_id, revision));
-  ApplyGameVRConfigOverrides(game_id);
+  ApplyGameVRConfigOverrides(game_id, revision == 0 ? std::nullopt : std::make_optional(revision));
 
   if (is_running_or_starting)
     DolphinAnalytics::Instance().ReportGameStart();
@@ -383,7 +434,7 @@ void SConfig::SetRunningGameMetadata(const std::string& game_id, const std::stri
 void SConfig::ReloadGameVRConfigOverrides()
 {
   std::lock_guard<std::recursive_mutex> lock(m_metadata_lock);
-  ApplyGameVRConfigOverrides(m_game_id);
+  ApplyGameVRConfigOverrides(m_game_id, m_revision == 0 ? std::nullopt : std::make_optional(m_revision));
 }
 
 void SConfig::OnESTitleChanged()

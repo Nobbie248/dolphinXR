@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "Common/ChunkFile.h"
@@ -717,88 +718,153 @@ void VertexManagerBase::Flush()
         bool elements_skip = false;
         auto& hunter = ShaderHunter::GetInstance();
         auto& elements = ElementsGroupManager::GetInstance();
-        const auto& vs = m_current_pipeline_config.vs_uid;
-        const auto& ps = m_current_pipeline_config.ps_uid;
-        const auto& gs = m_current_pipeline_config.gs_uid;
-        const u64 vs_hash =
-            Common::ComputeCRC32(vs.GetUidDataRaw(), static_cast<u32>(vs.GetUidDataSize()));
-        const u64 ps_hash =
-            Common::ComputeCRC32(ps.GetUidDataRaw(), static_cast<u32>(ps.GetUidDataSize()));
-        const u64 gs_hash =
-            Common::ComputeCRC32(gs.GetUidDataRaw(), static_cast<u32>(gs.GetUidDataSize()));
-        if (hunter.IsEnabled() || hunter.HasOverrides() || hunter.IsDebugLogging() ||
-            elements.IsPopupOpen() || elements.HasOverrides())
+        const bool hunter_enabled = hunter.IsEnabled();
+        const bool hunter_debug_logging = hunter.IsDebugLogging();
+        const bool hunter_has_overrides = hunter.HasOverrides();
+        const bool elements_popup_open = elements.IsPopupOpen();
+        const bool elements_has_overrides = elements.HasOverrides();
+        const bool elements_runtime_active = elements_popup_open || elements_has_overrides;
+        const bool hunter_needs_families = hunter.NeedsShaderFamilySignatures();
+        const bool hunter_needs_textures = hunter.NeedsTextureHashes();
+        const bool hunter_needs_counters = hunter.NeedsOverrideDrawCounters();
+        if (hunter_enabled || hunter_has_overrides || hunter_debug_logging || elements_runtime_active)
         {
-          // Capture bound texture hashes and names for texture-conditioned overrides and hunting UI
+          const auto& vs = m_current_pipeline_config.vs_uid;
+          const auto& ps = m_current_pipeline_config.ps_uid;
+          const auto& gs = m_current_pipeline_config.gs_uid;
+          const u64 vs_hash =
+              Common::ComputeCRC32(vs.GetUidDataRaw(), static_cast<u32>(vs.GetUidDataSize()));
+          const u64 ps_hash =
+              Common::ComputeCRC32(ps.GetUidDataRaw(), static_cast<u32>(ps.GetUidDataSize()));
+          const u64 gs_hash =
+              Common::ComputeCRC32(gs.GetUidDataRaw(), static_cast<u32>(gs.GetUidDataSize()));
+
           std::array<u64, 8> tex_hashes{};
           std::array<std::string, 8> tex_names{};
-          for (u32 i = 0; i < 8; i++)
+          const bool needs_texture_hashes =
+              hunter_enabled || hunter_needs_textures || elements_runtime_active;
+          const bool needs_texture_names = hunter_enabled || elements_popup_open;
+          if (needs_texture_hashes || needs_texture_names)
           {
-            tex_hashes[i] = g_texture_cache->GetBoundTextureHash(i);
-            if (hunter.IsEnabled() || elements.IsPopupOpen())
-              tex_names[i] = g_texture_cache->GetBoundTextureName(i);
+            for (u32 i = 0; i < 8; i++)
+            {
+              if (needs_texture_hashes)
+                tex_hashes[i] = g_texture_cache->GetBoundTextureHash(i);
+              if (needs_texture_names)
+                tex_names[i] = g_texture_cache->GetBoundTextureName(i);
+            }
           }
-          hunter.SetCurrentDrawTextures(tex_hashes, tex_names);
-          const u64 vs_family = hunter.RegisterShader(ShaderHunter::ShaderType::Vertex, vs_hash,
-                                                      vs.GetUidDataRaw(), vs.GetUidDataSize());
-          const u64 ps_family = hunter.RegisterShader(ShaderHunter::ShaderType::Pixel, ps_hash,
-                                                      ps.GetUidDataRaw(), ps.GetUidDataSize());
-          const u64 gs_family = hunter.RegisterShader(ShaderHunter::ShaderType::Geometry, gs_hash,
-                                                      gs.GetUidDataRaw(), gs.GetUidDataSize());
-          hunter.SetCurrentDrawShaderFamilies(vs_family, ps_family, gs_family);
-          const ShaderHunter::RuntimeElementSignature draw_signature =
-              BuildRuntimeElementSignature(xfmem, bpmem,
-                                           system.GetGeometryShaderManager().vr_ortho_draw_counter);
-          hunter.SetCurrentDrawSignature(draw_signature);
-          const ElementsGroupManager::DrawRecord element_draw{.draw_index = -1,
-                                                              .draw_sequence = m_draw_counter + 1,
-                                                              .vs_hash = vs_hash,
-                                                              .ps_hash = ps_hash,
-                                                              .gs_hash = gs_hash,
-                                                              .vs_family = vs_family,
-                                                              .ps_family = ps_family,
-                                                              .gs_family = gs_family,
-                                                              .signature = draw_signature,
-                                                              .textures = tex_hashes,
-                                                              .texture_names = tex_names};
-          if (hunter.IsEnabled())
+
+          if (hunter_enabled || hunter_needs_textures)
+            hunter.SetCurrentDrawTextures(tex_hashes, tex_names);
+
+          u64 vs_family = 0;
+          u64 ps_family = 0;
+          u64 gs_family = 0;
+          if (hunter_enabled || hunter_needs_families || elements_runtime_active)
+          {
+            vs_family = hunter.RegisterShader(ShaderHunter::ShaderType::Vertex, vs_hash,
+                                              vs.GetUidDataRaw(), vs.GetUidDataSize());
+            ps_family = hunter.RegisterShader(ShaderHunter::ShaderType::Pixel, ps_hash,
+                                              ps.GetUidDataRaw(), ps.GetUidDataSize());
+            gs_family = hunter.RegisterShader(ShaderHunter::ShaderType::Geometry, gs_hash,
+                                              gs.GetUidDataRaw(), gs.GetUidDataSize());
+            hunter.SetCurrentDrawShaderFamilies(vs_family, ps_family, gs_family);
+          }
+
+          ShaderHunter::RuntimeElementSignature draw_signature{};
+          if (hunter_enabled || elements_runtime_active)
+          {
+            draw_signature = BuildRuntimeElementSignature(
+                xfmem, bpmem, system.GetGeometryShaderManager().vr_ortho_draw_counter);
+            if (hunter_enabled)
+              hunter.SetCurrentDrawSignature(draw_signature);
+          }
+
+          if (hunter_enabled)
           {
             hunter.RegisterDrawCombination(vs_hash, ps_hash, gs_hash);
             hunter_skip = hunter.ShouldSkipDraw(vs_hash, ps_hash, gs_hash);
             shader_hunter_force_pink = hunter.ShouldHighlightSelectedDraw();
           }
-          const auto preview_action = elements.RegisterDraw(element_draw);
-          elements_skip = preview_action == ElementsGroupManager::PreviewAction::Skip;
-          if (preview_action == ElementsGroupManager::PreviewAction::Pink)
-            shader_hunter_force_pink = true;
+
+          std::optional<ElementsGroupManager::DrawRecord> element_draw;
+          if (elements_runtime_active)
+          {
+            element_draw.emplace(ElementsGroupManager::DrawRecord{
+                .draw_index = -1,
+                .draw_sequence = m_draw_counter + 1,
+                .vs_hash = vs_hash,
+                .ps_hash = ps_hash,
+                .gs_hash = gs_hash,
+                .vs_family = vs_family,
+                .ps_family = ps_family,
+                .gs_family = gs_family,
+                .signature = draw_signature,
+                .textures = tex_hashes,
+                .texture_names = tex_names});
+
+            const auto preview_action = elements.RegisterDraw(*element_draw);
+            elements_skip = preview_action == ElementsGroupManager::PreviewAction::Skip;
+            if (preview_action == ElementsGroupManager::PreviewAction::Pink)
+              shader_hunter_force_pink = true;
+          }
+
           // Register flag shaders (must be before skip/handling checks)
-          hunter.RegisterFlags(vs_hash, ps_hash, gs_hash);
-          elements.RegisterFlagsForDraw(element_draw);
+          if (hunter_has_overrides)
+            hunter.RegisterFlags(vs_hash, ps_hash, gs_hash);
+          if (elements_runtime_active)
+            elements.RegisterFlagsForDraw(*element_draw);
 
-          // Advance per-hash draw counters for element-aware overrides
-          hunter.AdvanceOverrideDrawCounters(vs_hash, ps_hash, gs_hash);
-          elements.AdvanceOverrideDrawCounters(element_draw);
+          if (hunter_needs_counters)
+            hunter.AdvanceOverrideDrawCounters(vs_hash, ps_hash, gs_hash);
+          if (elements_runtime_active)
+            elements.AdvanceOverrideDrawCounters(*element_draw);
 
-          if (!hunter_skip && !elements_skip)
-            elements_skip = elements.ShouldSkipByOverride(element_draw);
+          if (!hunter_skip && !elements_skip && elements_has_overrides)
+            elements_skip = elements.ShouldSkipByOverride(*element_draw);
 
-          if (!hunter_skip && !elements_skip)
+          if (!hunter_skip && !elements_skip && hunter_has_overrides)
             hunter_skip = hunter.ShouldSkipByOverride(vs_hash, ps_hash, gs_hash);
 
           // Check for screen/fullscreen handling overrides (VR stereo mode override)
           if (!hunter_skip && !elements_skip)
           {
-            auto handling = elements.GetOverrideHandling(element_draw);
-            int manual_layer = elements.GetOverrideLayer(element_draw);
-            float element_depth = elements.GetOverrideElementDepth(element_draw);
-            float units_per_meter = elements.GetOverrideUnitsPerMeter(element_draw);
-            if (handling == ShaderHunter::HandlingType::Skip)
+            auto handling = ShaderHunter::HandlingType::Skip;
+            int manual_layer = -1;
+            float element_depth = -1.0f;
+            float units_per_meter = -1.0f;
+
+            if (elements_has_overrides)
+              handling = elements.GetOverrideHandling(*element_draw);
+            if (handling != ShaderHunter::HandlingType::Skip)
+            {
+              if (handling == ShaderHunter::HandlingType::Screen ||
+                  handling == ShaderHunter::HandlingType::HeadLocked)
+              {
+                manual_layer = elements.GetOverrideLayer(*element_draw);
+                element_depth = elements.GetOverrideElementDepth(*element_draw);
+              }
+              else if (handling == ShaderHunter::HandlingType::UnitsPerMeter)
+              {
+                units_per_meter = elements.GetOverrideUnitsPerMeter(*element_draw);
+              }
+            }
+            else if (hunter_has_overrides)
             {
               handling = hunter.GetOverrideHandling(vs_hash, ps_hash, gs_hash);
-              manual_layer = hunter.GetOverrideLayer(vs_hash, ps_hash, gs_hash);
-              element_depth = hunter.GetOverrideElementDepth(vs_hash, ps_hash, gs_hash);
-              units_per_meter = hunter.GetOverrideUnitsPerMeter(vs_hash, ps_hash, gs_hash);
+              if (handling == ShaderHunter::HandlingType::Screen ||
+                  handling == ShaderHunter::HandlingType::HeadLocked)
+              {
+                manual_layer = hunter.GetOverrideLayer(vs_hash, ps_hash, gs_hash);
+                element_depth = hunter.GetOverrideElementDepth(vs_hash, ps_hash, gs_hash);
+              }
+              else if (handling == ShaderHunter::HandlingType::UnitsPerMeter)
+              {
+                units_per_meter = hunter.GetOverrideUnitsPerMeter(vs_hash, ps_hash, gs_hash);
+              }
             }
+
             if (handling == ShaderHunter::HandlingType::Screen)
             {
               geometry_shader_manager.vr_stereo_override = -1.0f;
@@ -837,7 +903,8 @@ void VertexManagerBase::Flush()
 
           // ClearEFB is an independent flag, checked regardless of handling type.
           // This lets a shader be e.g. Skip+ClearEFB or Screen+ClearEFB.
-          hunter.CheckClearEFBForDraw(vs_hash, ps_hash, gs_hash);
+          if (hunter_has_overrides)
+            hunter.CheckClearEFBForDraw(vs_hash, ps_hash, gs_hash);
 
           // VR Draw Debug Logging: log every draw call's projection, viewport, scissor, and
           // shader hashes so we can identify how specific visual elements (e.g. cinematic bars)

@@ -45,6 +45,7 @@ class SettingsFragmentPresenter(
 ) {
     private lateinit var menuTag: MenuTag
     private var gameId: String? = null
+    private var revision = 0
 
     private var settingsList: ArrayList<SettingsItem>? = null
     private var hasOldControllerSettings = false
@@ -59,6 +60,7 @@ class SettingsFragmentPresenter(
     fun onCreate(menuTag: MenuTag, gameId: String?, extras: Bundle) {
         this.gameId = gameId
         this.menuTag = menuTag
+        this.revision = extras.getInt(ARG_REVISION, 0)
 
         if (menuTag.isGCPadMenu || menuTag.isWiimoteExtensionMenu) {
             controllerNumber = menuTag.subType
@@ -124,6 +126,19 @@ class SettingsFragmentPresenter(
             MenuTag.HACKS -> addHackSettings(sl)
             MenuTag.STATISTICS -> addStatisticsSettings(sl)
             MenuTag.ADVANCED_GRAPHICS -> addAdvancedGraphicsSettings(sl)
+            MenuTag.QUEST_HIDE_OBJECTS -> addQuestOverrideSettings(
+                sl,
+                QuestGameOverrideSettings.Category.HIDE_OBJECTS
+            )
+            MenuTag.QUEST_SHADER_OVERRIDES -> addQuestOverrideSettings(
+                sl,
+                QuestGameOverrideSettings.Category.SHADER_OVERRIDES
+            )
+            MenuTag.QUEST_ELEMENTS_GROUP_OVERRIDES -> addQuestOverrideSettings(
+                sl,
+                QuestGameOverrideSettings.Category.ELEMENTS_GROUP_OVERRIDES
+            )
+            MenuTag.QUEST_VR_CONFIG -> addQuestGameVrConfigSettings(sl)
             MenuTag.CONFIG_LOG -> addLogConfigurationSettings(sl)
             MenuTag.DEBUG -> addDebugSettings(sl)
             MenuTag.GCPAD_1,
@@ -188,6 +203,24 @@ class SettingsFragmentPresenter(
         sl.add(SubmenuSetting(context, R.string.graphics_settings, MenuTag.GRAPHICS))
         if (BuildConfig.IS_QUEST && gameId.isNullOrEmpty()) {
             sl.add(SubmenuSetting(context, R.string.openxr_submenu, MenuTag.OPENXR))
+        }
+        if (BuildConfig.IS_QUEST && !gameId.isNullOrEmpty()) {
+            sl.add(SubmenuSetting(context, R.string.quest_vr_config, MenuTag.QUEST_VR_CONFIG))
+            sl.add(SubmenuSetting(context, R.string.quest_hide_objects, MenuTag.QUEST_HIDE_OBJECTS))
+            sl.add(
+                SubmenuSetting(
+                    context,
+                    R.string.quest_shader_overrides,
+                    MenuTag.QUEST_SHADER_OVERRIDES
+                )
+            )
+            sl.add(
+                SubmenuSetting(
+                    context,
+                    R.string.quest_elements_group_overrides,
+                    MenuTag.QUEST_ELEMENTS_GROUP_OVERRIDES
+                )
+            )
         }
 
         sl.add(SubmenuSetting(context, R.string.gcpad_settings, MenuTag.GCPAD_TYPE))
@@ -2371,6 +2404,308 @@ class SettingsFragmentPresenter(
         addQuestVrSettings(sl)
     }
 
+    private fun addQuestOverrideSettings(
+        sl: ArrayList<SettingsItem>,
+        category: QuestGameOverrideSettings.Category
+    ) {
+        val currentGameId = gameId
+        if (currentGameId.isNullOrEmpty()) {
+            sl.add(HeaderSetting(context, R.string.quest_no_stored_overrides, 0))
+            return
+        }
+
+        val entries = QuestGameOverrideSettings.loadEntries(currentGameId, revision, category)
+        if (entries.isEmpty()) {
+            sl.add(HeaderSetting(context, R.string.quest_no_stored_overrides, 0))
+            return
+        }
+
+        val descriptionId = when (category) {
+            QuestGameOverrideSettings.Category.HIDE_OBJECTS ->
+                R.string.quest_hide_objects_description
+            QuestGameOverrideSettings.Category.SHADER_OVERRIDES ->
+                R.string.quest_shader_overrides_description
+            QuestGameOverrideSettings.Category.ELEMENTS_GROUP_OVERRIDES ->
+                R.string.quest_elements_group_overrides_description
+        }
+
+        for (entry in entries) {
+            sl.add(
+                SwitchSetting(
+                    QuestGameOverrideEnabledSetting(currentGameId, revision, category, entry.name),
+                    entry.name,
+                    context.getString(descriptionId)
+                )
+            )
+        }
+    }
+
+    private fun addQuestGameVrConfigSettings(sl: ArrayList<SettingsItem>) {
+        val currentGameId = gameId
+        if (currentGameId.isNullOrEmpty()) {
+            sl.add(HeaderSetting(context, R.string.quest_no_stored_vr_config, 0))
+            return
+        }
+
+        val storedKeys = QuestGameVrConfigSettings.getStoredKeys(currentGameId, revision)
+        if (storedKeys.isEmpty()) {
+            sl.add(HeaderSetting(context, R.string.quest_no_stored_vr_config, 0))
+            return
+        }
+
+        sl.add(HeaderSetting(context, R.string.quest_vr_config_description, 0))
+
+        fun hasKey(key: String): Boolean = storedKeys.any { it.equals(key, ignoreCase = true) }
+
+        fun addBoolean(key: String, defaultValue: Boolean, titleId: Int, descriptionId: Int) {
+            if (!hasKey(key)) {
+                return
+            }
+
+            sl.add(
+                SwitchSetting(
+                    context,
+                    QuestGameVrConfigBooleanSetting(currentGameId, revision, key, defaultValue),
+                    titleId,
+                    descriptionId
+                )
+            )
+        }
+
+        fun addFloat(
+            key: String,
+            defaultValue: Float,
+            titleId: Int,
+            descriptionId: Int,
+            min: Float,
+            max: Float,
+            step: Float
+        ) {
+            if (!hasKey(key)) {
+                return
+            }
+
+            sl.add(
+                FloatSliderSetting(
+                    context,
+                    QuestGameVrConfigFloatSetting(currentGameId, revision, key, defaultValue),
+                    titleId,
+                    descriptionId,
+                    min,
+                    max,
+                    "",
+                    step,
+                    true
+                )
+            )
+        }
+
+        fun addIntSlider(
+            key: String,
+            defaultValue: Int,
+            titleId: Int,
+            descriptionId: Int,
+            min: Int,
+            max: Int,
+            step: Int
+        ) {
+            if (!hasKey(key)) {
+                return
+            }
+
+            sl.add(
+                IntSliderSetting(
+                    context,
+                    QuestGameVrConfigIntSetting(currentGameId, revision, key, defaultValue),
+                    titleId,
+                    descriptionId,
+                    min,
+                    max,
+                    "",
+                    step
+                )
+            )
+        }
+
+        addBoolean(
+            "EnableOpenXR",
+            false,
+            R.string.quest_enable_openxr,
+            R.string.quest_enable_openxr_description
+        )
+        addBoolean(
+            "AutoVBIFromHMD",
+            false,
+            R.string.quest_force_vbi_from_hmd,
+            R.string.quest_force_vbi_from_hmd_description
+        )
+        addFloat(
+            "UnitsPerMeter",
+            1.0f,
+            R.string.quest_units_per_meter,
+            R.string.quest_units_per_meter_description,
+            0.1f,
+            500.0f,
+            0.1f
+        )
+        addFloat(
+            "LeanBackAngle",
+            0.0f,
+            R.string.quest_lean_back_angle,
+            R.string.quest_lean_back_angle_description,
+            -45.0f,
+            45.0f,
+            0.1f
+        )
+        addFloat(
+            "CameraForward",
+            0.0f,
+            R.string.quest_camera_forward,
+            R.string.quest_camera_forward_description,
+            -20.0f,
+            20.0f,
+            0.1f
+        )
+        addFloat(
+            "CameraHeight",
+            0.0f,
+            R.string.quest_camera_height,
+            R.string.quest_camera_height_description,
+            -20.0f,
+            20.0f,
+            0.1f
+        )
+        addBoolean(
+            "VirtualScreen",
+            true,
+            R.string.quest_virtual_screen,
+            R.string.quest_virtual_screen_description
+        )
+        addFloat(
+            "ScreenDistance",
+            1.5f,
+            R.string.quest_screen_distance,
+            R.string.quest_screen_distance_description,
+            0.5f,
+            10.0f,
+            0.1f
+        )
+        addFloat(
+            "ScreenSize",
+            1.5f,
+            R.string.quest_screen_size,
+            R.string.quest_screen_size_description,
+            0.5f,
+            5.0f,
+            0.1f
+        )
+        addFloat(
+            "HeadLockedCurvature",
+            0.0f,
+            R.string.quest_head_locked_curvature,
+            R.string.quest_head_locked_curvature_description,
+            0.0f,
+            5.0f,
+            0.01f
+        )
+        addBoolean(
+            "DontClearScreen",
+            false,
+            R.string.quest_dont_clear_screen,
+            R.string.quest_dont_clear_screen_description
+        )
+        addBoolean(
+            "LoadCustomShaders",
+            false,
+            R.string.quest_load_custom_shaders,
+            R.string.quest_load_custom_shaders_description
+        )
+        addBoolean(
+            "DisableCPUCull",
+            false,
+            R.string.quest_disable_cpu_culling,
+            R.string.quest_disable_cpu_culling_description
+        )
+        if (hasKey("OpcodeReplay")) {
+            sl.add(
+                SingleChoiceSetting(
+                    context,
+                    QuestGameVrConfigIntSetting(currentGameId, revision, "OpcodeReplay", 0),
+                    R.string.quest_opcode_replay,
+                    R.string.quest_opcode_replay_description,
+                    R.array.questOpcodeReplayEntries,
+                    R.array.questOpcodeReplayValues
+                )
+            )
+        }
+        addBoolean(
+            "AutoLayerSpread",
+            true,
+            R.string.quest_auto_layer_spread,
+            R.string.quest_auto_layer_spread_description
+        )
+        addFloat(
+            "LayerOffset",
+            0.002f,
+            R.string.quest_layer_offset,
+            R.string.quest_layer_offset_description,
+            0.0001f,
+            0.01f,
+            0.0001f
+        )
+        addFloat(
+            "ElementDepth",
+            0.001f,
+            R.string.quest_element_depth,
+            R.string.quest_element_depth_description,
+            0.0f,
+            0.1f,
+            0.0001f
+        )
+        addIntSlider(
+            "ClearEFBCopies",
+            0,
+            R.string.quest_clear_efb_copies,
+            R.string.quest_clear_efb_copies_description,
+            0,
+            640,
+            10
+        )
+        addBoolean(
+            "UseVulkanMultiview",
+            true,
+            R.string.quest_use_vulkan_multiview,
+            R.string.quest_use_vulkan_multiview_description
+        )
+        addBoolean(
+            "AndroidDirectToHMD",
+            false,
+            R.string.quest_android_direct_to_hmd,
+            R.string.quest_android_direct_to_hmd_description
+        )
+        addBoolean(
+            "ARMode",
+            false,
+            R.string.quest_passthrough,
+            R.string.quest_passthrough_description
+        )
+        addBoolean(
+            "ARModeDebug",
+            false,
+            R.string.quest_passthrough_debug,
+            R.string.quest_passthrough_debug_description
+        )
+        addFloat(
+            "ARBackgroundAlpha",
+            0.0f,
+            R.string.quest_ar_background_alpha,
+            R.string.quest_ar_background_alpha_description,
+            0.0f,
+            1.0f,
+            0.05f
+        )
+    }
+
     private fun addQuestVrSettings(sl: ArrayList<SettingsItem>) {
         sl.add(HeaderSetting(context, R.string.quest_vr_runtime, 0))
         sl.add(
@@ -2688,6 +3023,14 @@ class SettingsFragmentPresenter(
                 QuestVrSettings.useVulkanMultiviewSetting(),
                 R.string.quest_use_vulkan_multiview,
                 R.string.quest_use_vulkan_multiview_description
+            )
+        )
+        sl.add(
+            SwitchSetting(
+                context,
+                QuestVrSettings.androidDirectToHmdSetting(),
+                R.string.quest_android_direct_to_hmd,
+                R.string.quest_android_direct_to_hmd_description
             )
         )
         sl.add(
@@ -3176,6 +3519,7 @@ class SettingsFragmentPresenter(
     companion object {
         const val ARG_CONTROLLER_TYPE = "controller_type"
         const val ARG_SERIALPORT1_TYPE = "serialport1_type"
+        const val ARG_REVISION = "revision"
 
         // Value obtained from LogLevel in Common/Logging/Log.h
         private fun getLogVerbosityEntries(): Int {

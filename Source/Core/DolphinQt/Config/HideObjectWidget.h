@@ -5,6 +5,7 @@
 
 #include <QWidget>
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -18,7 +19,7 @@ class HideObjectWidget : public QWidget
 {
   Q_OBJECT
 public:
-  explicit HideObjectWidget(std::string game_id);
+  explicit HideObjectWidget(std::string game_id, std::optional<u16> revision = std::nullopt);
   ~HideObjectWidget() override;
 
 private:
@@ -37,6 +38,7 @@ private:
   void OnReloadClicked();
 
   std::string m_game_id;
+  std::optional<u16> m_revision;
 
   QListWidget* m_code_list;
   QPushButton* m_code_add;

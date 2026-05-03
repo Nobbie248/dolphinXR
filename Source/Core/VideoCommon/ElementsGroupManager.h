@@ -4,6 +4,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -129,7 +130,8 @@ public:
 
   static ElementsGroupManager& GetInstance();
 
-  static std::vector<ElementGroupOverride> LoadOverridesFromINI(const std::string& game_id);
+  static std::vector<ElementGroupOverride> LoadOverridesFromINI(
+      const std::string& game_id, std::optional<u16> revision = std::nullopt);
   static void SaveOverridesToINI(const std::string& game_id,
                                  const std::vector<ElementGroupOverride>& overrides);
   static RuntimeElementSignature MakeSelectedMatchFilterSignature(
@@ -240,6 +242,8 @@ private:
 
   mutable std::mutex m_mutex;
   int m_popup_open_count = 0;
+  std::atomic_bool m_popup_open = false;
+  std::atomic_bool m_has_overrides = false;
   bool m_hunt_enabled = false;
   HuntingOption m_hunting_option = HuntingOption::Skip;
   RuntimeElementSignature m_seed_signature{};

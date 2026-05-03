@@ -19,8 +19,8 @@
 #include "DolphinQt/Settings.h"
 #include "VideoCommon/ShaderHunter.h"
 
-ShaderOverrideWidget::ShaderOverrideWidget(std::string game_id)
-    : m_game_id(std::move(game_id))
+ShaderOverrideWidget::ShaderOverrideWidget(std::string game_id, std::optional<u16> revision)
+    : m_game_id(std::move(game_id)), m_revision(revision)
 {
   CreateWidgets();
   ConnectWidgets();
@@ -101,7 +101,7 @@ void ShaderOverrideWidget::ConnectWidgets()
 
 void ShaderOverrideWidget::LoadOverrides()
 {
-  m_overrides = ShaderHunter::LoadOverridesFromINI(m_game_id);
+  m_overrides = ShaderHunter::LoadOverridesFromINI(m_game_id, m_revision);
 
   m_code_list->setEnabled(!m_game_id.empty());
   m_code_remove->setEnabled(false);

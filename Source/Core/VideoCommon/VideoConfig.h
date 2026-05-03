@@ -350,6 +350,7 @@ struct VideoConfig final
   float vr_element_depth = 0.001f;
   int vr_clear_efb_min_width = 0;  // 0=disabled, >0=clear EFB copies wider than this
   bool vr_use_vulkan_multiview = true;  // Render OpenXR stereo via VK_KHR_multiview (Quest perf path)
+  bool vr_android_direct_to_hmd = false;  // Android OpenXR shortcut that skips backbuffer present
   // D3D only config, mostly to be merged into the above
   int iAdapter = 0;
 

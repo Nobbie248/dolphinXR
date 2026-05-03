@@ -1248,7 +1248,9 @@ void Presenter::Present(PresentInfo* present_info)
   // First real frame: if no pre-begun frame exists, start it here.
   const bool is_replay_present = VideoCommon::OpenXROpcodeReplay::IsReplaying();
 #if defined(ANDROID)
-  const bool openxr_direct_to_hmd = g_ActiveConfig.stereo_mode == StereoMode::OpenXR && VR::g_openxr;
+  const bool openxr_direct_to_hmd = g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
+                                    VR::g_openxr &&
+                                    g_ActiveConfig.vr_android_direct_to_hmd;
 #else
   constexpr bool openxr_direct_to_hmd = false;
 #endif

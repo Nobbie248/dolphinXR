@@ -530,10 +530,19 @@ if(WIN32)
     WIN32_EXECUTABLE TRUE
   )
 
+  file(GLOB_RECURSE dolphinqt_sys_files CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/Data/Sys/*")
+  add_custom_target(dolphin-emu-sys-copy
+    COMMAND ${CMAKE_COMMAND} -E remove_directory "$<TARGET_FILE_DIR:dolphin-emu>/Sys"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/Data/Sys" "$<TARGET_FILE_DIR:dolphin-emu>/Sys"
+    DEPENDS ${dolphinqt_sys_files}
+    COMMENT "Syncing Data/Sys into the runtime Sys directory"
+  )
+  add_dependencies(dolphin-emu dolphin-emu-sys-copy)
+
   # Copy Sys dir
   add_custom_command(TARGET dolphin-emu POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Sys"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/Data/Sys" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Sys"
+    COMMAND ${CMAKE_COMMAND} -E remove_directory "$<TARGET_FILE_DIR:dolphin-emu>/Sys"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/Data/Sys" "$<TARGET_FILE_DIR:dolphin-emu>/Sys"
   )
 
   # Copy COPYING

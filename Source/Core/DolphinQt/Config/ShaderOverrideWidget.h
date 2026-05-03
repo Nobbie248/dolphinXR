@@ -6,6 +6,7 @@
 #include <QPointer>
 #include <QWidget>
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -20,7 +21,7 @@ class ShaderOverrideWidget : public QWidget
 {
   Q_OBJECT
 public:
-  explicit ShaderOverrideWidget(std::string game_id);
+  explicit ShaderOverrideWidget(std::string game_id, std::optional<u16> revision = std::nullopt);
   ~ShaderOverrideWidget() override;
 
 private:
@@ -40,6 +41,7 @@ private:
   std::vector<std::string> CollectAvailableFlags() const;
 
   std::string m_game_id;
+  std::optional<u16> m_revision;
 
   QListWidget* m_code_list;
   QPushButton* m_code_add;

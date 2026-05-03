@@ -6,6 +6,7 @@
 #include <atomic>
 #include <cstring>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -64,7 +65,8 @@ struct HideObject
 using SkipEntry = std::vector<u8>;
 
 // --- Static INI helpers (direct file I/O, bypasses IniFile to avoid corruption) ---
-std::vector<HideObject> LoadFromINI(const std::string& game_id);
+std::vector<HideObject> LoadFromINI(const std::string& game_id,
+                                    std::optional<u16> revision = std::nullopt);
 void SaveToINI(const std::string& game_id, const std::vector<HideObject>& codes);
 
 // --- Runtime singleton for hide-object matching ---

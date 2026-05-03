@@ -228,6 +228,7 @@ void VideoConfig::Refresh()
                                       Config::GFX_VR_CLEAR_EFB_MIN,
                                       Config::GFX_VR_CLEAR_EFB_MAX);
   vr_use_vulkan_multiview = Config::Get(Config::GFX_VR_USE_VULKAN_MULTIVIEW);
+  vr_android_direct_to_hmd = Config::Get(Config::GFX_VR_ANDROID_DIRECT_TO_HMD);
   bEFBAccessEnable = Config::Get(Config::GFX_HACK_EFB_ACCESS_ENABLE);
   bEFBAccessDeferInvalidation = Config::Get(Config::GFX_HACK_EFB_DEFER_INVALIDATION);
   bBBoxEnable = Config::Get(Config::GFX_HACK_BBOX_ENABLE);

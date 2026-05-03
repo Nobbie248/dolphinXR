@@ -24,6 +24,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.Arrays;
 
 import org.dolphinemu.dolphinemu.NativeLibrary;
 import org.dolphinemu.dolphinemu.R;
@@ -144,8 +145,9 @@ public final class DirectoryInitialization
     File sysDirectory = new File(context.getFilesDir(), "Sys");
 
     SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(context);
-    String revision = NativeLibrary.GetGitRevision();
-    if (!preferences.getString("sysDirectoryVersion", "").equals(revision))
+    String version = getSysDirectoryVersion(context);
+    boolean isMissingGameSettingsVr = !new File(sysDirectory, "GameSettingsVR").isDirectory();
+    if (!preferences.getString("sysDirectoryVersion", "").equals(version) || isMissingGameSettingsVr)
     {
       // There is no extracted Sys directory, or there is a Sys directory from another
       // version of Dolphin that might contain outdated files. Let's (re-)extract Sys.
@@ -153,7 +155,7 @@ public final class DirectoryInitialization
       copyAssetFolder("Sys", sysDirectory, context);
 
       SharedPreferences.Editor editor = preferences.edit();
-      editor.putString("sysDirectoryVersion", revision);
+      editor.putString("sysDirectoryVersion", version);
       editor.apply();
     }
 
@@ -173,6 +175,27 @@ public final class DirectoryInitialization
     SetGpuDriverDirectories(driverDirectory.getPath(),
             context.getApplicationInfo().nativeLibraryDir);
     DirectoryInitialization.driverPath = driverExtractedDir.getAbsolutePath();
+  }
+
+  private static String getSysDirectoryVersion(Context context)
+  {
+    String[] gameSettingsVrAssets;
+    try
+    {
+      gameSettingsVrAssets = context.getAssets().list("Sys/GameSettingsVR");
+    }
+    catch (IOException e)
+    {
+      Log.warning("[DirectoryInitialization] Failed to list GameSettingsVR assets: " + e);
+      gameSettingsVrAssets = new String[0];
+    }
+
+    if (gameSettingsVrAssets == null)
+      gameSettingsVrAssets = new String[0];
+
+    Arrays.sort(gameSettingsVrAssets);
+    return NativeLibrary.GetGitRevision() + "-GameSettingsVR-" +
+            Arrays.hashCode(gameSettingsVrAssets);
   }
 
   private static void deleteDirectoryRecursively(@NonNull final File file)

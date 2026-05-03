@@ -180,7 +180,8 @@ public:
   };
 
   // Static INI helpers (used by both ShaderHunter and ShaderOverrideWidget)
-  static std::vector<ShaderOverride> LoadOverridesFromINI(const std::string& game_id);
+  static std::vector<ShaderOverride> LoadOverridesFromINI(
+      const std::string& game_id, std::optional<u16> revision = std::nullopt);
   static void SaveOverridesToINI(const std::string& game_id,
                                  const std::vector<ShaderOverride>& overrides);
 
@@ -190,6 +191,9 @@ public:
   void AddAndSaveOverride(const std::string& game_id, const std::string& name, ShaderType type,
                           u64 hash, HandlingType handling);
   bool HasOverrides() const;
+  bool NeedsShaderFamilySignatures() const;
+  bool NeedsTextureHashes() const;
+  bool NeedsOverrideDrawCounters() const;
 
   // Advance per-hash draw counters for element-aware overrides.
   // Must be called once per draw from VertexManagerBase, before any override checks.
@@ -333,6 +337,10 @@ private:
   std::unordered_map<u64, int> m_screen_layers;      // hash → manual layer (-1 = auto)
   std::unordered_map<u64, float> m_element_depths;  // hash → per-override element depth (-1 = global)
   std::string m_loaded_game_id;
+  std::atomic_bool m_has_overrides = false;
+  std::atomic_bool m_needs_shader_family_signatures = false;
+  std::atomic_bool m_needs_texture_hashes = false;
+  std::atomic_bool m_needs_override_draw_counters = false;
 
   // Flag system: flags are active only while their shader is drawn each frame.
   struct FlagRule
