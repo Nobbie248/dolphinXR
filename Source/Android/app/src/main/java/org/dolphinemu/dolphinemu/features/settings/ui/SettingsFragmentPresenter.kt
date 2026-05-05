@@ -2751,6 +2751,14 @@ class SettingsFragmentPresenter(
         sl.add(
             SwitchSetting(
                 context,
+                QuestVrSettings.cpuLevel5HintSetting(),
+                R.string.quest_cpu_level_5_hint,
+                R.string.quest_cpu_level_5_hint_description
+            )
+        )
+        sl.add(
+            SwitchSetting(
+                context,
                 QuestVrSettings.lockHeadPoseSetting(),
                 R.string.quest_lock_head_pose,
                 R.string.quest_lock_head_pose_description

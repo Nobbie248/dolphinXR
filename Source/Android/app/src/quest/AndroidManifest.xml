@@ -31,6 +31,9 @@
         <meta-data
             android:name="com.oculus.vr.focusaware"
             android:value="true" />
+        <meta-data
+            android:name="com.oculus.trade_cpu_for_gpu_amount"
+            android:value="-1" />
 
         <activity
             android:name=".activities.EmulationActivity"

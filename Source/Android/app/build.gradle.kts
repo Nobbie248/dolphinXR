@@ -101,6 +101,7 @@ android {
         create("releaseNoMinify") {
             initWith(getByName("release"))
             matchingFallbacks += listOf("release")
+            signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = false
             isShrinkResources = false
         }

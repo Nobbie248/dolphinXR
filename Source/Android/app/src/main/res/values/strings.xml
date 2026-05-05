@@ -800,6 +800,8 @@ It can efficiently compress both junk data and encrypted Wii data.
     <string name="quest_force_immediately_present_xfb_description">Keeps Immediately Present XFB enabled while OpenXR is active for lower latency head tracking.</string>
     <string name="quest_force_vbi_from_hmd">Force VBI frequency to 90 Hz in VR</string>
     <string name="quest_force_vbi_from_hmd_description">Overrides Dolphin\'s VBI frequency while OpenXR is active to better match a 90 Hz headset.</string>
+    <string name="quest_cpu_level_5_hint">Request Quest CPU level 5</string>
+    <string name="quest_cpu_level_5_hint_description">Requests sustained-high OpenXR performance while VR is active. Quest 3/3S may use CPU level 5 with the CPU/GPU trade hint, but the OS can still limit clocks.</string>
     <string name="quest_units_per_meter">Units Per Meter</string>
     <string name="quest_units_per_meter_description">Sets how many game world units correspond to one real-world meter. Higher values make the world feel smaller, while lower values make it feel larger.</string>
     <string name="quest_lean_back_angle">Lean Back Angle</string>

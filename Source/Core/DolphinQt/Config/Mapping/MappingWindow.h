@@ -99,6 +99,7 @@ private:
   void OnDefaultFieldsPressed();
   void OnClearFieldsPressed();
   void OnSelectDevice(int index);
+  bool LoadOpenXRDefaultProfile();
 #ifdef ENABLE_VR
   void UpdateOpenXRProfileLabel();
 #endif

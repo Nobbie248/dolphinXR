@@ -2,6 +2,7 @@
 
 package org.dolphinemu.dolphinemu.features.settings.model
 
+import org.dolphinemu.dolphinemu.BuildConfig
 import java.util.*
 
 enum class BooleanSetting(
@@ -851,7 +852,7 @@ enum class BooleanSetting(
         Settings.FILE_GFX,
         Settings.SECTION_GFX_HACKS,
         "ImmediateXFBEnable",
-        false
+        BuildConfig.IS_QUEST
     ),
     GFX_HACK_SKIP_DUPLICATE_XFBS(
         Settings.FILE_GFX,

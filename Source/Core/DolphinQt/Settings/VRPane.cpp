@@ -60,6 +60,9 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   auto* rendering_group = new QGroupBox(tr("Rendering"));
   auto* rendering_layout = new QGridLayout;
   rendering_group->setLayout(rendering_layout);
+  auto* ar_mode_group = new QGroupBox(tr("AR Mode"));
+  auto* ar_mode_layout = new QGridLayout;
+  ar_mode_group->setLayout(ar_mode_layout);
 
   m_enable_openxr = new ConfigBool(tr("Enable OpenXR"), Config::GFX_VR_ENABLE_OPENXR);
   m_use_vulkan_multiview = new ConfigBool(tr("Use Vulkan Multiview"),
@@ -89,10 +92,8 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   m_camera_height_value = new QLabel();
 
   openxr_layout->addWidget(m_enable_openxr, 0, 0, 1, 3);
-  openxr_layout->addWidget(m_use_vulkan_multiview, 1, 0, 1, 3);
 
   m_ar_mode = new ConfigBool(tr("AR Mode (Passthrough)"), Config::GFX_VR_AR_MODE);
-  openxr_layout->addWidget(m_ar_mode, 2, 0, 1, 3);
 
   m_ar_background_alpha =
       new ConfigFloatSlider(Config::GFX_VR_AR_BACKGROUND_ALPHA_MIN,
@@ -100,10 +101,6 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
                             Config::GFX_VR_AR_BACKGROUND_ALPHA,
                             Config::GFX_VR_AR_BACKGROUND_ALPHA_STEP);
   m_ar_background_alpha_value = new QLabel();
-  openxr_layout->addWidget(
-      new ConfigFloatLabel(tr("AR Background Alpha:"), m_ar_background_alpha), 3, 0);
-  openxr_layout->addWidget(m_ar_background_alpha, 3, 1);
-  openxr_layout->addWidget(m_ar_background_alpha_value, 3, 2);
   m_ar_background_alpha_value->setText(
       QString::asprintf("%.2f", m_ar_background_alpha->GetValue()));
   connect(m_ar_background_alpha, &ConfigFloatSlider::valueChanged, this, [this] {
@@ -111,9 +108,9 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
         QString::asprintf("%.2f", m_ar_background_alpha->GetValue()));
   });
 
-  openxr_layout->addWidget(new ConfigFloatLabel(tr("Units per Meter:"), m_units_per_meter), 4, 0);
-  openxr_layout->addWidget(m_units_per_meter, 4, 1);
-  openxr_layout->addWidget(m_units_per_meter_value, 4, 2);
+  openxr_layout->addWidget(new ConfigFloatLabel(tr("Units per Meter:"), m_units_per_meter), 1, 0);
+  openxr_layout->addWidget(m_units_per_meter, 1, 1);
+  openxr_layout->addWidget(m_units_per_meter_value, 1, 2);
 
   camera_layout->addWidget(new ConfigFloatLabel(tr("Lean Back Angle (deg):"), m_lean_back_angle), 0,
                            0);
@@ -289,13 +286,24 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   m_remove_bars = new ConfigBool(tr("Remove Cinematic Bars"), Config::GFX_VR_REMOVE_BARS);
   m_lock_head_pose =
       new ConfigBool(tr("Lock Head Pose Per Frame"), Config::GFX_VR_LOCK_HEAD_POSE);
+  m_ar_mode_debug =
+      new ConfigBool(tr("Fake AR Mode (Debug)"), Config::GFX_VR_AR_MODE_DEBUG);
 
+  hacks_group_layout->addWidget(m_use_vulkan_multiview);
   hacks_group_layout->addWidget(m_auto_immediate_xfb);
   hacks_group_layout->addWidget(m_lock_head_pose);
   hacks_group_layout->addWidget(m_dont_clear_screen);
   hacks_group_layout->addWidget(m_disable_cpu_cull);
   hacks_group_layout->addWidget(m_remove_bars);
   hack_layout->addWidget(hacks_group);
+
+  ar_mode_layout->addWidget(m_ar_mode, 0, 0, 1, 3);
+  ar_mode_layout->addWidget(
+      new ConfigFloatLabel(tr("AR Background Alpha:"), m_ar_background_alpha), 1, 0);
+  ar_mode_layout->addWidget(m_ar_background_alpha, 1, 1);
+  ar_mode_layout->addWidget(m_ar_background_alpha_value, 1, 2);
+  ar_mode_layout->addWidget(m_ar_mode_debug, 2, 0, 1, 3);
+  hack_layout->addWidget(ar_mode_group);
 
   // Lock Head Pose is incompatible with Immediately Present XFB — when enabled,
   // force-disable both Auto-enable Immediate XFB (local) and the Graphics Hacks
@@ -408,10 +416,6 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
       tr("Enable OpenXR Config Scene For Controller Binding"),
       Config::GFX_VR_ENABLE_OPENXR_CONFIG_SCENE);
   tools_layout->addWidget(m_enable_openxr_config_scene, 4, 0);
-
-  m_ar_mode_debug =
-      new ConfigBool(tr("Fake AR Mode (Debug)"), Config::GFX_VR_AR_MODE_DEBUG);
-  tools_layout->addWidget(m_ar_mode_debug, 5, 0);
 
   general_layout->addStretch();
   hack_layout->addStretch();

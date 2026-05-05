@@ -56,9 +56,10 @@ QString BuildDigitalStateLine2(const Common::VR::OpenXRControllerState& controll
 
 QString BuildAnalogStateLine(const Common::VR::OpenXRControllerState& controller)
 {
-  return QObject::tr("Trigger: %1   Grip: %2   Stick: (%3, %4)")
+  return QObject::tr("Trigger: %1   Grip: %2   Force: %3   Stick: (%4, %5)")
       .arg(QString::number(controller.trigger_value, 'f', 2),
            QString::number(controller.squeeze_value, 'f', 2),
+           QString::number(controller.squeeze_force, 'f', 2),
            QString::number(controller.thumbstick_x, 'f', 2),
            QString::number(controller.thumbstick_y, 'f', 2));
 }

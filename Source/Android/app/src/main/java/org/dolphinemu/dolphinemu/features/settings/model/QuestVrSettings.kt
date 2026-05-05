@@ -78,7 +78,9 @@ object QuestVrSettings {
 
     fun useVulkanMultiviewSetting() = vrBooleanSetting("UseVulkanMultiview", true)
 
-    fun androidDirectToHmdSetting() = vrBooleanSetting("AndroidDirectToHMD", false)
+    fun androidDirectToHmdSetting() = vrBooleanSetting("AndroidDirectToHMD", true)
+
+    fun cpuLevel5HintSetting() = vrBooleanSetting("QuestCpuLevel5Hint", false)
 
     fun virtualScreenSetting() = vrBooleanSetting("VirtualScreen", false)
 
@@ -128,10 +130,12 @@ object QuestVrSettings {
         BooleanSetting.MAIN_SHOW_INPUT_OVERLAY.setBoolean(settings, false)
         lockHeadPoseSetting().setBoolean(settings, false)
         autoLayerSpreadSetting().setBoolean(settings, true)
+        androidDirectToHmdSetting().setBoolean(settings, true)
         removeBarsSetting().setBoolean(settings, true)
         virtualScreenSetting().setBoolean(settings, false)
         passthroughSetting().setBoolean(settings, false)
         debugPassthroughSetting().setBoolean(settings, false)
+        BooleanSetting.GFX_HACK_IMMEDIATE_XFB.setBoolean(settings, true)
         BooleanSetting.GFX_HACK_VI_SKIP.setBoolean(settings, false)
         perfDefaultsAppliedSetting().setBoolean(settings, true)
     }
@@ -161,6 +165,8 @@ object QuestVrSettings {
             if (lockHeadPoseSetting().boolean) {
                 autoImmediateXfbSetting().setBoolean(settings, false)
                 BooleanSetting.GFX_HACK_IMMEDIATE_XFB.setBoolean(settings, false)
+            } else if (autoImmediateXfbSetting().boolean) {
+                BooleanSetting.GFX_HACK_IMMEDIATE_XFB.setBoolean(settings, true)
             }
             virtualScreenSetting().setBoolean(settings, false)
             BooleanSetting.GFX_HACK_VI_SKIP.setBoolean(settings, false)

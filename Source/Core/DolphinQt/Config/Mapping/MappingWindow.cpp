@@ -75,6 +75,11 @@
 #include "InputCommon/ControllerInterface/CoreDevice.h"
 #include "InputCommon/InputConfig.h"
 
+namespace
+{
+constexpr const char* OPENXR_WIIMOTE_DEFAULT_PROFILE = "OpenXR Wii Remote.ini";
+}
+
 MappingWindow::MappingWindow(QWidget* parent, Type type, int port_num)
     : QDialog(parent), m_port(port_num)
 {
@@ -629,13 +634,31 @@ ControllerEmu::EmulatedController* MappingWindow::GetController() const
 
 void MappingWindow::OnDefaultFieldsPressed()
 {
-  m_controller->LoadDefaults(g_controller_interface);
+  if (!LoadOpenXRDefaultProfile())
+    m_controller->LoadDefaults(g_controller_interface);
+
+  UpdateDeviceList();
   m_controller->UpdateReferences(g_controller_interface);
   m_controller->GetConfig()->GenerateControllerTextures();
 
   const auto lock = GetController()->GetStateLock();
   emit ConfigChanged();
   emit Save();
+}
+
+bool MappingWindow::LoadOpenXRDefaultProfile()
+{
+  if (m_mapping_type != Type::MAPPING_WIIMOTE_EMU || !m_is_openxr_wiimote)
+    return false;
+
+  Common::IniFile ini;
+  const std::string profile_path =
+      m_config->GetSysProfileDirectoryPath() + OPENXR_WIIMOTE_DEFAULT_PROFILE;
+  if (!ini.Load(profile_path))
+    return false;
+
+  m_controller->LoadConfig(ini.GetOrCreateSection("Profile"));
+  return true;
 }
 
 void MappingWindow::OnClearFieldsPressed()
