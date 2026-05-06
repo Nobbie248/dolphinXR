@@ -5,8 +5,11 @@
 
 #ifdef ENABLE_VR
 
+#include <atomic>
 #include <array>
+#include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -113,6 +116,8 @@ public:
   bool SupportsLayeredRendering() const override { return m_use_layered_swapchain; }
   AbstractFramebuffer* AcquireLayeredFramebuffer() override;
   void ReleaseLayeredTexture() override;
+  std::unique_lock<std::mutex> AcquireGraphicsQueueLock() override;
+  bool WaitForPendingFrameFinalization(std::string_view reason = {}) override;
 
   // Build the XrCompositionLayerProjection and call xrEndFrame.
   bool SubmitFrame() override;
@@ -129,6 +134,23 @@ public:
   const XRVkEyeSwapchain& GetEyeSwapchain(uint32_t eye) const { return m_eye_swapchains[eye]; }
 
 private:
+  struct PendingXRFrame
+  {
+    XrTime display_time = 0;
+    XrEnvironmentBlendMode environment_blend_mode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
+    bool should_render = false;
+    XrSpace space = XR_NULL_HANDLE;
+    XrCompositionLayerFlags layer_flags = 0;
+    std::array<XrCompositionLayerProjectionView, 2> projection_views{};
+    uint64_t debug_frame_id = 0;
+    uint64_t queued_time_us = 0;
+
+    bool layered_acquired = false;
+    XrSwapchain layered_swapchain = XR_NULL_HANDLE;
+    std::array<bool, 2> eye_acquired{};
+    std::array<XrSwapchain, 2> eye_swapchains{XR_NULL_HANDLE, XR_NULL_HANDLE};
+  };
+
   // Creates XrSession with XrGraphicsBindingVulkanKHR.
   bool CreateSessionVulkan();
 
@@ -138,6 +160,7 @@ private:
   bool CreateEyeSwapchains(int64_t swapchain_format);
 
   void DestroySwapchains();
+  void FinalizePendingXRFrame(PendingXRFrame frame);
 
   std::array<XRVkEyeSwapchain, 2> m_eye_swapchains{};
   XRVkLayeredSwapchain m_layered_swapchain{};
@@ -153,6 +176,9 @@ private:
   // Reused per-frame composition data (avoids per-frame heap allocation).
   std::array<XrCompositionLayerProjectionView, 2> m_projection_views{};
   XrCompositionLayerProjection m_projection_layer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
+
+  std::atomic<bool> m_async_frame_finalization_in_flight{false};
+  std::atomic<bool> m_async_frame_finalization_failed{false};
 };
 
 // Global Vulkan OpenXR instance — valid between VideoBackend::Initialize() and Shutdown().

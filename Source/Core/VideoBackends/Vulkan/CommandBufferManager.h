@@ -6,6 +6,7 @@
 #include <array>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 #include <Common/WorkQueueThread.h>
@@ -79,7 +80,16 @@ public:
   void SubmitCommandBuffer(bool submit_on_worker_thread, bool wait_for_completion,
                            bool advance_to_next_frame = false,
                            VkSwapchainKHR present_swap_chain = VK_NULL_HANDLE,
-                           uint32_t present_image_index = 0xFFFFFFFF);
+                           uint32_t present_image_index = 0xFFFFFFFF,
+                           std::function<void()> post_submit_callback = {});
+
+  // Vulkan queues require external synchronization when accessed from multiple threads. OpenXR
+  // may also access the graphics queue for Vulkan sessions, so callers that invoke those OpenXR
+  // entry points must hold this lock too.
+  std::unique_lock<std::mutex> AcquireQueueLock()
+  {
+    return std::unique_lock<std::mutex>{m_queue_mutex};
+  }
 
   // Was the last present submitted to the queue a failure? If so, we must recreate our swapchain.
   bool CheckLastPresentFail() { return m_last_present_failed.TestAndClear(); }
@@ -151,6 +161,7 @@ private:
     VkSwapchainKHR present_swap_chain;
     u32 present_image_index;
     u32 command_buffer_index;
+    std::function<void()> post_submit_callback;
   };
   Common::WorkQueueThreadSP<PendingCommandBufferSubmit> m_submit_thread;
   std::vector<VkSemaphore> m_present_semaphores = {};
@@ -158,6 +169,7 @@ private:
   VkResult m_last_present_result = VK_SUCCESS;
   bool m_use_threaded_submission = false;
   u32 m_descriptor_set_count = DESCRIPTOR_SETS_PER_POOL;
+  std::mutex m_queue_mutex;
 };
 
 extern std::unique_ptr<CommandBufferManager> g_command_buffer_mgr;

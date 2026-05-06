@@ -13,6 +13,7 @@
 #include "Common/FPURoundMode.h"
 #include "Common/MemoryUtil.h"
 #include "Common/MsgHandler.h"
+#include "Common/Thread.h"
 
 #include "Core/Config/MainSettings.h"
 #include "Core/ConfigManager.h"
@@ -285,6 +286,8 @@ void FifoManager::ResetVideoBuffer()
 // Purpose: Keep the Core HW updated about the CPU-GPU distance
 void FifoManager::RunGpuLoop()
 {
+  Common::SetCurrentThreadName("Video thread");
+
   m_gpu_mainloop.Run(
       [this] {
         // Run events from the CPU thread.

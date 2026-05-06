@@ -3,18 +3,49 @@
 
 #include "VideoBackends/Vulkan/CommandBufferManager.h"
 
+#include <atomic>
 #include <array>
 #include <cstdint>
+#include <utility>
 
 #include "Common/Assert.h"
+#include "Common/Logging/Log.h"
 #include "Common/MsgHandler.h"
 
 #include "VideoBackends/Vulkan/VulkanContext.h"
 #include "VideoCommon/Constants.h"
+#if defined(ANDROID) && defined(ENABLE_VR)
+#include "VideoCommon/VR/OpenXRManager.h"
+#endif
 #include "vulkan/vulkan_core.h"
+
+#if defined(ANDROID)
+#include <android/log.h>
+#endif
 
 namespace Vulkan
 {
+namespace
+{
+constexpr u32 MAX_SUBMIT_DECISION_LOGS = 96;
+constexpr u32 MAX_WORKER_EXECUTE_LOGS = 64;
+constexpr u32 MAX_WORKER_DRAIN_LOGS = 32;
+
+std::atomic<u32> s_submit_decision_log_count{0};
+std::atomic<u32> s_worker_execute_log_count{0};
+std::atomic<u32> s_worker_drain_log_count{0};
+
+bool ShouldLogSubmitDebug(std::atomic<u32>& counter, u32 limit)
+{
+  return counter.fetch_add(1, std::memory_order_relaxed) < limit;
+}
+
+const char* BoolString(bool value)
+{
+  return value ? "true" : "false";
+}
+}  // namespace
+
 CommandBufferManager::CommandBufferManager(bool use_threaded_submission)
     : m_use_threaded_submission(use_threaded_submission)
 {
@@ -231,8 +262,46 @@ VkDescriptorSet CommandBufferManager::AllocateDescriptorSet(VkDescriptorSetLayou
 bool CommandBufferManager::CreateSubmitThread()
 {
   m_submit_thread.Reset("VK submission thread", [this](PendingCommandBufferSubmit submit) {
+#if defined(ANDROID) && defined(ENABLE_VR)
+    static thread_local bool registered_with_openxr = false;
+    if (!registered_with_openxr && VR::g_openxr)
+    {
+      const bool registered = VR::g_openxr->RegisterCurrentAndroidThread(
+          VR::OpenXRManager::AndroidThreadType::RendererWorker, "VK submission thread");
+      INFO_LOG_FMT(VIDEO,
+                   "Vulkan submit worker: OpenXR RendererWorker registration result={} for "
+                   "'VK submission thread'.",
+                   registered);
+#if defined(ANDROID)
+      __android_log_print(ANDROID_LOG_INFO, "DolphinXR",
+                          "Vulkan submit worker: OpenXR RendererWorker registration result=%d "
+                          "for 'VK submission thread'",
+                          static_cast<int>(registered));
+#endif
+      registered_with_openxr = true;
+    }
+#endif
+
+    if (ShouldLogSubmitDebug(s_worker_execute_log_count, MAX_WORKER_EXECUTE_LOGS))
+    {
+      const bool has_present = submit.present_swap_chain != VK_NULL_HANDLE;
+      INFO_LOG_FMT(VIDEO,
+                   "Vulkan submit worker executing: cmd={} present={} image={} "
+                   "(first {} worker submits logged).",
+                   submit.command_buffer_index, has_present, submit.present_image_index,
+                   MAX_WORKER_EXECUTE_LOGS);
+#if defined(ANDROID)
+      __android_log_print(ANDROID_LOG_INFO, "DolphinXR",
+                          "Vulkan submit worker executing: cmd=%u present=%d image=%u",
+                          submit.command_buffer_index, static_cast<int>(has_present),
+                          submit.present_image_index);
+#endif
+    }
+
     SubmitCommandBuffer(submit.command_buffer_index, submit.present_swap_chain,
                         submit.present_image_index);
+    if (submit.post_submit_callback)
+      submit.post_submit_callback();
     CmdBufferResources& resources = m_command_buffers[submit.command_buffer_index];
     resources.waiting_for_submit.store(false, std::memory_order_release);
   });
@@ -244,6 +313,18 @@ void CommandBufferManager::WaitForWorkerThreadIdle()
 {
   if (!m_use_threaded_submission)
     return;
+
+  if (ShouldLogSubmitDebug(s_worker_drain_log_count, MAX_WORKER_DRAIN_LOGS))
+  {
+    INFO_LOG_FMT(VIDEO,
+                 "Vulkan submit worker drain requested via WaitForWorkerThreadIdle() "
+                 "(first {} drains logged).",
+                 MAX_WORKER_DRAIN_LOGS);
+#if defined(ANDROID)
+    __android_log_print(ANDROID_LOG_INFO, "DolphinXR",
+                        "Vulkan submit worker drain requested via WaitForWorkerThreadIdle()");
+#endif
+  }
 
   m_submit_thread.WaitForCompletion();
 }
@@ -311,7 +392,8 @@ void CommandBufferManager::WaitForCommandBufferCompletion(u32 index)
 void CommandBufferManager::SubmitCommandBuffer(bool submit_on_worker_thread,
                                                bool wait_for_completion, bool advance_to_next_frame,
                                                VkSwapchainKHR present_swap_chain,
-                                               uint32_t present_image_index)
+                                               uint32_t present_image_index,
+                                               std::function<void()> post_submit_callback)
 {
   // End the current command buffer.
   CmdBufferResources& resources = GetCurrentCmdBufferResources();
@@ -326,12 +408,53 @@ void CommandBufferManager::SubmitCommandBuffer(bool submit_on_worker_thread,
     }
   }
 
+  const bool submit_to_worker =
+      m_use_threaded_submission && submit_on_worker_thread && !wait_for_completion;
+  const bool has_present = present_swap_chain != VK_NULL_HANDLE;
+  const char* submit_path = submit_to_worker ? "worker" : "sync";
+  const char* sync_reason = "worker";
+  if (!submit_to_worker)
+  {
+    if (!m_use_threaded_submission)
+      sync_reason = "threading_disabled";
+    else if (!submit_on_worker_thread)
+      sync_reason = "caller_requested_sync";
+    else
+      sync_reason = "wait_for_completion";
+  }
+
+  if (ShouldLogSubmitDebug(s_submit_decision_log_count, MAX_SUBMIT_DECISION_LOGS))
+  {
+    INFO_LOG_FMT(VIDEO,
+                 "Vulkan submit decision: path={} reason={} threaded={} request_worker={} wait={} "
+                 "advance={} present={} cmd={} frame={} fence={} init={} semaphore={} "
+                 "(first {} decisions logged).",
+                 submit_path, sync_reason, BoolString(m_use_threaded_submission),
+                 BoolString(submit_on_worker_thread), BoolString(wait_for_completion),
+                 BoolString(advance_to_next_frame), BoolString(has_present), m_current_cmd_buffer,
+                 m_current_frame, resources.fence_counter, BoolString(resources.init_command_buffer_used),
+                 BoolString(resources.semaphore_used), MAX_SUBMIT_DECISION_LOGS);
+#if defined(ANDROID)
+    __android_log_print(
+        ANDROID_LOG_INFO, "DolphinXR",
+        "Vulkan submit decision: path=%s reason=%s threaded=%d request_worker=%d wait=%d "
+        "advance=%d present=%d cmd=%u frame=%u fence=%llu init=%d semaphore=%d",
+        submit_path, sync_reason, static_cast<int>(m_use_threaded_submission),
+        static_cast<int>(submit_on_worker_thread), static_cast<int>(wait_for_completion),
+        static_cast<int>(advance_to_next_frame), static_cast<int>(has_present), m_current_cmd_buffer,
+        m_current_frame, static_cast<unsigned long long>(resources.fence_counter),
+        static_cast<int>(resources.init_command_buffer_used), static_cast<int>(resources.semaphore_used));
+#endif
+  }
+
   // Submitting off-thread?
-  if (m_use_threaded_submission && submit_on_worker_thread && !wait_for_completion)
+  if (submit_to_worker)
   {
     resources.waiting_for_submit.store(true, std::memory_order_relaxed);
     // Push to the pending submit queue.
-    m_submit_thread.Push({present_swap_chain, present_image_index, m_current_cmd_buffer});
+    m_submit_thread.Push(
+        {present_swap_chain, present_image_index, m_current_cmd_buffer,
+         std::move(post_submit_callback)});
   }
   else
   {
@@ -339,6 +462,8 @@ void CommandBufferManager::SubmitCommandBuffer(bool submit_on_worker_thread,
 
     // Pass through to normal submission path.
     SubmitCommandBuffer(m_current_cmd_buffer, present_swap_chain, present_image_index);
+    if (post_submit_callback)
+      post_submit_callback();
     if (wait_for_completion)
       WaitForCommandBufferCompletion(m_current_cmd_buffer);
   }
@@ -426,47 +551,51 @@ void CommandBufferManager::SubmitCommandBuffer(u32 command_buffer_index,
     submit_info.pSignalSemaphores = &m_present_semaphores[present_image_index];
   }
 
-  VkResult res =
-      vkQueueSubmit(g_vulkan_context->GetGraphicsQueue(), 1, &submit_info, resources.fence);
-  if (res != VK_SUCCESS)
   {
-    LOG_VULKAN_ERROR(res, "vkQueueSubmit failed: ");
-    PanicAlertFmt("Failed to submit command buffer: {} ({})", VkResultToString(res),
-                  static_cast<int>(res));
-  }
+    auto queue_lock = AcquireQueueLock();
 
-  // Do we have a swap chain to present?
-  if (present_swap_chain != VK_NULL_HANDLE)
-  {
-    // Should have a signal semaphore.
-    VkPresentInfoKHR present_info = {VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-                                     nullptr,
-                                     1,
-                                     &m_present_semaphores[present_image_index],
-                                     1,
-                                     &present_swap_chain,
-                                     &present_image_index,
-                                     nullptr};
-
-    m_last_present_result = vkQueuePresentKHR(g_vulkan_context->GetPresentQueue(), &present_info);
-    if (m_last_present_result != VK_SUCCESS)
+    VkResult res =
+        vkQueueSubmit(g_vulkan_context->GetGraphicsQueue(), 1, &submit_info, resources.fence);
+    if (res != VK_SUCCESS)
     {
-      // VK_ERROR_OUT_OF_DATE_KHR is not fatal, just means we need to recreate our swap chain.
-      if (m_last_present_result != VK_ERROR_OUT_OF_DATE_KHR &&
-          m_last_present_result != VK_SUBOPTIMAL_KHR &&
-          m_last_present_result != VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT)
-      {
-        LOG_VULKAN_ERROR(m_last_present_result, "vkQueuePresentKHR failed: ");
-      }
+      LOG_VULKAN_ERROR(res, "vkQueueSubmit failed: ");
+      PanicAlertFmt("Failed to submit command buffer: {} ({})", VkResultToString(res),
+                    static_cast<int>(res));
+    }
 
-      // Don't treat VK_SUBOPTIMAL_KHR as fatal on Android. Android 10+ requires prerotation.
-      // See https://twitter.com/Themaister/status/1207062674011574273
+    // Do we have a swap chain to present?
+    if (present_swap_chain != VK_NULL_HANDLE)
+    {
+      // Should have a signal semaphore.
+      VkPresentInfoKHR present_info = {VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+                                       nullptr,
+                                       1,
+                                       &m_present_semaphores[present_image_index],
+                                       1,
+                                       &present_swap_chain,
+                                       &present_image_index,
+                                       nullptr};
+
+      m_last_present_result = vkQueuePresentKHR(g_vulkan_context->GetPresentQueue(), &present_info);
+      if (m_last_present_result != VK_SUCCESS)
+      {
+        // VK_ERROR_OUT_OF_DATE_KHR is not fatal, just means we need to recreate our swap chain.
+        if (m_last_present_result != VK_ERROR_OUT_OF_DATE_KHR &&
+            m_last_present_result != VK_SUBOPTIMAL_KHR &&
+            m_last_present_result != VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT)
+        {
+          LOG_VULKAN_ERROR(m_last_present_result, "vkQueuePresentKHR failed: ");
+        }
+
+        // Don't treat VK_SUBOPTIMAL_KHR as fatal on Android. Android 10+ requires prerotation.
+        // See https://twitter.com/Themaister/status/1207062674011574273
 #ifdef VK_USE_PLATFORM_ANDROID_KHR
-      if (m_last_present_result != VK_SUBOPTIMAL_KHR)
-        m_last_present_failed.Set();
+        if (m_last_present_result != VK_SUBOPTIMAL_KHR)
+          m_last_present_failed.Set();
 #else
-      m_last_present_failed.Set();
+        m_last_present_failed.Set();
 #endif
+      }
     }
   }
 }

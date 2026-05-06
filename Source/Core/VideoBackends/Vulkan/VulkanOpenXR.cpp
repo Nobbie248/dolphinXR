@@ -14,10 +14,13 @@
 #include <array>
 #include <sstream>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include "Common/Assert.h"
 #include "Common/Logging/Log.h"
+#include "Common/Timer.h"
 
 #include "VideoBackends/Vulkan/CommandBufferManager.h"
 #include "VideoBackends/Vulkan/StateTracker.h"
@@ -31,9 +34,24 @@
 #include <windows.h>  // for SEH __try/__except
 #endif
 
+#if defined(ANDROID)
+#include <android/log.h>
+#endif
+
 namespace Vulkan
 {
 std::unique_ptr<VulkanOpenXR> g_openxr_vk;
+
+namespace
+{
+uint64_t ElapsedUs(uint64_t start_us, uint64_t end_us)
+{
+  if (start_us == 0 || end_us <= start_us)
+    return 0;
+
+  return end_us - start_us;
+}
+}  // namespace
 
 #if defined(ANDROID)
 static void AppendOptionalAndroidOpenXRExtensions(std::vector<const char*>* extensions)
@@ -196,6 +214,140 @@ VulkanOpenXR::VulkanOpenXR() = default;
 VulkanOpenXR::~VulkanOpenXR()
 {
   Shutdown();
+}
+
+std::unique_lock<std::mutex> VulkanOpenXR::AcquireGraphicsQueueLock()
+{
+  if (g_command_buffer_mgr)
+    return g_command_buffer_mgr->AcquireQueueLock();
+
+  return {};
+}
+
+bool VulkanOpenXR::WaitForPendingFrameFinalization(std::string_view reason)
+{
+#if defined(ANDROID)
+  if (m_async_frame_finalization_in_flight.load(std::memory_order_acquire))
+  {
+    static uint32_t s_async_wait_log_count = 0;
+    if (!g_command_buffer_mgr)
+    {
+      ERROR_LOG_FMT(VIDEO,
+                    "OpenXR Vulkan: pending async final XR submit cannot be waited because the "
+                    "command buffer manager is gone.");
+      return false;
+    }
+
+    const uint64_t wait_start_us = Common::Timer::NowUs();
+    g_command_buffer_mgr->WaitForWorkerThreadIdle();
+    const uint64_t wait_us = ElapsedUs(wait_start_us, Common::Timer::NowUs());
+    if (s_async_wait_log_count < 20 || wait_us >= 500)
+    {
+      INFO_LOG_FMT(VIDEO,
+                   "OpenXR Vulkan: waited {} us for pending async final XR submit ({}).",
+                   wait_us, reason.empty() ? "frame loop" : reason);
+      __android_log_print(ANDROID_LOG_INFO, "DolphinXR",
+                          "OpenXR Vulkan: waited %llu us for pending async final XR submit (%.*s)",
+                          static_cast<unsigned long long>(wait_us),
+                          static_cast<int>(reason.empty() ? std::string_view{"frame loop"}.size() :
+                                                            reason.size()),
+                          reason.empty() ? "frame loop" : reason.data());
+      s_async_wait_log_count++;
+    }
+  }
+
+  if (m_async_frame_finalization_failed.exchange(false, std::memory_order_acq_rel))
+  {
+    ERROR_LOG_FMT(VIDEO, "OpenXR Vulkan: previous async final XR submit failed.");
+    return false;
+  }
+#endif
+
+  return true;
+}
+
+void VulkanOpenXR::FinalizePendingXRFrame(PendingXRFrame frame)
+{
+  const uint64_t finalize_start_us = Common::Timer::NowUs();
+  uint64_t release_total_us = 0;
+  uint64_t end_frame_us = 0;
+  bool success = true;
+  XrSwapchainImageReleaseInfo release_info{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+
+  const auto release_swapchain = [&](XrSwapchain swapchain, std::string_view name) {
+    if (swapchain == XR_NULL_HANDLE)
+      return;
+
+    const uint64_t release_start_us = Common::Timer::NowUs();
+    XrResult result = XR_SUCCESS;
+    {
+      auto queue_lock = AcquireGraphicsQueueLock();
+      result = xrReleaseSwapchainImage(swapchain, &release_info);
+    }
+    const uint64_t release_us = ElapsedUs(release_start_us, Common::Timer::NowUs());
+    release_total_us += release_us;
+    if (XR_FAILED(result))
+    {
+      WARN_LOG_FMT(VIDEO, "OpenXR: async xrReleaseSwapchainImage failed for {} ({}).", name,
+                   static_cast<int>(result));
+      success = false;
+    }
+  };
+
+  if (frame.layered_acquired)
+    release_swapchain(frame.layered_swapchain, "layered swapchain");
+
+  for (uint32_t eye = 0; eye < 2; ++eye)
+  {
+    if (frame.eye_acquired[eye])
+      release_swapchain(frame.eye_swapchains[eye], eye == 0 ? "eye 0" : "eye 1");
+  }
+
+  XrCompositionLayerProjection projection_layer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
+  projection_layer.layerFlags = frame.layer_flags;
+  projection_layer.space = frame.space;
+  projection_layer.viewCount = static_cast<uint32_t>(frame.projection_views.size());
+  projection_layer.views = frame.projection_views.data();
+
+  const std::vector<XrCompositionLayerBaseHeader*> layers = {
+      reinterpret_cast<XrCompositionLayerBaseHeader*>(&projection_layer)};
+
+  const uint64_t end_frame_start_us = Common::Timer::NowUs();
+  if (!VR::g_openxr ||
+      !VR::g_openxr->EndFrameDetached(frame.display_time, frame.environment_blend_mode,
+                                      frame.should_render, layers))
+  {
+    success = false;
+  }
+  end_frame_us = ElapsedUs(end_frame_start_us, Common::Timer::NowUs());
+
+  if (!success)
+    m_async_frame_finalization_failed.store(true, std::memory_order_release);
+
+  const uint64_t finalize_end_us = Common::Timer::NowUs();
+  const uint64_t queue_delay_us = ElapsedUs(frame.queued_time_us, finalize_start_us);
+  const uint64_t finalize_us = ElapsedUs(finalize_start_us, finalize_end_us);
+  if (frame.debug_frame_id <= 20 || frame.debug_frame_id % 300 == 0 || queue_delay_us >= 1000 ||
+      finalize_us >= 1000)
+  {
+    INFO_LOG_FMT(VIDEO,
+                 "OpenXR Vulkan: async final XR submit #{} timing queue_delay={}us "
+                 "release={}us end_frame={}us finalize={}us success={}.",
+                 frame.debug_frame_id, queue_delay_us, release_total_us, end_frame_us, finalize_us,
+                 success);
+#if defined(ANDROID)
+    __android_log_print(ANDROID_LOG_INFO, "DolphinXR",
+                        "OpenXR Vulkan: async final XR submit #%llu timing queue_delay=%lluus "
+                        "release=%lluus end_frame=%lluus finalize=%lluus success=%d",
+                        static_cast<unsigned long long>(frame.debug_frame_id),
+                        static_cast<unsigned long long>(queue_delay_us),
+                        static_cast<unsigned long long>(release_total_us),
+                        static_cast<unsigned long long>(end_frame_us),
+                        static_cast<unsigned long long>(finalize_us), static_cast<int>(success));
+#endif
+  }
+
+  m_async_frame_finalization_in_flight.store(false, std::memory_order_release);
 }
 
 // static
@@ -369,6 +521,8 @@ bool VulkanOpenXR::Initialize()
 
 void VulkanOpenXR::Shutdown()
 {
+  WaitForPendingFrameFinalization("during shutdown");
+
   // Clear swapchain pointer before destroying swapchains so no dangling use occurs.
   if (VR::g_openxr)
     VR::g_openxr->SetSwapchain(nullptr);
@@ -810,8 +964,11 @@ void VulkanOpenXR::DestroySwapchains()
   if (m_layered_image_acquired && m_layered_swapchain.swapchain != XR_NULL_HANDLE)
   {
     XrSwapchainImageReleaseInfo release_info{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
-    const XrResult release_result =
-        xrReleaseSwapchainImage(m_layered_swapchain.swapchain, &release_info);
+    XrResult release_result = XR_SUCCESS;
+    {
+      auto queue_lock = AcquireGraphicsQueueLock();
+      release_result = xrReleaseSwapchainImage(m_layered_swapchain.swapchain, &release_info);
+    }
     if (XR_FAILED(release_result))
     {
       WARN_LOG_FMT(VIDEO,
@@ -847,7 +1004,11 @@ void VulkanOpenXR::DestroySwapchains()
     if (m_image_acquired[eye] && sc.swapchain != XR_NULL_HANDLE)
     {
       XrSwapchainImageReleaseInfo release_info{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
-      const XrResult release_result = xrReleaseSwapchainImage(sc.swapchain, &release_info);
+      XrResult release_result = XR_SUCCESS;
+      {
+        auto queue_lock = AcquireGraphicsQueueLock();
+        release_result = xrReleaseSwapchainImage(sc.swapchain, &release_info);
+      }
       if (XR_FAILED(release_result))
       {
         WARN_LOG_FMT(VIDEO,
@@ -883,8 +1044,13 @@ AbstractFramebuffer* VulkanOpenXR::AcquireEyeFramebuffer(uint32_t eye_index)
   m_frame_uses_layered_swapchain = false;
 
   XrSwapchainImageAcquireInfo acquire_info{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
-  if (XR_FAILED(
-          xrAcquireSwapchainImage(sc.swapchain, &acquire_info, &m_acquired_image_index[eye_index])))
+  XrResult acquire_result = XR_SUCCESS;
+  {
+    auto queue_lock = AcquireGraphicsQueueLock();
+    acquire_result =
+        xrAcquireSwapchainImage(sc.swapchain, &acquire_info, &m_acquired_image_index[eye_index]);
+  }
+  if (XR_FAILED(acquire_result))
   {
     ERROR_LOG_FMT(VIDEO, "OpenXR: xrAcquireSwapchainImage failed for eye {}.", eye_index);
     return nullptr;
@@ -900,7 +1066,11 @@ AbstractFramebuffer* VulkanOpenXR::AcquireEyeFramebuffer(uint32_t eye_index)
 
     // Ensure we don't leak an acquired image if waiting fails.
     XrSwapchainImageReleaseInfo release_info{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
-    const XrResult release_result = xrReleaseSwapchainImage(sc.swapchain, &release_info);
+    XrResult release_result = XR_SUCCESS;
+    {
+      auto queue_lock = AcquireGraphicsQueueLock();
+      release_result = xrReleaseSwapchainImage(sc.swapchain, &release_info);
+    }
     if (XR_FAILED(release_result))
     {
       WARN_LOG_FMT(VIDEO,
@@ -939,8 +1109,13 @@ AbstractFramebuffer* VulkanOpenXR::AcquireLayeredFramebuffer()
     return nullptr;
 
   XrSwapchainImageAcquireInfo acquire_info{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
-  if (XR_FAILED(xrAcquireSwapchainImage(sc.swapchain, &acquire_info,
-                                        &m_acquired_layered_image_index)))
+  XrResult acquire_result = XR_SUCCESS;
+  {
+    auto queue_lock = AcquireGraphicsQueueLock();
+    acquire_result =
+        xrAcquireSwapchainImage(sc.swapchain, &acquire_info, &m_acquired_layered_image_index);
+  }
+  if (XR_FAILED(acquire_result))
   {
     ERROR_LOG_FMT(VIDEO, "OpenXR: xrAcquireSwapchainImage failed for layered swapchain.");
     m_frame_uses_layered_swapchain = false;
@@ -955,7 +1130,11 @@ AbstractFramebuffer* VulkanOpenXR::AcquireLayeredFramebuffer()
     ERROR_LOG_FMT(VIDEO, "OpenXR: xrWaitSwapchainImage failed for layered swapchain.");
 
     XrSwapchainImageReleaseInfo release_info{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
-    const XrResult release_result = xrReleaseSwapchainImage(sc.swapchain, &release_info);
+    XrResult release_result = XR_SUCCESS;
+    {
+      auto queue_lock = AcquireGraphicsQueueLock();
+      release_result = xrReleaseSwapchainImage(sc.swapchain, &release_info);
+    }
     if (XR_FAILED(release_result))
     {
       WARN_LOG_FMT(VIDEO,
@@ -1010,8 +1189,11 @@ void VulkanOpenXR::ReleaseEyeTexture(uint32_t eye_index)
   StateTracker::GetInstance()->InvalidateCachedState();
 
   XrSwapchainImageReleaseInfo release_info{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
-  const XrResult result =
-      xrReleaseSwapchainImage(m_eye_swapchains[eye_index].swapchain, &release_info);
+  XrResult result = XR_SUCCESS;
+  {
+    auto queue_lock = AcquireGraphicsQueueLock();
+    result = xrReleaseSwapchainImage(m_eye_swapchains[eye_index].swapchain, &release_info);
+  }
   if (XR_FAILED(result))
   {
     WARN_LOG_FMT(VIDEO, "OpenXR: xrReleaseSwapchainImage failed for eye {} ({}).", eye_index,
@@ -1037,8 +1219,11 @@ void VulkanOpenXR::ReleaseLayeredTexture()
   StateTracker::GetInstance()->InvalidateCachedState();
 
   XrSwapchainImageReleaseInfo release_info{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
-  const XrResult result =
-      xrReleaseSwapchainImage(m_layered_swapchain.swapchain, &release_info);
+  XrResult result = XR_SUCCESS;
+  {
+    auto queue_lock = AcquireGraphicsQueueLock();
+    result = xrReleaseSwapchainImage(m_layered_swapchain.swapchain, &release_info);
+  }
   if (XR_FAILED(result))
   {
     WARN_LOG_FMT(VIDEO, "OpenXR: xrReleaseSwapchainImage failed for layered swapchain ({}).",
@@ -1054,6 +1239,8 @@ bool VulkanOpenXR::SubmitFrame()
   ASSERT(VR::g_openxr != nullptr);
 
 #if defined(ANDROID)
+  static unsigned int s_openxr_vk_submit_frame_log_count = 0;
+  static uint64_t s_openxr_vk_async_frame_id = 0;
   bool has_acquired_images = false;
   has_acquired_images |= m_layered_image_acquired;
   for (bool acquired : m_image_acquired)
@@ -1063,45 +1250,105 @@ bool VulkanOpenXR::SubmitFrame()
 
   if (has_acquired_images)
   {
+    if (!WaitForPendingFrameFinalization("before queuing next async XR submit"))
+      return false;
+
+    PendingXRFrame pending_frame;
+    pending_frame.debug_frame_id = ++s_openxr_vk_async_frame_id;
+    pending_frame.queued_time_us = Common::Timer::NowUs();
+    pending_frame.display_time = VR::g_openxr->GetPredictedDisplayTime();
+    pending_frame.environment_blend_mode = VR::g_openxr->GetActiveBlendMode();
+    pending_frame.should_render = VR::g_openxr->ShouldRender();
+    pending_frame.space = VR::g_openxr->GetReferenceSpace();
+
+    if (pending_frame.environment_blend_mode == XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND)
+    {
+      pending_frame.layer_flags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT |
+                                  XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT;
+    }
+
+    const auto& eye_views = VR::g_openxr->GetRenderedEyeViews();
+    const bool submit_layered =
+        m_frame_uses_layered_swapchain && m_use_layered_swapchain &&
+        m_layered_swapchain.swapchain != XR_NULL_HANDLE;
+
+    for (uint32_t eye = 0; eye < 2; ++eye)
+    {
+      auto& pv = pending_frame.projection_views[eye];
+      pv = {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};
+      pv.pose = eye_views[eye].pose;
+      pv.fov = eye_views[eye].fov;
+      if (submit_layered)
+      {
+        pv.subImage.swapchain = m_layered_swapchain.swapchain;
+        pv.subImage.imageArrayIndex = eye;
+        pv.subImage.imageRect = {{0, 0},
+                                 {static_cast<int32_t>(m_layered_swapchain.width),
+                                  static_cast<int32_t>(m_layered_swapchain.height)}};
+      }
+      else
+      {
+        pv.subImage.swapchain = m_eye_swapchains[eye].swapchain;
+        pv.subImage.imageArrayIndex = 0;
+        pv.subImage.imageRect = {{0, 0},
+                                 {static_cast<int32_t>(m_eye_swapchains[eye].width),
+                                  static_cast<int32_t>(m_eye_swapchains[eye].height)}};
+      }
+    }
+
+    pending_frame.layered_acquired = m_layered_image_acquired;
+    pending_frame.layered_swapchain = m_layered_swapchain.swapchain;
+    m_layered_image_acquired = false;
+    for (uint32_t eye = 0; eye < 2; ++eye)
+    {
+      pending_frame.eye_acquired[eye] = m_image_acquired[eye];
+      pending_frame.eye_swapchains[eye] = m_eye_swapchains[eye].swapchain;
+      m_image_acquired[eye] = false;
+    }
+    m_frame_uses_layered_swapchain = false;
+
+    if (s_openxr_vk_submit_frame_log_count < 60)
+    {
+      INFO_LOG_FMT(VIDEO,
+                   "OpenXR Vulkan: queued async final XR submit #{} "
+                   "(layered_acquired={} eye0_acquired={} eye1_acquired={} "
+                   "submit_layered={} layered_swapchain_enabled={} legacy_fallback={}).",
+                   pending_frame.debug_frame_id, pending_frame.layered_acquired,
+                   pending_frame.eye_acquired[0], pending_frame.eye_acquired[1], submit_layered,
+                   m_use_layered_swapchain,
+                   VR::g_openxr && VR::g_openxr->ShouldUseVulkanLegacyProjectionFallback());
+#if defined(ANDROID)
+      __android_log_print(
+          ANDROID_LOG_INFO, "DolphinXR",
+          "OpenXR Vulkan: queued async final XR submit #%llu "
+          "(layered_acquired=%d eye0_acquired=%d eye1_acquired=%d submit_layered=%d "
+          "layered_swapchain_enabled=%d legacy_fallback=%d)",
+          static_cast<unsigned long long>(pending_frame.debug_frame_id),
+          static_cast<int>(pending_frame.layered_acquired),
+          static_cast<int>(pending_frame.eye_acquired[0]),
+          static_cast<int>(pending_frame.eye_acquired[1]), static_cast<int>(submit_layered),
+          static_cast<int>(m_use_layered_swapchain),
+          static_cast<int>(VR::g_openxr &&
+                           VR::g_openxr->ShouldUseVulkanLegacyProjectionFallback()));
+#endif
+      s_openxr_vk_submit_frame_log_count++;
+    }
+
     // Submit the eye rendering work once per frame before releasing the swapchain
     // images back to the runtime. Do not wait for GPU completion here; waiting
     // serializes the emulator, GPU, and Quest compositor every frame. We still
     // advance the Vulkan frame resources because the Quest direct-to-HMD path
     // skips PresentBackbuffer(), which normally resets descriptor pools.
     StateTracker::GetInstance()->EndRenderPass();
-    g_command_buffer_mgr->SubmitCommandBuffer(false, false, true);
+    m_async_frame_finalization_in_flight.store(true, std::memory_order_release);
+    g_command_buffer_mgr->SubmitCommandBuffer(
+        true, false, true, VK_NULL_HANDLE, 0xFFFFFFFF,
+        [this, frame = std::move(pending_frame)]() mutable {
+          FinalizePendingXRFrame(std::move(frame));
+        });
     StateTracker::GetInstance()->InvalidateCachedState();
 
-    XrSwapchainImageReleaseInfo release_info{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
-    if (m_layered_image_acquired)
-    {
-      const XrResult result =
-          xrReleaseSwapchainImage(m_layered_swapchain.swapchain, &release_info);
-      if (XR_FAILED(result))
-      {
-        WARN_LOG_FMT(VIDEO,
-                     "OpenXR: xrReleaseSwapchainImage failed for layered swapchain ({}).",
-                     static_cast<int>(result));
-      }
-
-      m_layered_image_acquired = false;
-    }
-
-    for (uint32_t eye = 0; eye < 2; ++eye)
-    {
-      if (!m_image_acquired[eye])
-        continue;
-
-      const XrResult result =
-          xrReleaseSwapchainImage(m_eye_swapchains[eye].swapchain, &release_info);
-      if (XR_FAILED(result))
-      {
-        WARN_LOG_FMT(VIDEO, "OpenXR: xrReleaseSwapchainImage failed for eye {} ({}).", eye,
-                     static_cast<int>(result));
-      }
-
-      m_image_acquired[eye] = false;
-    }
+    return true;
   }
 #endif
 

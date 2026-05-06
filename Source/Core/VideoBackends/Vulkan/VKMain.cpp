@@ -3,6 +3,7 @@
 
 #include "VideoBackends/Vulkan/VideoBackend.h"
 
+#include "Common/Logging/Log.h"
 #include "Common/Logging/LogManager.h"
 #include "Common/MsgHandler.h"
 
@@ -26,6 +27,10 @@
 
 #if defined(VK_USE_PLATFORM_METAL_EXT)
 #include <objc/message.h>
+#endif
+
+#if defined(ANDROID)
+#include <android/log.h>
 #endif
 
 namespace Vulkan
@@ -239,10 +244,10 @@ bool VideoBackend::Initialize(const WindowSystemInfo& wsi)
     }
   }
 
-  // OpenXR eye-image ownership/release is currently synchronized against the main submit path.
-  // Force single-threaded Vulkan submission in that mode to avoid runtime-owned swapchain hazards.
+  // Desktop OpenXR still uses the conservative single-threaded Vulkan submit path. Android/Quest
+  // synchronizes OpenXR queue-touching calls with the Vulkan submit worker and keeps threading on.
   bool use_threaded_submission = g_Config.bBackendMultithreading;
-#ifdef ENABLE_VR
+#if defined(ENABLE_VR) && !defined(ANDROID)
   if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR && use_threaded_submission)
   {
     WARN_LOG_FMT(VIDEO,
@@ -250,6 +255,22 @@ bool VideoBackend::Initialize(const WindowSystemInfo& wsi)
                  "threaded submission device-loss issues.");
     use_threaded_submission = false;
   }
+#endif
+  INFO_LOG_FMT(VIDEO,
+               "Vulkan submit threading init: config={} active={} stereo_mode={} openxr={} "
+               "surface={}.",
+               g_Config.bBackendMultithreading, use_threaded_submission,
+               static_cast<int>(g_ActiveConfig.stereo_mode),
+               g_ActiveConfig.stereo_mode == StereoMode::OpenXR, surface != VK_NULL_HANDLE);
+#if defined(ANDROID)
+  __android_log_print(ANDROID_LOG_INFO, "DolphinXR",
+                      "Vulkan submit threading init: config=%d active=%d stereo_mode=%d "
+                      "openxr=%d surface=%d",
+                      static_cast<int>(g_Config.bBackendMultithreading),
+                      static_cast<int>(use_threaded_submission),
+                      static_cast<int>(g_ActiveConfig.stereo_mode),
+                      static_cast<int>(g_ActiveConfig.stereo_mode == StereoMode::OpenXR),
+                      static_cast<int>(surface != VK_NULL_HANDLE));
 #endif
 
   // Create command buffers. We do this separately because the other classes depend on it.
