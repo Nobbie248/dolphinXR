@@ -11,7 +11,7 @@ object QuestVrSettings {
     const val CONTROLLER_PRESET_WII_REMOTE = 1
 
     private const val GC_PROFILE_NAME = "Quest Touch GameCube.ini"
-    private const val WIIMOTE_PROFILE_NAME = "Quest Touch Wii Remote.ini"
+    private const val WIIMOTE_PROFILE_NAME = "OpenXR Wii Remote.ini"
     private const val VR_SECTION = "VR"
 
     private fun androidBooleanSetting(key: String, defaultValue: Boolean) =
@@ -104,6 +104,12 @@ object QuestVrSettings {
 
     private fun perfDefaultsAppliedSetting() = androidBooleanSetting("QuestPerfProfileApplied", false)
 
+    private fun backendMultithreadingReenabledSetting() =
+        androidBooleanSetting("QuestBackendMultithreadingReenabled", false)
+
+    private fun controllerProfilesAppliedSetting() =
+        androidBooleanSetting("QuestControllerProfilesApplied", false)
+
     fun shouldShowMirrorSurface(): Boolean {
         if (!BuildConfig.IS_QUEST) {
             return true
@@ -124,7 +130,7 @@ object QuestVrSettings {
         }
 
         StringSetting.MAIN_GFX_BACKEND.setString(settings, "Vulkan")
-        BooleanSetting.GFX_BACKEND_MULTITHREADING.setBoolean(settings, false)
+        BooleanSetting.GFX_BACKEND_MULTITHREADING.setBoolean(settings, true)
         IntSetting.GFX_EFB_SCALE.setInt(settings, 4)
         BooleanSetting.GFX_WAIT_FOR_SHADERS_BEFORE_STARTING.setBoolean(settings, false)
         BooleanSetting.MAIN_SHOW_INPUT_OVERLAY.setBoolean(settings, false)
@@ -138,6 +144,7 @@ object QuestVrSettings {
         BooleanSetting.GFX_HACK_IMMEDIATE_XFB.setBoolean(settings, true)
         BooleanSetting.GFX_HACK_VI_SKIP.setBoolean(settings, false)
         perfDefaultsAppliedSetting().setBoolean(settings, true)
+        backendMultithreadingReenabledSetting().setBoolean(settings, true)
     }
 
     fun applySelectedControllerPreset(settings: Settings) {
@@ -160,7 +167,10 @@ object QuestVrSettings {
 
         if (launchInVr) {
             IntSetting.GFX_STEREO_MODE.setInt(settings, STEREO_MODE_OPENXR)
-            BooleanSetting.GFX_BACKEND_MULTITHREADING.setBoolean(settings, false)
+            if (!backendMultithreadingReenabledSetting().boolean) {
+                BooleanSetting.GFX_BACKEND_MULTITHREADING.setBoolean(settings, true)
+                backendMultithreadingReenabledSetting().setBoolean(settings, true)
+            }
             BooleanSetting.MAIN_SHOW_INPUT_OVERLAY.setBoolean(settings, false)
             if (lockHeadPoseSetting().boolean) {
                 autoImmediateXfbSetting().setBoolean(settings, false)
@@ -168,7 +178,6 @@ object QuestVrSettings {
             } else if (autoImmediateXfbSetting().boolean) {
                 BooleanSetting.GFX_HACK_IMMEDIATE_XFB.setBoolean(settings, true)
             }
-            virtualScreenSetting().setBoolean(settings, false)
             BooleanSetting.GFX_HACK_VI_SKIP.setBoolean(settings, false)
         } else if (IntSetting.GFX_STEREO_MODE.int == STEREO_MODE_OPENXR) {
             IntSetting.GFX_STEREO_MODE.setInt(settings, 0)
@@ -186,24 +195,28 @@ object QuestVrSettings {
             return
         }
 
+        if (!controllerProfilesAppliedSetting().boolean) {
+            EmulatedController.getGcPad(0).loadProfile(
+                EmulatedController.getGcPad(0).getSysProfileDirectoryPath() + GC_PROFILE_NAME
+            )
+            EmulatedController.getWiimote(0).loadProfile(
+                EmulatedController.getWiimote(0).getSysProfileDirectoryPath() + WIIMOTE_PROFILE_NAME
+            )
+            controllerProfilesAppliedSetting().setBoolean(settings, true)
+        }
+
         when (preset) {
-            CONTROLLER_PRESET_WII_REMOTE -> applyWiiRemotePreset(settings)
-            else -> applyGameCubePreset(settings)
+            CONTROLLER_PRESET_WII_REMOTE -> applyWiiRemoteSource(settings)
+            else -> applyGameCubeSource(settings)
         }
     }
 
-    private fun applyGameCubePreset(settings: Settings) {
+    private fun applyGameCubeSource(settings: Settings) {
         IntSetting.MAIN_SI_DEVICE_0.setInt(settings, 6)
         IntSetting.WIIMOTE_1_SOURCE.setInt(settings, 0)
-        EmulatedController.getGcPad(0).loadProfile(
-            EmulatedController.getGcPad(0).getSysProfileDirectoryPath() + GC_PROFILE_NAME
-        )
     }
 
-    private fun applyWiiRemotePreset(settings: Settings) {
+    private fun applyWiiRemoteSource(settings: Settings) {
         IntSetting.WIIMOTE_1_SOURCE.setInt(settings, 3)
-        EmulatedController.getWiimote(0).loadProfile(
-            EmulatedController.getWiimote(0).getSysProfileDirectoryPath() + WIIMOTE_PROFILE_NAME
-        )
     }
 }

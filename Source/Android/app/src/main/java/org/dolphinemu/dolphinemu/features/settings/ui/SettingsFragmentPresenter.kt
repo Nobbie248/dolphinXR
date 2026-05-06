@@ -191,6 +191,21 @@ class SettingsFragmentPresenter(
                 controllerNumber
             )
 
+            MenuTag.HOTKEYS -> addHotkeySettings(sl)
+
+            MenuTag.HOTKEYS_GENERAL,
+            MenuTag.HOTKEYS_TAS,
+            MenuTag.HOTKEYS_DEBUGGING,
+            MenuTag.HOTKEYS_WII,
+            MenuTag.HOTKEYS_CONTROLLER_PROFILE,
+            MenuTag.HOTKEYS_GRAPHICS,
+            MenuTag.HOTKEYS_VR,
+            MenuTag.HOTKEYS_3D,
+            MenuTag.HOTKEYS_SAVE_STATES,
+            MenuTag.HOTKEYS_STATES_OTHER,
+            MenuTag.HOTKEYS_GBA,
+            MenuTag.HOTKEYS_USB -> addHotkeyCategorySettings(sl, menuTag)
+
             else -> throw UnsupportedOperationException("Unimplemented menu")
         }
 
@@ -227,6 +242,7 @@ class SettingsFragmentPresenter(
         if (settings!!.isWii) {
             sl.add(SubmenuSetting(context, R.string.wiimote_settings, MenuTag.WIIMOTE))
         }
+        sl.add(SubmenuSetting(context, R.string.hotkey_settings, MenuTag.HOTKEYS))
 
         sl.add(HeaderSetting(context, R.string.setting_clear_info, 0))
     }
@@ -2447,21 +2463,9 @@ class SettingsFragmentPresenter(
             return
         }
 
-        val storedKeys = QuestGameVrConfigSettings.getStoredKeys(currentGameId, revision)
-        if (storedKeys.isEmpty()) {
-            sl.add(HeaderSetting(context, R.string.quest_no_stored_vr_config, 0))
-            return
-        }
-
         sl.add(HeaderSetting(context, R.string.quest_vr_config_description, 0))
 
-        fun hasKey(key: String): Boolean = storedKeys.any { it.equals(key, ignoreCase = true) }
-
         fun addBoolean(key: String, defaultValue: Boolean, titleId: Int, descriptionId: Int) {
-            if (!hasKey(key)) {
-                return
-            }
-
             sl.add(
                 SwitchSetting(
                     context,
@@ -2481,10 +2485,6 @@ class SettingsFragmentPresenter(
             max: Float,
             step: Float
         ) {
-            if (!hasKey(key)) {
-                return
-            }
-
             sl.add(
                 FloatSliderSetting(
                     context,
@@ -2509,10 +2509,6 @@ class SettingsFragmentPresenter(
             max: Int,
             step: Int
         ) {
-            if (!hasKey(key)) {
-                return
-            }
-
             sl.add(
                 IntSliderSetting(
                     context,
@@ -2626,18 +2622,16 @@ class SettingsFragmentPresenter(
             R.string.quest_disable_cpu_culling,
             R.string.quest_disable_cpu_culling_description
         )
-        if (hasKey("OpcodeReplay")) {
-            sl.add(
-                SingleChoiceSetting(
-                    context,
-                    QuestGameVrConfigIntSetting(currentGameId, revision, "OpcodeReplay", 0),
-                    R.string.quest_opcode_replay,
-                    R.string.quest_opcode_replay_description,
-                    R.array.questOpcodeReplayEntries,
-                    R.array.questOpcodeReplayValues
-                )
+        sl.add(
+            SingleChoiceSetting(
+                context,
+                QuestGameVrConfigIntSetting(currentGameId, revision, "OpcodeReplay", 0),
+                R.string.quest_opcode_replay,
+                R.string.quest_opcode_replay_description,
+                R.array.questOpcodeReplayEntries,
+                R.array.questOpcodeReplayValues
             )
-        }
+        )
         addBoolean(
             "AutoLayerSpread",
             true,
@@ -3241,6 +3235,82 @@ class SettingsFragmentPresenter(
                 )
             )
         )
+    }
+
+    // PC's MappingWindow splits HotkeyManager's ControlGroups across "Mapping" tabs (HotkeyGeneral,
+    // HotkeyTAS, ...). Mirror that split here, keyed by the C++ s_groups_info names so we don't
+    // depend on group indices. New hotkey groups added in C++ won't appear until added to a
+    // category below; that matches the PC tab behaviour.
+    private val hotkeyCategoryGroups: Map<MenuTag, List<String>> = mapOf(
+        MenuTag.HOTKEYS_GENERAL to listOf("General", "Volume", "Emulation Speed"),
+        MenuTag.HOTKEYS_TAS to listOf("Frame Advance", "Movie"),
+        MenuTag.HOTKEYS_DEBUGGING to listOf("Stepping", "Program Counter", "Breakpoint"),
+        MenuTag.HOTKEYS_WII to listOf("Wii"),
+        MenuTag.HOTKEYS_CONTROLLER_PROFILE to listOf(
+            "Controller Profile 1",
+            "Controller Profile 2",
+            "Controller Profile 3",
+            "Controller Profile 4"
+        ),
+        MenuTag.HOTKEYS_GRAPHICS to listOf("Graphics Toggles", "Internal Resolution", "Freelook"),
+        MenuTag.HOTKEYS_VR to listOf("VR", "VR Shader"),
+        MenuTag.HOTKEYS_3D to listOf("3D", "3D Depth"),
+        MenuTag.HOTKEYS_SAVE_STATES to listOf(
+            "Load State",
+            "Save State",
+            "Select State",
+            "Load Last State"
+        ),
+        MenuTag.HOTKEYS_STATES_OTHER to listOf("Other State Hotkeys"),
+        MenuTag.HOTKEYS_GBA to listOf("GBA Core", "GBA Volume", "GBA Window Size"),
+        MenuTag.HOTKEYS_USB to listOf("USB Emulation Devices")
+    )
+
+    private fun addHotkeySettings(sl: ArrayList<SettingsItem>) {
+        val hotkeys = EmulatedController.getHotkeys()
+        addControllerMetaSettings(sl, hotkeys)
+
+        sl.add(HeaderSetting(context, R.string.hotkey_categories, 0))
+        sl.add(SubmenuSetting(context, R.string.hotkey_general, MenuTag.HOTKEYS_GENERAL))
+        sl.add(SubmenuSetting(context, R.string.hotkey_tas, MenuTag.HOTKEYS_TAS))
+        sl.add(SubmenuSetting(context, R.string.hotkey_debugging, MenuTag.HOTKEYS_DEBUGGING))
+        sl.add(SubmenuSetting(context, R.string.hotkey_wii, MenuTag.HOTKEYS_WII))
+        sl.add(
+            SubmenuSetting(
+                context,
+                R.string.hotkey_controller_profile,
+                MenuTag.HOTKEYS_CONTROLLER_PROFILE
+            )
+        )
+        sl.add(SubmenuSetting(context, R.string.hotkey_graphics, MenuTag.HOTKEYS_GRAPHICS))
+        sl.add(SubmenuSetting(context, R.string.hotkey_vr, MenuTag.HOTKEYS_VR))
+        sl.add(SubmenuSetting(context, R.string.hotkey_3d, MenuTag.HOTKEYS_3D))
+        sl.add(SubmenuSetting(context, R.string.hotkey_save_states, MenuTag.HOTKEYS_SAVE_STATES))
+        sl.add(SubmenuSetting(context, R.string.hotkey_states_other, MenuTag.HOTKEYS_STATES_OTHER))
+        sl.add(SubmenuSetting(context, R.string.hotkey_gba, MenuTag.HOTKEYS_GBA))
+        sl.add(SubmenuSetting(context, R.string.hotkey_usb, MenuTag.HOTKEYS_USB))
+    }
+
+    private fun addHotkeyCategorySettings(sl: ArrayList<SettingsItem>, menuTag: MenuTag) {
+        val hotkeys = EmulatedController.getHotkeys()
+        val wantedGroupNames = hotkeyCategoryGroups[menuTag] ?: return
+
+        val groupCount = hotkeys.getGroupCount()
+        for (wantedName in wantedGroupNames) {
+            for (i in 0 until groupCount) {
+                val group = hotkeys.getGroup(i)
+                // Match the untranslated `name` (HotkeyManager passes a single string for both
+                // name and ui_name, so this matches the C++ s_groups_info entry under any locale).
+                if (!group.getName().equals(wantedName, ignoreCase = true)) continue
+
+                sl.add(HeaderSetting(group.getUiName(), ""))
+                val controlCount = group.getControlCount()
+                for (j in 0 until controlCount) {
+                    sl.add(InputMappingControlSetting(group.getControl(j), hotkeys))
+                }
+                break
+            }
+        }
     }
 
     /**

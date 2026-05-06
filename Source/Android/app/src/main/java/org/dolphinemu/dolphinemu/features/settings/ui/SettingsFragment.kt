@@ -314,6 +314,19 @@ class SettingsFragment : Fragment(), SettingsFragmentView {
             titles[MenuTag.WIIMOTE_MOTION_INPUT_2] = R.string.wiimote_motion_input
             titles[MenuTag.WIIMOTE_MOTION_INPUT_3] = R.string.wiimote_motion_input
             titles[MenuTag.WIIMOTE_MOTION_INPUT_4] = R.string.wiimote_motion_input
+            titles[MenuTag.HOTKEYS] = R.string.hotkey_settings
+            titles[MenuTag.HOTKEYS_GENERAL] = R.string.hotkey_general
+            titles[MenuTag.HOTKEYS_TAS] = R.string.hotkey_tas
+            titles[MenuTag.HOTKEYS_DEBUGGING] = R.string.hotkey_debugging
+            titles[MenuTag.HOTKEYS_WII] = R.string.hotkey_wii
+            titles[MenuTag.HOTKEYS_CONTROLLER_PROFILE] = R.string.hotkey_controller_profile
+            titles[MenuTag.HOTKEYS_GRAPHICS] = R.string.hotkey_graphics
+            titles[MenuTag.HOTKEYS_VR] = R.string.hotkey_vr
+            titles[MenuTag.HOTKEYS_3D] = R.string.hotkey_3d
+            titles[MenuTag.HOTKEYS_SAVE_STATES] = R.string.hotkey_save_states
+            titles[MenuTag.HOTKEYS_STATES_OTHER] = R.string.hotkey_states_other
+            titles[MenuTag.HOTKEYS_GBA] = R.string.hotkey_gba
+            titles[MenuTag.HOTKEYS_USB] = R.string.hotkey_usb
         }
 
         @JvmStatic

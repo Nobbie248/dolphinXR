@@ -37,6 +37,13 @@ Java_org_dolphinemu_dolphinemu_features_input_model_controlleremu_ControlGroup_g
   return ToJString(env, Common::GetStringT(GetPointer(env, obj)->ui_name.c_str()));
 }
 
+JNIEXPORT jstring JNICALL
+Java_org_dolphinemu_dolphinemu_features_input_model_controlleremu_ControlGroup_getName(
+    JNIEnv* env, jobject obj)
+{
+  return ToJString(env, GetPointer(env, obj)->name);
+}
+
 JNIEXPORT jint JNICALL
 Java_org_dolphinemu_dolphinemu_features_input_model_controlleremu_ControlGroup_getGroupType(
     JNIEnv* env, jobject obj)

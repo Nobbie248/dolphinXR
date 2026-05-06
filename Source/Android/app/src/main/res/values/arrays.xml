@@ -414,11 +414,13 @@
     <string-array name="wiimoteTypeEntries">
         <item>@string/wiimote_disabled</item>
         <item>@string/wiimote_emulated</item>
+        <item>@string/wiimote_openxr</item>
         <item>@string/wiimote_real</item>
     </string-array>
     <integer-array name="wiimoteTypeValues">
         <item>0</item>
         <item>1</item>
+        <item>3</item>
         <item>2</item>
     </integer-array>
 

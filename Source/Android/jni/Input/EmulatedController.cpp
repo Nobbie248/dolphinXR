@@ -9,6 +9,7 @@
 #include "Core/HW/GCPad.h"
 #include "Core/HW/Wiimote.h"
 #include "Core/HW/WiimoteEmu/WiimoteEmu.h"
+#include "Core/HotkeyManager.h"
 #include "InputCommon/ControllerEmu/ControlGroup/Attachments.h"
 #include "InputCommon/ControllerEmu/ControllerEmu.h"
 #include "InputCommon/ControllerInterface/ControllerInterface.h"
@@ -189,6 +190,13 @@ Java_org_dolphinemu_dolphinemu_features_input_model_controlleremu_EmulatedContro
     JNIEnv* env, jclass, jint controller_index)
 {
   return EmulatedControllerToJava(env, Wiimote::GetConfig()->GetController(controller_index));
+}
+
+JNIEXPORT jobject JNICALL
+Java_org_dolphinemu_dolphinemu_features_input_model_controlleremu_EmulatedController_getHotkeys(
+    JNIEnv* env, jclass)
+{
+  return EmulatedControllerToJava(env, HotkeyManagerEmu::GetConfig()->GetController(0));
 }
 
 JNIEXPORT jobject JNICALL

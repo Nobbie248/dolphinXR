@@ -113,8 +113,8 @@ class SettingsActivityPresenter(
             }
         }
         if (menuTag.isWiimoteMenu) {
-            // Emulated Wii Remote
-            if (value == 1) {
+            // Emulated Wii Remote (1) or OpenXR Wii Remote (3) — both share the emulated bindings UI
+            if (value == 1 || value == 3) {
                 activityView.showSettingsFragment(menuTag, fragmentExtrasWithRevision(null), true, gameId!!)
             }
         }
@@ -138,8 +138,8 @@ class SettingsActivityPresenter(
             return value != 0
         }
         if (menuTag.isWiimoteMenu) {
-            // Emulated Wii Remote
-            return value == 1
+            // Emulated Wii Remote (1) or OpenXR Wii Remote (3)
+            return value == 1 || value == 3
         }
         return if (menuTag.isWiimoteExtensionMenu) {
             // Not disabled

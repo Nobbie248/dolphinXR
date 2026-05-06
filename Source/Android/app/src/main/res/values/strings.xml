@@ -918,7 +918,24 @@ It can efficiently compress both junk data and encrypted Wii data.
     <!-- Wiimote Types -->
     <string name="wiimote_disabled">None</string>
     <string name="wiimote_emulated">Emulated Wii Remote</string>
+    <string name="wiimote_openxr">OpenXR Wii Remote</string>
     <string name="wiimote_real">Real Wii Remote (DolphinBar required)</string>
+
+    <!-- Hotkeys -->
+    <string name="hotkey_settings">Hotkey Settings</string>
+    <string name="hotkey_categories">Categories</string>
+    <string name="hotkey_general">General</string>
+    <string name="hotkey_tas">TAS Tools</string>
+    <string name="hotkey_debugging">Debugging</string>
+    <string name="hotkey_wii">Wii</string>
+    <string name="hotkey_controller_profile">Controller Profiles</string>
+    <string name="hotkey_graphics">Graphics</string>
+    <string name="hotkey_vr">VR</string>
+    <string name="hotkey_3d">Stereoscopic 3D</string>
+    <string name="hotkey_save_states">Save States</string>
+    <string name="hotkey_states_other">Other Save State Hotkeys</string>
+    <string name="hotkey_gba">GBA</string>
+    <string name="hotkey_usb">USB Emulation</string>
 
     <!-- Gamepad Controls -->
     <string name="gamepad_start">Start</string>

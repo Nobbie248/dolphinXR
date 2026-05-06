@@ -57,6 +57,19 @@ enum class MenuTag {
     WIIMOTE_MOTION_INPUT_2("wiimote_motion_input", 1),
     WIIMOTE_MOTION_INPUT_3("wiimote_motion_input", 2),
     WIIMOTE_MOTION_INPUT_4("wiimote_motion_input", 3),
+    HOTKEYS("hotkeys"),
+    HOTKEYS_GENERAL("hotkeys_general"),
+    HOTKEYS_TAS("hotkeys_tas"),
+    HOTKEYS_DEBUGGING("hotkeys_debugging"),
+    HOTKEYS_WII("hotkeys_wii"),
+    HOTKEYS_CONTROLLER_PROFILE("hotkeys_controller_profile"),
+    HOTKEYS_GRAPHICS("hotkeys_graphics"),
+    HOTKEYS_VR("hotkeys_vr"),
+    HOTKEYS_3D("hotkeys_3d"),
+    HOTKEYS_SAVE_STATES("hotkeys_save_states"),
+    HOTKEYS_STATES_OTHER("hotkeys_states_other"),
+    HOTKEYS_GBA("hotkeys_gba"),
+    HOTKEYS_USB("hotkeys_usb"),
     GPU_DRIVERS("gpu_drivers");
 
     var tag: String
@@ -80,9 +93,12 @@ enum class MenuTag {
     }
 
     val correspondingEmulatedController: EmulatedController
-        get() = if (isGCPadMenu) EmulatedController.getGcPad(subType) else if (isWiimoteMenu) EmulatedController.getWiimote(
-            subType
-        ) else throw UnsupportedOperationException()
+        get() = when {
+            isGCPadMenu -> EmulatedController.getGcPad(subType)
+            isWiimoteMenu -> EmulatedController.getWiimote(subType)
+            isHotkeyMenu -> EmulatedController.getHotkeys()
+            else -> throw UnsupportedOperationException()
+        }
 
     val isSerialPort1Menu: Boolean
         get() = this == CONFIG_SERIALPORT1
@@ -103,6 +119,16 @@ enum class MenuTag {
 
     val isWiimoteExtensionMenu: Boolean
         get() = this == WIIMOTE_EXTENSION_1 || this == WIIMOTE_EXTENSION_2 || this == WIIMOTE_EXTENSION_3 || this == WIIMOTE_EXTENSION_4
+
+    val isHotkeyMenu: Boolean
+        get() = this == HOTKEYS || isHotkeyCategoryMenu
+
+    val isHotkeyCategoryMenu: Boolean
+        get() = this == HOTKEYS_GENERAL || this == HOTKEYS_TAS || this == HOTKEYS_DEBUGGING ||
+                this == HOTKEYS_WII || this == HOTKEYS_CONTROLLER_PROFILE ||
+                this == HOTKEYS_GRAPHICS || this == HOTKEYS_VR || this == HOTKEYS_3D ||
+                this == HOTKEYS_SAVE_STATES || this == HOTKEYS_STATES_OTHER ||
+                this == HOTKEYS_GBA || this == HOTKEYS_USB
 
     companion object {
         @JvmStatic

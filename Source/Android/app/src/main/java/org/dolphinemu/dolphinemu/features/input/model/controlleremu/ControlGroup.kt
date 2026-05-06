@@ -14,6 +14,8 @@ import androidx.annotation.Keep
 class ControlGroup private constructor(private val pointer: Long) {
     external fun getUiName(): String
 
+    external fun getName(): String
+
     external fun getGroupType(): Int
 
     external fun getDefaultEnabledValue(): Int

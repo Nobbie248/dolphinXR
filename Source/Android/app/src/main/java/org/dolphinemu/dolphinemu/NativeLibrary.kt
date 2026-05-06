@@ -5,6 +5,7 @@
 
 package org.dolphinemu.dolphinemu
 
+import android.content.Intent
 import android.content.res.Resources
 import android.view.Surface
 import android.widget.Toast
@@ -13,6 +14,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.util.Pair
 import org.dolphinemu.dolphinemu.activities.EmulationActivity
 import org.dolphinemu.dolphinemu.dialogs.AlertMessage
+import org.dolphinemu.dolphinemu.ui.main.MainActivity
 import org.dolphinemu.dolphinemu.utils.CompressCallback
 import org.dolphinemu.dolphinemu.utils.Log
 import java.lang.ref.WeakReference
@@ -554,7 +556,18 @@ object NativeLibrary {
             Log.warning("[NativeLibrary] EmulationActivity is null.")
         } else {
             Log.verbose("[NativeLibrary] Finishing EmulationActivity.")
-            emulationActivity.runOnUiThread(emulationActivity::finish)
+            emulationActivity.runOnUiThread {
+                // Quest VR launches start EmulationActivity in a new task and finish MainActivity
+                // (see EmulationActivity.startEmulationActivity), so the back stack is empty.
+                // Re-launch MainActivity in that case so the user lands on the game list instead
+                // of the app exiting.
+                if (emulationActivity.isTaskRoot) {
+                    val intent = Intent(emulationActivity, MainActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    emulationActivity.startActivity(intent)
+                }
+                emulationActivity.finish()
+            }
         }
     }
 
