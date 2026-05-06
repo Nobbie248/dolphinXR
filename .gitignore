@@ -43,3 +43,11 @@ CMakeLists.txt.user
 /.vscode/
 # Ignore flatpak-builder's cache dir
 .flatpak-builder
+# DolphinXR dev artifacts
+codex_apk_backups/
+quest_perf_capture/
+vulkan_pipeline_failures/
+vulkan_pipeline_failures_latest/
+vulkan_pipeline_failures_latest2/
+quest_first_mv_vs.glsl
+quest_mv_vs.glsl
