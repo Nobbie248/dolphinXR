@@ -216,7 +216,7 @@ static QString GetMainWindowTitle()
   QString title = QString::fromStdString(Common::GetScmRevStr());
 
   if (title.startsWith(QStringLiteral("Dolphin ")))
-    title.replace(0, QStringLiteral("Dolphin").size(), QStringLiteral("Dolphin-OpenXR"));
+    title.replace(0, QStringLiteral("Dolphin").size(), QStringLiteral("Dolphin-VR-ReduX"));
 
   if (title.endsWith(QStringLiteral("-dirty")))
   {
