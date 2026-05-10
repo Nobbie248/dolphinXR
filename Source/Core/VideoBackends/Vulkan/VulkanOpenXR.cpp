@@ -392,7 +392,7 @@ bool VulkanOpenXR::PreQueryVulkanExtensions(VulkanExtensionRequirements& out)
     const XrResult result = pfnGetVulkanRequirements(xr_instance, xr_system, &requirements);
     if (XR_SUCCEEDED(result))
     {
-      out.max_api_version =
+      const u32 reported_max =
           VK_MAKE_API_VERSION(0, XR_VERSION_MAJOR(requirements.maxApiVersionSupported),
                               XR_VERSION_MINOR(requirements.maxApiVersionSupported),
                               XR_VERSION_PATCH(requirements.maxApiVersionSupported));
@@ -403,6 +403,22 @@ bool VulkanOpenXR::PreQueryVulkanExtensions(VulkanExtensionRequirements& out)
                    XR_VERSION_MAJOR(requirements.maxApiVersionSupported),
                    XR_VERSION_MINOR(requirements.maxApiVersionSupported),
                    XR_VERSION_PATCH(requirements.maxApiVersionSupported));
+
+      // XR_KHR_vulkan_enable v1 always reports max=1.0.0 (Meta's Oculus runtime quirk),
+      // even though the runtime actually supports newer Vulkan. Clamping the instance to
+      // 1.0 there breaks Dolphin's multiview path (a 1.1 feature) and crashes vkCreateDevice.
+      // Treat 1.0.0 as "unknown" so Dolphin keeps its negotiated 1.1/1.2 instance.
+      if (reported_max <= VK_API_VERSION_1_0)
+      {
+        WARN_LOG_FMT(VIDEO,
+                     "OpenXR: Runtime reported max Vulkan 1.0.0 (v1 extension quirk); "
+                     "ignoring and using Dolphin's instance version.");
+        out.max_api_version = 0;
+      }
+      else
+      {
+        out.max_api_version = reported_max;
+      }
     }
   }
 
