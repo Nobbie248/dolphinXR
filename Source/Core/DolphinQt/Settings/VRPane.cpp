@@ -8,9 +8,11 @@
 #include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QAbstractSlider>
 #include <QTabWidget>
 #include <QVBoxLayout>
 
+#include "Common/Config/Config.h"
 #include "Core/Config/GraphicsSettings.h"
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
@@ -135,9 +137,15 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   connect(m_camera_forward, &ConfigFloatSlider::valueChanged, this, [this] {
     m_camera_forward_value->setText(QString::asprintf("%.1f", m_camera_forward->GetValue()));
   });
+  connect(m_camera_forward, &QAbstractSlider::actionTriggered, this, [](int) {
+    Config::SetBaseOrCurrent(Config::GFX_VR_ENABLE_CAMERA_FORWARD, true);
+  });
   m_camera_height_value->setText(QString::asprintf("%.1f", m_camera_height->GetValue()));
   connect(m_camera_height, &ConfigFloatSlider::valueChanged, this, [this] {
     m_camera_height_value->setText(QString::asprintf("%.1f", m_camera_height->GetValue()));
+  });
+  connect(m_camera_height, &QAbstractSlider::actionTriggered, this, [](int) {
+    Config::SetBaseOrCurrent(Config::GFX_VR_ENABLE_CAMERA_HEIGHT, true);
   });
 
   // Virtual screen settings
