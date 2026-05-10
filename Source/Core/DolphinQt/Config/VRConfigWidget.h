@@ -94,6 +94,7 @@ private:
   QDoubleSpinBox* m_element_depth = nullptr;
   QComboBox* m_virtual_screen_mode = nullptr;
   QComboBox* m_dont_clear_screen_mode = nullptr;
+  QComboBox* m_lock_head_pose_mode = nullptr;
   QComboBox* m_opcode_replay_mode = nullptr;
   QComboBox* m_forced_vbi_frequency_mode = nullptr;
 
