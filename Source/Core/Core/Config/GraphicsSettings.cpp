@@ -185,7 +185,7 @@ const Info<float> GFX_STEREO_DEPTH_PERCENTAGE{{System::GFX, "Stereoscopy", "Ster
 
 // Graphics.VR
 
-const Info<bool> GFX_VR_ENABLE_OPENXR{{System::GFX, "VR", "EnableOpenXR"}, false};
+const Info<bool> GFX_VR_ENABLE_OPENXR{{System::GFX, "VR", "EnableOpenXR"}, true};
 const Info<bool> GFX_VR_AUTO_IMMEDIATE_XFB{{System::GFX, "VR", "AutoImmediateXFB"}, true};
 const Info<float> GFX_VR_UNITS_PER_METER{{System::GFX, "VR", "UnitsPerMeter"}, 1.0f};
 const Info<float> GFX_VR_LEAN_BACK_ANGLE{{System::GFX, "VR", "LeanBackAngle"}, 0.0f};
@@ -213,7 +213,7 @@ constexpr bool DEFAULT_IMMEDIATE_XFB = false;
 #endif
 
 const Info<bool> GFX_VR_AUTO_VBI_FROM_HMD{{System::GFX, "VR", "AutoVBIFromHMD"}, false};
-const Info<bool> GFX_VR_AUTO_LAYER_SPREAD{{System::GFX, "VR", "AutoLayerSpread"}, true};
+const Info<bool> GFX_VR_AUTO_LAYER_SPREAD{{System::GFX, "VR", "AutoLayerSpread"}, false};
 const Info<float> GFX_VR_LAYER_OFFSET{{System::GFX, "VR", "LayerOffset"}, 0.002f};
 const Info<float> GFX_VR_ELEMENT_DEPTH{{System::GFX, "VR", "ElementDepth"}, 0.001f};
 const Info<bool> GFX_VR_REMOVE_BARS{{System::GFX, "VR", "RemoveCinematicBars"}, true};
