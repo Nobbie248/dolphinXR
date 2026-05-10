@@ -52,6 +52,7 @@ private:
   QLabel* m_head_locked_curvature_value = nullptr;
   ConfigBool* m_dont_clear_screen = nullptr;
   ConfigBool* m_disable_cpu_cull = nullptr;
+  ConfigBool* m_ortho_scissor_fix = nullptr;
   ConfigChoiceMap<OpenXROpcodeReplayMode>* m_opcode_replay_mode = nullptr;
   ConfigChoiceMap<int>* m_forced_vbi_frequency = nullptr;
   ConfigSlider* m_clear_efb_slider = nullptr;

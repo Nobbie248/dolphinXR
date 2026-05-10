@@ -174,6 +174,7 @@ static void ClearAppliedVRSettings()
   ClearAppliedVRSetting("AutoLayerSpread", Config::GFX_VR_AUTO_LAYER_SPREAD);
   ClearAppliedVRSetting("LayerOffset", Config::GFX_VR_LAYER_OFFSET);
   ClearAppliedVRSetting("ElementDepth", Config::GFX_VR_ELEMENT_DEPTH);
+  ClearAppliedVRSetting("OrthoScissorFix", Config::GFX_VR_ORTHO_SCISSOR_FIX);
   ClearAppliedVRSetting("ClearEFBCopies", Config::GFX_VR_CLEAR_EFB_COPIES);
   ClearAppliedVRSetting("UseVulkanMultiview", Config::GFX_VR_USE_VULKAN_MULTIVIEW);
   ClearAppliedVRSetting("AndroidDirectToHMD", Config::GFX_VR_ANDROID_DIRECT_TO_HMD);
@@ -225,6 +226,7 @@ static void ApplyGameVRConfigOverrides(std::string_view game_id, std::optional<u
   ApplyVRSetting(values, "AutoLayerSpread", Config::GFX_VR_AUTO_LAYER_SPREAD);
   ApplyVRSetting(values, "LayerOffset", Config::GFX_VR_LAYER_OFFSET);
   ApplyVRSetting(values, "ElementDepth", Config::GFX_VR_ELEMENT_DEPTH);
+  ApplyVRSetting(values, "OrthoScissorFix", Config::GFX_VR_ORTHO_SCISSOR_FIX);
   ApplyVRSetting(values, "ClearEFBCopies", Config::GFX_VR_CLEAR_EFB_COPIES);
   ApplyVRSetting(values, "UseVulkanMultiview", Config::GFX_VR_USE_VULKAN_MULTIVIEW);
   ApplyVRSetting(values, "AndroidDirectToHMD", Config::GFX_VR_ANDROID_DIRECT_TO_HMD);

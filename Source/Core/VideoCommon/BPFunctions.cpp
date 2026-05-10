@@ -221,6 +221,7 @@ void SetScissorAndViewport(FramebufferManager* frame_buffer_manager, ScissorPos 
   // coordinates and will incorrectly clip the VR-reprojected content. Expand both X and Y
   // to the full active area so all VR virtual-screen content is visible.
   else if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
+           g_ActiveConfig.vr_ortho_scissor_fix &&
            xfmem.projection.type == ProjectionType::Orthographic)
   {
     const int x_off = scissor_offset.x << 1;

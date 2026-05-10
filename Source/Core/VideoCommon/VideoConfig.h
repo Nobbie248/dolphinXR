@@ -341,6 +341,7 @@ struct VideoConfig final
   OpenXROpcodeReplayMode vr_opcode_replay_mode = OpenXROpcodeReplayMode::Off;
   bool vr_auto_layer_spread = true;
   bool vr_remove_bars = true;       // Expand scissor/viewport to remove cinematic letterbox bars
+  bool vr_ortho_scissor_fix = true;  // Expand scissor for orthographic VR draws
   bool vr_lock_head_pose = true;    // Snap head-pose updates to XFB-copy boundaries (FIFO order)
   bool vr_ar_mode = false;          // Submit alpha-blended projection layer for headset passthrough
   bool vr_ar_mode_debug = false;    // Fake AR effect: clear eye FB to solid magenta (no XR blend mode change)

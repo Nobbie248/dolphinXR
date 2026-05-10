@@ -199,6 +199,7 @@ extern const Info<bool> GFX_VR_AUTO_LAYER_SPREAD;
 extern const Info<float> GFX_VR_LAYER_OFFSET;
 extern const Info<float> GFX_VR_ELEMENT_DEPTH;
 extern const Info<bool> GFX_VR_REMOVE_BARS;
+extern const Info<bool> GFX_VR_ORTHO_SCISSOR_FIX;
 extern const Info<bool> GFX_VR_LOCK_HEAD_POSE;
 extern const Info<bool> GFX_VR_AR_MODE;
 extern const Info<bool> GFX_VR_AR_MODE_DEBUG;

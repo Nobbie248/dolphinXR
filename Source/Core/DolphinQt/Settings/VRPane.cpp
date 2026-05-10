@@ -307,6 +307,8 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   m_disable_cpu_cull =
       new ConfigBool(tr("Disable CPU Culling in VR"), Config::GFX_VR_DISABLE_CPU_CULL);
   m_remove_bars = new ConfigBool(tr("Remove Cinematic Bars"), Config::GFX_VR_REMOVE_BARS);
+  m_ortho_scissor_fix =
+      new ConfigBool(tr("Ortho Scissor Fix"), Config::GFX_VR_ORTHO_SCISSOR_FIX);
   m_lock_head_pose =
       new ConfigBool(tr("Lock Head Pose Per Frame"), Config::GFX_VR_LOCK_HEAD_POSE);
   m_ar_mode_debug =
@@ -318,6 +320,7 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   hacks_group_layout->addWidget(m_dont_clear_screen);
   hacks_group_layout->addWidget(m_disable_cpu_cull);
   hacks_group_layout->addWidget(m_remove_bars);
+  hacks_group_layout->addWidget(m_ortho_scissor_fix);
   hack_layout->addWidget(hacks_group);
 
   ar_mode_layout->addWidget(m_ar_mode, 0, 0, 1, 3);
@@ -560,6 +563,13 @@ void VRPane::AddDescriptions()
       "This option removes them by expanding the rendered area."
       "<br><br>Disable this if it causes visual artifacts in a specific game."
       "<br><br><dolphin_emphasis>If unsure, leave this checked.</dolphin_emphasis>");
+  static constexpr char TR_ORTHO_SCISSOR_FIX_DESCRIPTION[] = QT_TR_NOOP(
+      "Expands the scissor to the full active rendering area for orthographic VR draws."
+      "<br><br>This fixes 2D content that is reprojected onto the VR virtual screen but still "
+      "uses game-side EFB scissor coordinates, such as the item roulette in Mario Kart: "
+      "Double Dash!!."
+      "<br><br>Disable this if a game needs its original orthographic scissor clipping."
+      "<br><br><dolphin_emphasis>If unsure, leave this checked.</dolphin_emphasis>");
   static constexpr char TR_LOCK_HEAD_POSE_DESCRIPTION[] = QT_TR_NOOP(
       "Snaps OpenXR head-tracking updates to game-frame boundaries (XFB copies) so every draw "
       "call within a single game frame uses one consistent head pose."
@@ -634,6 +644,7 @@ void VRPane::AddDescriptions()
   m_forced_vbi_frequency->SetDescription(tr(TR_FORCED_VBI_FREQUENCY_DESCRIPTION));
   m_clear_efb_slider->SetDescription(tr(TR_CLEAR_EFB_COPIES_DESCRIPTION));
   m_remove_bars->SetDescription(tr(TR_REMOVE_BARS_DESCRIPTION));
+  m_ortho_scissor_fix->SetDescription(tr(TR_ORTHO_SCISSOR_FIX_DESCRIPTION));
   m_lock_head_pose->SetDescription(tr(TR_LOCK_HEAD_POSE_DESCRIPTION));
   m_vr_gamma->SetDescription(tr(TR_VR_GAMMA_DESCRIPTION));
   m_auto_layer_spread->SetDescription(tr(TR_AUTO_LAYER_SPREAD_DESCRIPTION));
