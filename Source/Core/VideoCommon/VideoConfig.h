@@ -38,7 +38,7 @@ enum class StereoMode : int
   Anaglyph,
   QuadBuffer,
   Passive,
-  OpenXR  // Head-mounted display via the OpenXR runtime (Windows only)
+  OpenXR  // Head-mounted display via the OpenXR runtime
 };
 
 enum class OpenXROpcodeReplayMode : int

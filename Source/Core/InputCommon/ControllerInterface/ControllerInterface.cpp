@@ -9,7 +9,7 @@
 #include "Common/Logging/Log.h"
 #include "Core/HW/WiimoteReal/WiimoteReal.h"
 
-#if defined(ENABLE_VR) && (defined(CIFACE_USE_WIN32) || defined(CIFACE_USE_ANDROID))
+#ifdef ENABLE_VR
 #include "InputCommon/ControllerInterface/OpenXR/OpenXR.h"
 #endif
 #ifdef CIFACE_USE_WIN32
@@ -63,9 +63,6 @@ void ControllerInterface::Initialize(const WindowSystemInfo& wsi)
 
 #ifdef CIFACE_USE_WIN32
   m_input_backends.emplace_back(ciface::Win32::CreateInputBackend(this));
-#ifdef ENABLE_VR
-  m_input_backends.emplace_back(ciface::OpenXR::CreateInputBackend(this));
-#endif
 #endif
 #ifdef CIFACE_USE_XLIB
   m_input_backends.emplace_back(ciface::XInput2::CreateInputBackend(this));
@@ -78,9 +75,9 @@ void ControllerInterface::Initialize(const WindowSystemInfo& wsi)
 #endif
 #ifdef CIFACE_USE_ANDROID
   m_input_backends.emplace_back(ciface::Android::CreateInputBackend(this));
+#endif
 #ifdef ENABLE_VR
   m_input_backends.emplace_back(ciface::OpenXR::CreateInputBackend(this));
-#endif
 #endif
 #ifdef CIFACE_USE_EVDEV
   m_input_backends.emplace_back(ciface::evdev::CreateInputBackend(this));

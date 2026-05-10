@@ -52,10 +52,11 @@ Make sure to pull submodules before building:
 git submodule update --init --recursive
 ```
 
-### Building the OpenXR VR version on Windows
+### Building the OpenXR VR version
 
-To build the VR-enabled version of this fork, OpenXR support must be enabled and
-the OpenXR loader binaries must be compiled before building Dolphin itself.
+To build the VR-enabled version of this fork, OpenXR support must be enabled.
+On desktop Linux, OpenXR VR is Vulkan-only and requires a working system OpenXR
+runtime such as Monado or SteamVR.
 
 If you are generating a Visual Studio build with CMake, configure with
 `-DENABLE_VR=ON`:
@@ -63,7 +64,12 @@ If you are generating a Visual Studio build with CMake, configure with
 cmake -S . -B Build-vs2022 -G "Visual Studio 17 2022" -A x64 -DENABLE_VR=ON
 ```
 
-Then build the OpenXR loader first:
+On desktop Linux, configure with OpenXR and Vulkan enabled:
+```sh
+cmake -S . -B Build -DENABLE_VR=ON -DENABLE_VULKAN=ON
+```
+
+When using the Visual Studio generator, build the OpenXR loader first:
 ```sh
 cmake --build Build-vs2022 --config Release --target openxr_loader
 ```
