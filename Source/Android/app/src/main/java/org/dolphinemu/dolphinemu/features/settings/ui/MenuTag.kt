@@ -70,6 +70,7 @@ enum class MenuTag {
     HOTKEYS_STATES_OTHER("hotkeys_states_other"),
     HOTKEYS_GBA("hotkeys_gba"),
     HOTKEYS_USB("hotkeys_usb"),
+    HOTKEYS_ANDROID("hotkeys_android"),
     GPU_DRIVERS("gpu_drivers");
 
     var tag: String
@@ -128,7 +129,7 @@ enum class MenuTag {
                 this == HOTKEYS_WII || this == HOTKEYS_CONTROLLER_PROFILE ||
                 this == HOTKEYS_GRAPHICS || this == HOTKEYS_VR || this == HOTKEYS_3D ||
                 this == HOTKEYS_SAVE_STATES || this == HOTKEYS_STATES_OTHER ||
-                this == HOTKEYS_GBA || this == HOTKEYS_USB
+                this == HOTKEYS_GBA || this == HOTKEYS_USB || this == HOTKEYS_ANDROID
 
     companion object {
         @JvmStatic

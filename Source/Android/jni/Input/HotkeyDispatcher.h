@@ -45,4 +45,8 @@ private:
   std::thread m_thread;
   Common::Flag m_stop_requested;
   StopRequestCallback m_on_stop_requested;
+
+  // Counts consecutive poll ticks that HK_ANDROID_RETURN_TO_MAIN_MENU has been held.
+  // Fires once the threshold (~3 s) is reached, then resets to prevent re-firing.
+  int m_return_menu_hold_ticks = 0;
 };

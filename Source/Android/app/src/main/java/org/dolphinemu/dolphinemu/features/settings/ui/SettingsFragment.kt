@@ -327,6 +327,7 @@ class SettingsFragment : Fragment(), SettingsFragmentView {
             titles[MenuTag.HOTKEYS_STATES_OTHER] = R.string.hotkey_states_other
             titles[MenuTag.HOTKEYS_GBA] = R.string.hotkey_gba
             titles[MenuTag.HOTKEYS_USB] = R.string.hotkey_usb
+            titles[MenuTag.HOTKEYS_ANDROID] = R.string.hotkey_android
         }
 
         @JvmStatic

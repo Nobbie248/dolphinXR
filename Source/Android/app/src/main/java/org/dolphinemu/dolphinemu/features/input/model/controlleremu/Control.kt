@@ -12,6 +12,8 @@ import androidx.annotation.Keep
  */
 @Keep
 class Control private constructor(private val pointer: Long) {
+    external fun getName(): String
+
     external fun getUiName(): String
 
     external fun getControlReference(): ControlReference

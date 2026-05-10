@@ -32,6 +32,13 @@ jobject ControlToJava(JNIEnv* env, ControllerEmu::Control* control)
 extern "C" {
 
 JNIEXPORT jstring JNICALL
+Java_org_dolphinemu_dolphinemu_features_input_model_controlleremu_Control_getName(JNIEnv* env,
+                                                                                   jobject obj)
+{
+  return ToJString(env, GetPointer(env, obj)->ui_name);
+}
+
+JNIEXPORT jstring JNICALL
 Java_org_dolphinemu_dolphinemu_features_input_model_controlleremu_Control_getUiName(JNIEnv* env,
                                                                                     jobject obj)
 {

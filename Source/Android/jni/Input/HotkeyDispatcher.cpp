@@ -31,6 +31,9 @@ namespace
 {
 constexpr int kPollPeriodMs = 11;  // ~90 Hz, matches Quest 3 refresh — see plan §"Threading model".
 constexpr int kBackgroundNice = 10;
+// Number of consecutive 11 ms ticks HK_ANDROID_RETURN_TO_MAIN_MENU must be held before firing
+// (~3 seconds, same threshold as the old hard-coded OpenXRManager long-press).
+constexpr int kReturnMenuHoldTicks = 3000 / kPollPeriodMs;
 
 bool IsHotkey(int id, bool held = false)
 {
@@ -341,6 +344,34 @@ void HotkeyDispatcher::Run()
     {
       Config::SetCurrent(Config::GFX_VR_REMOVE_BARS,
                          !Config::Get(Config::GFX_VR_REMOVE_BARS));
+    }
+
+    // ---------- Android navigation ----------
+
+    // HK_ANDROID_RETURN_TO_MAIN_MENU requires a sustained 3-second hold before firing.
+    // This prevents accidental exits on shared inputs (e.g. a shoulder button also used for
+    // in-game actions). Once the threshold is reached we fire exactly once; the tick counter
+    // is reset to a saturated value so it doesn't re-fire until the button is released.
+    if (IsHotkey(HK_ANDROID_RETURN_TO_MAIN_MENU, true))
+    {
+      if (m_return_menu_hold_ticks < kReturnMenuHoldTicks)
+        ++m_return_menu_hold_ticks;
+
+      if (m_return_menu_hold_ticks == kReturnMenuHoldTicks)
+      {
+        {
+          HostThreadLock guard;
+          Core::Stop(system);
+        }
+        if (m_on_stop_requested)
+          m_on_stop_requested();
+        m_return_menu_hold_ticks = kReturnMenuHoldTicks + 1;
+        continue;
+      }
+    }
+    else
+    {
+      m_return_menu_hold_ticks = 0;
     }
   }
 }

@@ -204,7 +204,8 @@ class SettingsFragmentPresenter(
             MenuTag.HOTKEYS_SAVE_STATES,
             MenuTag.HOTKEYS_STATES_OTHER,
             MenuTag.HOTKEYS_GBA,
-            MenuTag.HOTKEYS_USB -> addHotkeyCategorySettings(sl, menuTag)
+            MenuTag.HOTKEYS_USB,
+            MenuTag.HOTKEYS_ANDROID -> addHotkeyCategorySettings(sl, menuTag)
 
             else -> throw UnsupportedOperationException("Unimplemented menu")
         }
@@ -3237,33 +3238,41 @@ class SettingsFragmentPresenter(
         )
     }
 
-    // PC's MappingWindow splits HotkeyManager's ControlGroups across "Mapping" tabs (HotkeyGeneral,
-    // HotkeyTAS, ...). Mirror that split here, keyed by the C++ s_groups_info names so we don't
-    // depend on group indices. New hotkey groups added in C++ won't appear until added to a
-    // category below; that matches the PC tab behaviour.
+    // Only groups that have at least one action wired in HotkeyDispatcher.cpp are listed here.
+    // Categories with no wired actions are omitted from the UI entirely so users don't bind
+    // hotkeys that silently do nothing. See functionalHotkeyControls for per-control filtering.
     private val hotkeyCategoryGroups: Map<MenuTag, List<String>> = mapOf(
-        MenuTag.HOTKEYS_GENERAL to listOf("General", "Volume", "Emulation Speed"),
-        MenuTag.HOTKEYS_TAS to listOf("Frame Advance", "Movie"),
-        MenuTag.HOTKEYS_DEBUGGING to listOf("Stepping", "Program Counter", "Breakpoint"),
-        MenuTag.HOTKEYS_WII to listOf("Wii"),
-        MenuTag.HOTKEYS_CONTROLLER_PROFILE to listOf(
-            "Controller Profile 1",
-            "Controller Profile 2",
-            "Controller Profile 3",
-            "Controller Profile 4"
-        ),
-        MenuTag.HOTKEYS_GRAPHICS to listOf("Graphics Toggles", "Internal Resolution", "Freelook"),
-        MenuTag.HOTKEYS_VR to listOf("VR", "VR Shader"),
-        MenuTag.HOTKEYS_3D to listOf("3D", "3D Depth"),
-        MenuTag.HOTKEYS_SAVE_STATES to listOf(
-            "Load State",
-            "Save State",
-            "Select State",
-            "Load Last State"
-        ),
-        MenuTag.HOTKEYS_STATES_OTHER to listOf("Other State Hotkeys"),
-        MenuTag.HOTKEYS_GBA to listOf("GBA Core", "GBA Volume", "GBA Window Size"),
-        MenuTag.HOTKEYS_USB to listOf("USB Emulation Devices")
+        MenuTag.HOTKEYS_GENERAL to listOf("General", "Emulation Speed"),
+        MenuTag.HOTKEYS_TAS to listOf("Frame Advance"),
+        MenuTag.HOTKEYS_VR to listOf("VR"),
+        MenuTag.HOTKEYS_SAVE_STATES to listOf("Load State", "Save State"),
+        MenuTag.HOTKEYS_ANDROID to listOf("Android"),
+    )
+
+    // Untranslated control names (C++ ui_name before GetStringT) that are dispatched by
+    // HotkeyDispatcher.cpp. Controls not in this set are hidden within their group so users
+    // cannot bind actions that would silently no-op at runtime.
+    private val functionalHotkeyControls: Set<String> = setOf(
+        "Return to Main Menu",
+        "Toggle Pause", "Stop", "Reset", "Take Screenshot",
+        "Decrease Emulation Speed", "Increase Emulation Speed", "Disable Emulation Speed Limit",
+        "Frame Advance",
+        "Toggle OpenXR", "Reset VR Position",
+        "Decrease Units Per Meter", "Increase Units Per Meter",
+        "Decrease Lean Back Angle", "Increase Lean Back Angle",
+        "Toggle Enable Camera Forward", "Decrease Camera Forward", "Increase Camera Forward",
+        "Toggle Enable Camera Height", "Decrease Camera Height", "Increase Camera Height",
+        "Toggle Virtual Screen",
+        "Decrease Screen Distance", "Increase Screen Distance",
+        "Decrease Screen Size", "Increase Screen Size",
+        "Decrease Screen Curvature", "Increase Screen Curvature",
+        "Toggle Don't Clear Screen", "Toggle Force VBI", "Toggle Remove Cinematic Bars",
+        "Load State Slot 1", "Load State Slot 2", "Load State Slot 3", "Load State Slot 4",
+        "Load State Slot 5", "Load State Slot 6", "Load State Slot 7", "Load State Slot 8",
+        "Load State Slot 9", "Load State Slot 10",
+        "Save State Slot 1", "Save State Slot 2", "Save State Slot 3", "Save State Slot 4",
+        "Save State Slot 5", "Save State Slot 6", "Save State Slot 7", "Save State Slot 8",
+        "Save State Slot 9", "Save State Slot 10",
     )
 
     private fun addHotkeySettings(sl: ArrayList<SettingsItem>) {
@@ -3271,24 +3280,11 @@ class SettingsFragmentPresenter(
         addControllerMetaSettings(sl, hotkeys)
 
         sl.add(HeaderSetting(context, R.string.hotkey_categories, 0))
+        sl.add(SubmenuSetting(context, R.string.hotkey_android, MenuTag.HOTKEYS_ANDROID))
         sl.add(SubmenuSetting(context, R.string.hotkey_general, MenuTag.HOTKEYS_GENERAL))
         sl.add(SubmenuSetting(context, R.string.hotkey_tas, MenuTag.HOTKEYS_TAS))
-        sl.add(SubmenuSetting(context, R.string.hotkey_debugging, MenuTag.HOTKEYS_DEBUGGING))
-        sl.add(SubmenuSetting(context, R.string.hotkey_wii, MenuTag.HOTKEYS_WII))
-        sl.add(
-            SubmenuSetting(
-                context,
-                R.string.hotkey_controller_profile,
-                MenuTag.HOTKEYS_CONTROLLER_PROFILE
-            )
-        )
-        sl.add(SubmenuSetting(context, R.string.hotkey_graphics, MenuTag.HOTKEYS_GRAPHICS))
         sl.add(SubmenuSetting(context, R.string.hotkey_vr, MenuTag.HOTKEYS_VR))
-        sl.add(SubmenuSetting(context, R.string.hotkey_3d, MenuTag.HOTKEYS_3D))
         sl.add(SubmenuSetting(context, R.string.hotkey_save_states, MenuTag.HOTKEYS_SAVE_STATES))
-        sl.add(SubmenuSetting(context, R.string.hotkey_states_other, MenuTag.HOTKEYS_STATES_OTHER))
-        sl.add(SubmenuSetting(context, R.string.hotkey_gba, MenuTag.HOTKEYS_GBA))
-        sl.add(SubmenuSetting(context, R.string.hotkey_usb, MenuTag.HOTKEYS_USB))
     }
 
     private fun addHotkeyCategorySettings(sl: ArrayList<SettingsItem>, menuTag: MenuTag) {
@@ -3303,10 +3299,18 @@ class SettingsFragmentPresenter(
                 // name and ui_name, so this matches the C++ s_groups_info entry under any locale).
                 if (!group.getName().equals(wantedName, ignoreCase = true)) continue
 
-                sl.add(HeaderSetting(group.getUiName(), ""))
+                // Filter to only controls wired in HotkeyDispatcher.cpp. Controls not in
+                // functionalHotkeyControls would silently no-op if bound, so we hide them.
                 val controlCount = group.getControlCount()
-                for (j in 0 until controlCount) {
-                    sl.add(InputMappingControlSetting(group.getControl(j), hotkeys))
+                val functional = (0 until controlCount)
+                    .map { group.getControl(it) }
+                    .filter { it.getName() in functionalHotkeyControls }
+
+                if (functional.isNotEmpty()) {
+                    sl.add(HeaderSetting(group.getUiName(), ""))
+                    for (control in functional) {
+                        sl.add(InputMappingControlSetting(control, hotkeys))
+                    }
                 }
                 break
             }

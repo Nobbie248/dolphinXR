@@ -936,6 +936,7 @@ It can efficiently compress both junk data and encrypted Wii data.
     <string name="hotkey_states_other">Other Save State Hotkeys</string>
     <string name="hotkey_gba">GBA</string>
     <string name="hotkey_usb">USB Emulation</string>
+    <string name="hotkey_android">Android / Quest</string>
 
     <!-- Gamepad Controls -->
     <string name="gamepad_start">Start</string>

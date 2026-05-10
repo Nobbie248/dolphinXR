@@ -220,6 +220,9 @@ enum Hotkey
   HK_SKYLANDERS_PORTAL,
   HK_INFINITY_BASE,
 
+  // Android-only: long-press this binding for 3 s to stop emulation and return to the main menu.
+  HK_ANDROID_RETURN_TO_MAIN_MENU,
+
   NUM_HOTKEYS,
 };
 
@@ -254,6 +257,7 @@ enum HotkeyGroup : int
   HKGP_GBA_VOLUME,
   HKGP_GBA_SIZE,
   HKGP_USB_EMU,
+  HKGP_ANDROID,
 
   NUM_HOTKEY_GROUPS,
 };

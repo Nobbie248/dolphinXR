@@ -667,18 +667,6 @@ static void Run(JNIEnv* env, std::unique_ptr<BootParameters>&& boot, bool riivol
 #ifdef ENABLE_VR
     if (IsQuestRecenterOnLaunchEnabled() && VR::g_openxr)
       VR::g_openxr->RequestRecenter();
-
-    // Long-press of the OpenXR menu button (3s) requests emulation shutdown. The Run() loop below
-    // exits once Core::IsRunning() flips false, then finishEmulationActivity is called the same
-    // way it is for a natural exit, which finishes the EmulationActivity on the UI thread.
-    if (VR::g_openxr)
-    {
-      VR::g_openxr->SetMenuLongPressCallback([] {
-        HostThreadLock guard;
-        Core::Stop(Core::System::GetInstance());
-        s_update_main_frame_event.Set();
-      });
-    }
 #endif
 
     // Start the hotkey dispatcher once boot has settled. Reads HotkeyManagerEmu and dispatches
