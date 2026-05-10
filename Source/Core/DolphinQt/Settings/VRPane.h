@@ -10,6 +10,7 @@ class ConfigBool;
 class ConfigFloatSlider;
 class ConfigSlider;
 class QLabel;
+class QPushButton;
 class CullingCodeFinderWidget;
 class ShaderHunterWidget;
 template <typename T>
@@ -30,6 +31,7 @@ public:
 private:
   void AddDescriptions();
   void OnEmulationStateChanged(Core::State state);
+  void ResetGeneralSettings();
 
   ConfigBool* m_enable_openxr = nullptr;
   ConfigBool* m_auto_immediate_xfb = nullptr;
@@ -67,6 +69,7 @@ private:
   QLabel* m_layer_offset_value = nullptr;
   ConfigFloatSlider* m_element_depth = nullptr;
   QLabel* m_element_depth_value = nullptr;
+  QPushButton* m_reset_general_settings = nullptr;
   ConfigBool* m_load_custom_shaders = nullptr;
   ConfigBool* m_enable_openxr_config_scene = nullptr;
   ConfigBool* m_ar_mode_debug = nullptr;

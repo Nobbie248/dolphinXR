@@ -5,6 +5,7 @@
 
 #include <QGroupBox>
 #include <QGridLayout>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
@@ -290,6 +291,12 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   general_layout->addWidget(virtual_screen_group);
   general_layout->addWidget(framerate_group);
   general_layout->addWidget(rendering_group);
+  auto* general_actions_layout = new QHBoxLayout;
+  general_actions_layout->addStretch();
+  m_reset_general_settings = new QPushButton(tr("Reset Settings"));
+  connect(m_reset_general_settings, &QPushButton::clicked, this, &VRPane::ResetGeneralSettings);
+  general_actions_layout->addWidget(m_reset_general_settings);
+  general_layout->addLayout(general_actions_layout);
 
   auto* hacks_group = new QGroupBox(tr("VR Hacks"));
   auto* hacks_group_layout = new QVBoxLayout;
@@ -643,4 +650,48 @@ void VRPane::OnEmulationStateChanged(Core::State state)
   const bool running = state != Core::State::Uninitialized;
   m_enable_openxr->setEnabled(!running);
   m_use_vulkan_multiview->setEnabled(!running);
+  m_reset_general_settings->setEnabled(!running);
+}
+
+void VRPane::ResetGeneralSettings()
+{
+  Config::ConfigChangeCallbackGuard guard;
+
+  Config::SetBaseOrCurrent(Config::GFX_VR_ENABLE_OPENXR,
+                           Config::GFX_VR_ENABLE_OPENXR.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_UNITS_PER_METER,
+                           Config::GFX_VR_UNITS_PER_METER.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_LEAN_BACK_ANGLE,
+                           Config::GFX_VR_LEAN_BACK_ANGLE.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_ENABLE_CAMERA_FORWARD,
+                           Config::GFX_VR_ENABLE_CAMERA_FORWARD.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_CAMERA_FORWARD,
+                           Config::GFX_VR_CAMERA_FORWARD.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_ENABLE_CAMERA_HEIGHT,
+                           Config::GFX_VR_ENABLE_CAMERA_HEIGHT.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_CAMERA_HEIGHT,
+                           Config::GFX_VR_CAMERA_HEIGHT.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_VIRTUAL_SCREEN,
+                           Config::GFX_VR_VIRTUAL_SCREEN.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_SCREEN_DISTANCE,
+                           Config::GFX_VR_SCREEN_DISTANCE.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_SCREEN_SIZE,
+                           Config::GFX_VR_SCREEN_SIZE.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_HEAD_LOCKED_CURVATURE,
+                           Config::GFX_VR_HEAD_LOCKED_CURVATURE.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_OPCODE_REPLAY,
+                           Config::GFX_VR_OPCODE_REPLAY.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_FORCED_VBI_FREQUENCY,
+                           Config::GFX_VR_FORCED_VBI_FREQUENCY.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_AUTO_VBI_FROM_HMD,
+                           Config::GFX_VR_AUTO_VBI_FROM_HMD.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_CLEAR_EFB_COPIES,
+                           Config::GFX_VR_CLEAR_EFB_COPIES.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_GAMMA, Config::GFX_VR_GAMMA.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_AUTO_LAYER_SPREAD,
+                           Config::GFX_VR_AUTO_LAYER_SPREAD.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_LAYER_OFFSET,
+                           Config::GFX_VR_LAYER_OFFSET.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_ELEMENT_DEPTH,
+                           Config::GFX_VR_ELEMENT_DEPTH.GetDefaultValue());
 }
