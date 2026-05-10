@@ -43,6 +43,11 @@ bool D3DOpenXR::Initialize()
   // The D3D11 graphics binding extension is mandatory.
   // Also enable optional controller profile extensions (Meta, Pico, etc.) when available.
   std::vector<const char*> extensions = {XR_KHR_D3D11_ENABLE_EXTENSION_NAME};
+  if (VR::OpenXRManager::IsRuntimeExtensionSupported(XR_FB_DISPLAY_REFRESH_RATE_EXTENSION_NAME))
+  {
+    extensions.push_back(XR_FB_DISPLAY_REFRESH_RATE_EXTENSION_NAME);
+    INFO_LOG_FMT(VIDEO, "OpenXR: Enabling XR_FB_display_refresh_rate.");
+  }
   const auto controller_exts = VR::OpenXRManager::GetAvailableControllerExtensions();
   extensions.insert(extensions.end(), controller_exts.begin(), controller_exts.end());
   if (!mgr->CreateInstance(extensions))

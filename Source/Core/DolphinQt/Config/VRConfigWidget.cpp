@@ -181,11 +181,11 @@ void VRConfigWidget::CreateWidgets()
   m_virtual_screen_mode = new QComboBox;
   m_dont_clear_screen_mode = new QComboBox;
   m_opcode_replay_mode = new QComboBox;
-  m_force_vbi_90hz_mode = new QComboBox;
+  m_forced_vbi_frequency_mode = new QComboBox;
   PopulateBoolModeCombo(m_virtual_screen_mode);
   PopulateBoolModeCombo(m_dont_clear_screen_mode);
   PopulateReplayModeCombo(m_opcode_replay_mode);
-  PopulateBoolModeCombo(m_force_vbi_90hz_mode);
+  PopulateForcedVBIFrequencyModeCombo(m_forced_vbi_frequency_mode);
 
   form->addRow(tr("Units per Meter"), units_row);
   form->addRow(tr("Lean Back Angle"), lean_back_row);
@@ -196,7 +196,7 @@ void VRConfigWidget::CreateWidgets()
   form->addRow(tr("Virtual Screen"), m_virtual_screen_mode);
   form->addRow(tr("Don't Clear Screen"), m_dont_clear_screen_mode);
   form->addRow(tr("Opcode Replay"), m_opcode_replay_mode);
-  form->addRow(tr("Force VBI Frequency to 90 Hz in VR"), m_force_vbi_90hz_mode);
+  form->addRow(tr("Forced VBI Frequency in VR"), m_forced_vbi_frequency_mode);
 
   general_layout->addWidget(override_group);
   general_layout->addStretch();
@@ -279,7 +279,7 @@ void VRConfigWidget::CreateWidgets()
           [this](int) { SaveToFile(); });
   connect(m_opcode_replay_mode, &QComboBox::currentIndexChanged, this,
           [this](int) { SaveToFile(); });
-  connect(m_force_vbi_90hz_mode, &QComboBox::currentIndexChanged, this,
+  connect(m_forced_vbi_frequency_mode, &QComboBox::currentIndexChanged, this,
           [this](int) { SaveToFile(); });
 
   connect(tabs, &QTabWidget::currentChanged, this, [this, editor_index](int index) {
@@ -411,7 +411,7 @@ void VRConfigWidget::LoadFromFile()
   SetBoolMode(m_virtual_screen_mode, ParseBoolMode(values, "VirtualScreen"));
   SetBoolMode(m_dont_clear_screen_mode, ParseBoolMode(values, "DontClearScreen"));
   SetReplayMode(m_opcode_replay_mode, ParseReplayMode(values, "OpcodeReplay"));
-  SetBoolMode(m_force_vbi_90hz_mode, ParseBoolMode(values, "AutoVBIFromHMD"));
+  SetForcedVBIFrequencyMode(m_forced_vbi_frequency_mode, ParseForcedVBIFrequencyMode(values));
 
   m_updating = false;
 }
@@ -474,7 +474,26 @@ void VRConfigWidget::SaveToFile()
   case ReplayMode::Inherit:
     break;
   }
-  append_bool("AutoVBIFromHMD", GetBoolMode(m_force_vbi_90hz_mode));
+  switch (GetForcedVBIFrequencyMode(m_forced_vbi_frequency_mode))
+  {
+  case ForcedVBIFrequencyMode::Auto:
+    entries.emplace_back("ForcedVBIFrequency", "-1");
+    break;
+  case ForcedVBIFrequencyMode::Off:
+    entries.emplace_back("ForcedVBIFrequency", "0");
+    break;
+  case ForcedVBIFrequencyMode::Hz72:
+    entries.emplace_back("ForcedVBIFrequency", "72");
+    break;
+  case ForcedVBIFrequencyMode::Hz90:
+    entries.emplace_back("ForcedVBIFrequency", "90");
+    break;
+  case ForcedVBIFrequencyMode::Hz120:
+    entries.emplace_back("ForcedVBIFrequency", "120");
+    break;
+  case ForcedVBIFrequencyMode::Inherit:
+    break;
+  }
 
   const std::string path = GetLocalINIPath();
   std::string base = ReadFileWithoutVRSection(path);
@@ -681,6 +700,41 @@ VRConfigWidget::ReplayMode VRConfigWidget::ParseReplayMode(const ValueMap& value
   }
 }
 
+VRConfigWidget::ForcedVBIFrequencyMode
+VRConfigWidget::ParseForcedVBIFrequencyMode(const ValueMap& values)
+{
+  const auto forced_vbi_frequency_it = values.find("ForcedVBIFrequency");
+  if (forced_vbi_frequency_it != values.end())
+  {
+    int parsed = 0;
+    if (!TryParse(forced_vbi_frequency_it->second, &parsed))
+      return ForcedVBIFrequencyMode::Inherit;
+
+    switch (Config::NormalizeVRForcedVBIFrequency(parsed))
+    {
+    case Config::GFX_VR_FORCED_VBI_FREQUENCY_AUTO:
+      return ForcedVBIFrequencyMode::Auto;
+    case Config::GFX_VR_FORCED_VBI_FREQUENCY_OFF:
+      return ForcedVBIFrequencyMode::Off;
+    case Config::GFX_VR_FORCED_VBI_FREQUENCY_72:
+      return ForcedVBIFrequencyMode::Hz72;
+    case Config::GFX_VR_FORCED_VBI_FREQUENCY_90:
+      return ForcedVBIFrequencyMode::Hz90;
+    case Config::GFX_VR_FORCED_VBI_FREQUENCY_120:
+      return ForcedVBIFrequencyMode::Hz120;
+    default:
+      return ForcedVBIFrequencyMode::Inherit;
+    }
+  }
+
+  const BoolMode legacy_mode = ParseBoolMode(values, "AutoVBIFromHMD");
+  if (legacy_mode == BoolMode::Enabled)
+    return ForcedVBIFrequencyMode::Hz90;
+  if (legacy_mode == BoolMode::Disabled)
+    return ForcedVBIFrequencyMode::Off;
+  return ForcedVBIFrequencyMode::Inherit;
+}
+
 void VRConfigWidget::SetBoolMode(QComboBox* combo, BoolMode mode)
 {
   combo->setCurrentIndex(static_cast<int>(mode));
@@ -729,4 +783,60 @@ void VRConfigWidget::PopulateReplayModeCombo(QComboBox* combo)
   combo->addItem(QObject::tr("Off"));
   combo->addItem(QObject::tr("60 to 90"));
   combo->addItem(QObject::tr("30 to 90"));
+}
+
+void VRConfigWidget::SetForcedVBIFrequencyMode(QComboBox* combo, ForcedVBIFrequencyMode mode)
+{
+  switch (mode)
+  {
+  case ForcedVBIFrequencyMode::Auto:
+    combo->setCurrentIndex(1);
+    break;
+  case ForcedVBIFrequencyMode::Off:
+    combo->setCurrentIndex(2);
+    break;
+  case ForcedVBIFrequencyMode::Hz72:
+    combo->setCurrentIndex(3);
+    break;
+  case ForcedVBIFrequencyMode::Hz90:
+    combo->setCurrentIndex(4);
+    break;
+  case ForcedVBIFrequencyMode::Hz120:
+    combo->setCurrentIndex(5);
+    break;
+  case ForcedVBIFrequencyMode::Inherit:
+  default:
+    combo->setCurrentIndex(0);
+    break;
+  }
+}
+
+VRConfigWidget::ForcedVBIFrequencyMode
+VRConfigWidget::GetForcedVBIFrequencyMode(const QComboBox* combo)
+{
+  switch (combo->currentIndex())
+  {
+  case 1:
+    return ForcedVBIFrequencyMode::Auto;
+  case 2:
+    return ForcedVBIFrequencyMode::Off;
+  case 3:
+    return ForcedVBIFrequencyMode::Hz72;
+  case 4:
+    return ForcedVBIFrequencyMode::Hz90;
+  case 5:
+    return ForcedVBIFrequencyMode::Hz120;
+  default:
+    return ForcedVBIFrequencyMode::Inherit;
+  }
+}
+
+void VRConfigWidget::PopulateForcedVBIFrequencyModeCombo(QComboBox* combo)
+{
+  combo->addItem(QObject::tr("Inherit"));
+  combo->addItem(QObject::tr("Auto"));
+  combo->addItem(QObject::tr("Off"));
+  combo->addItem(QObject::tr("72 Hz"));
+  combo->addItem(QObject::tr("90 Hz"));
+  combo->addItem(QObject::tr("120 Hz"));
 }

@@ -329,8 +329,13 @@ void HotkeyDispatcher::Run()
     }
     if (IsHotkey(HK_VR_TOGGLE_FORCE_VBI))
     {
-      Config::SetCurrent(Config::GFX_VR_AUTO_VBI_FROM_HMD,
-                         !Config::Get(Config::GFX_VR_AUTO_VBI_FROM_HMD));
+      const int current_value =
+          Config::NormalizeVRForcedVBIFrequency(Config::Get(Config::GFX_VR_FORCED_VBI_FREQUENCY));
+      Config::SetCurrent(Config::GFX_VR_AUTO_VBI_FROM_HMD, false);
+      Config::SetCurrent(Config::GFX_VR_FORCED_VBI_FREQUENCY,
+                         current_value == Config::GFX_VR_FORCED_VBI_FREQUENCY_OFF ?
+                             Config::GFX_VR_FORCED_VBI_FREQUENCY_AUTO :
+                             Config::GFX_VR_FORCED_VBI_FREQUENCY_OFF);
     }
     if (IsHotkey(HK_VR_TOGGLE_REMOVE_CINEMATIC_BARS))
     {

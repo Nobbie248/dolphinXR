@@ -198,9 +198,17 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   framerate_layout->addWidget(new QLabel(tr("Opcode Replay:")), 0, 0);
   framerate_layout->addWidget(m_opcode_replay_mode, 0, 1, 1, 2);
 
-  m_auto_vbi_from_hmd = new ConfigBool(tr("Force VBI Frequency to 90 Hz in VR"),
-                                       Config::GFX_VR_AUTO_VBI_FROM_HMD);
-  framerate_layout->addWidget(m_auto_vbi_from_hmd, 1, 0, 1, 3);
+  m_forced_vbi_frequency = new ConfigChoiceMap<int>(
+      {{tr("Auto"), Config::GFX_VR_FORCED_VBI_FREQUENCY_AUTO},
+       {tr("Off"), Config::GFX_VR_FORCED_VBI_FREQUENCY_OFF},
+       {tr("72 Hz"), Config::GFX_VR_FORCED_VBI_FREQUENCY_72},
+       {tr("90 Hz"), Config::GFX_VR_FORCED_VBI_FREQUENCY_90},
+       {tr("120 Hz"), Config::GFX_VR_FORCED_VBI_FREQUENCY_120}},
+      Config::GFX_VR_FORCED_VBI_FREQUENCY);
+  framerate_layout->addWidget(new QLabel(tr("Forced VBI Frequency:")), 1, 0);
+  framerate_layout->addWidget(m_forced_vbi_frequency, 1, 1, 1, 2);
+  connect(m_forced_vbi_frequency, &QComboBox::currentIndexChanged, this,
+          [](int) { Config::SetBaseOrCurrent(Config::GFX_VR_AUTO_VBI_FROM_HMD, false); });
 
   m_clear_efb_slider = new ConfigSlider(Config::GFX_VR_CLEAR_EFB_MIN,
                                         Config::GFX_VR_CLEAR_EFB_MAX,
@@ -499,10 +507,12 @@ void VRPane::AddDescriptions()
       "<br><br>This only affects OpenXR HMD output. The desktop mirror stays at the real game "
       "frame cadence."
       "<br><br><dolphin_emphasis>If unsure, leave this set to Off.</dolphin_emphasis>");
-  static constexpr char TR_AUTO_VBI_FROM_HMD_DESCRIPTION[] = QT_TR_NOOP(
-      "Forces Dolphin's VBI frequency to 90 Hz while OpenXR VR is enabled."
+  static constexpr char TR_FORCED_VBI_FREQUENCY_DESCRIPTION[] = QT_TR_NOOP(
+      "Forces Dolphin's VBI frequency to the selected rate while OpenXR VR is enabled."
+      "<br><br>Auto samples the headset refresh rate once at OpenXR session startup and uses "
+      "the closest supported value: 72, 90, or 120 Hz."
       "<br><br>This overrides the Advanced tab's VBI percentage during VR sessions."
-      "<br><br><dolphin_emphasis>If unsure, leave this unchecked.</dolphin_emphasis>");
+      "<br><br><dolphin_emphasis>If unsure, leave this set to Off.</dolphin_emphasis>");
   static constexpr char TR_AUTO_LAYER_SPREAD_DESCRIPTION[] = QT_TR_NOOP(
       "Automatically spreads 2D elements (menus, HUD, text) on the virtual screen into separate "
       "depth layers to prevent Z-fighting."
@@ -606,7 +616,7 @@ void VRPane::AddDescriptions()
   m_dont_clear_screen->SetDescription(tr(TR_DONT_CLEAR_SCREEN_DESCRIPTION));
   m_disable_cpu_cull->SetDescription(tr(TR_DISABLE_CPU_CULL_DESCRIPTION));
   m_opcode_replay_mode->SetDescription(tr(TR_OPCODE_REPLAY_DESCRIPTION));
-  m_auto_vbi_from_hmd->SetDescription(tr(TR_AUTO_VBI_FROM_HMD_DESCRIPTION));
+  m_forced_vbi_frequency->SetDescription(tr(TR_FORCED_VBI_FREQUENCY_DESCRIPTION));
   m_clear_efb_slider->SetDescription(tr(TR_CLEAR_EFB_COPIES_DESCRIPTION));
   m_remove_bars->SetDescription(tr(TR_REMOVE_BARS_DESCRIPTION));
   m_lock_head_pose->SetDescription(tr(TR_LOCK_HEAD_POSE_DESCRIPTION));

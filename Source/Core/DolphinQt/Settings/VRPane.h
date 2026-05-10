@@ -51,7 +51,7 @@ private:
   ConfigBool* m_dont_clear_screen = nullptr;
   ConfigBool* m_disable_cpu_cull = nullptr;
   ConfigChoiceMap<OpenXROpcodeReplayMode>* m_opcode_replay_mode = nullptr;
-  ConfigBool* m_auto_vbi_from_hmd = nullptr;
+  ConfigChoiceMap<int>* m_forced_vbi_frequency = nullptr;
   ConfigSlider* m_clear_efb_slider = nullptr;
   QLabel* m_clear_efb_value = nullptr;
   ConfigBool* m_remove_bars = nullptr;

@@ -32,19 +32,53 @@
 #include "VideoCommon/VideoBackendBase.h"
 #include "VideoCommon/VideoConfig.h"
 #include "VideoCommon/VideoEvents.h"
+#ifdef ENABLE_VR
+#include "VideoCommon/VR/OpenXRManager.h"
+#endif
 
 namespace CoreTiming
 {
 static constexpr int MAX_SLICE_LENGTH = 20000;
 static constexpr float GC_BASE_VBI_FREQUENCY_HZ = 59.94f;
-static constexpr float VR_FORCED_VBI_FREQUENCY_HZ = 90.0f;
+
+static int ResolveAutoVRForcedVBIFrequencyHz()
+{
+#ifdef ENABLE_VR
+  if (VR::g_openxr)
+  {
+    return Config::ChooseClosestVRForcedVBIFrequency(
+        VR::g_openxr->GetStartupDisplayRefreshRateHz());
+  }
+#endif
+
+  return Config::GFX_VR_FORCED_VBI_FREQUENCY_OFF;
+}
+
+static int GetEffectiveVRForcedVBIFrequencyHz()
+{
+  const int configured_frequency =
+      Config::NormalizeVRForcedVBIFrequency(Config::Get(Config::GFX_VR_FORCED_VBI_FREQUENCY));
+  if (configured_frequency == Config::GFX_VR_FORCED_VBI_FREQUENCY_AUTO)
+    return ResolveAutoVRForcedVBIFrequencyHz();
+
+  if (configured_frequency != Config::GFX_VR_FORCED_VBI_FREQUENCY_OFF)
+    return configured_frequency;
+
+  return Config::Get(Config::GFX_VR_AUTO_VBI_FROM_HMD) ?
+             Config::GFX_VR_FORCED_VBI_FREQUENCY_90 :
+             Config::GFX_VR_FORCED_VBI_FREQUENCY_OFF;
+}
 
 static float GetEffectiveVIOverclockFactor()
 {
   float vi_factor = Config::Get(Config::MAIN_VI_OVERCLOCK_ENABLE) ? Config::Get(Config::MAIN_VI_OVERCLOCK) :
                                                            1.0f;
-  if (Config::Get(Config::GFX_VR_AUTO_VBI_FROM_HMD) && Config::Get(Config::GFX_VR_ENABLE_OPENXR))
-    vi_factor = VR_FORCED_VBI_FREQUENCY_HZ / GC_BASE_VBI_FREQUENCY_HZ;
+  const int vr_forced_vbi_frequency_hz = GetEffectiveVRForcedVBIFrequencyHz();
+  if (vr_forced_vbi_frequency_hz != Config::GFX_VR_FORCED_VBI_FREQUENCY_OFF &&
+      Config::Get(Config::GFX_VR_ENABLE_OPENXR))
+  {
+    vi_factor = static_cast<float>(vr_forced_vbi_frequency_hz) / GC_BASE_VBI_FREQUENCY_HZ;
+  }
   return std::max(vi_factor, 0.01f);
 }
 

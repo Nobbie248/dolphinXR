@@ -51,6 +51,15 @@ uint64_t ElapsedUs(uint64_t start_us, uint64_t end_us)
 
   return end_us - start_us;
 }
+
+static void AppendOptionalOpenXRExtensions(std::vector<const char*>* extensions)
+{
+  if (VR::OpenXRManager::IsRuntimeExtensionSupported(XR_FB_DISPLAY_REFRESH_RATE_EXTENSION_NAME))
+  {
+    extensions->push_back(XR_FB_DISPLAY_REFRESH_RATE_EXTENSION_NAME);
+    INFO_LOG_FMT(VIDEO, "OpenXR: Enabling XR_FB_display_refresh_rate.");
+  }
+}
 }  // namespace
 
 #if defined(ANDROID)
@@ -358,6 +367,7 @@ bool VulkanOpenXR::PreQueryVulkanExtensions(VulkanExtensionRequirements& out)
   auto mgr = std::make_unique<VR::OpenXRManager>();
 
   std::vector<const char*> extensions = {XR_KHR_VULKAN_ENABLE_EXTENSION_NAME};
+  AppendOptionalOpenXRExtensions(&extensions);
 #if defined(ANDROID)
   extensions.push_back(XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME);
   AppendOptionalAndroidOpenXRExtensions(&extensions);
@@ -481,6 +491,7 @@ bool VulkanOpenXR::Initialize()
     auto mgr = std::make_unique<VR::OpenXRManager>();
 
     std::vector<const char*> extensions = {XR_KHR_VULKAN_ENABLE_EXTENSION_NAME};
+    AppendOptionalOpenXRExtensions(&extensions);
 #if defined(ANDROID)
     extensions.push_back(XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME);
     AppendOptionalAndroidOpenXRExtensions(&extensions);

@@ -169,6 +169,7 @@ static void ClearAppliedVRSettings()
   ClearAppliedVRSetting("LoadCustomShaders", Config::GFX_VR_LOAD_CUSTOM_SHADERS);
   ClearAppliedVRSetting("DisableCPUCull", Config::GFX_VR_DISABLE_CPU_CULL);
   ClearAppliedVRSetting("OpcodeReplay", Config::GFX_VR_OPCODE_REPLAY);
+  ClearAppliedVRSetting("ForcedVBIFrequency", Config::GFX_VR_FORCED_VBI_FREQUENCY);
   ClearAppliedVRSetting("AutoVBIFromHMD", Config::GFX_VR_AUTO_VBI_FROM_HMD);
   ClearAppliedVRSetting("AutoLayerSpread", Config::GFX_VR_AUTO_LAYER_SPREAD);
   ClearAppliedVRSetting("LayerOffset", Config::GFX_VR_LAYER_OFFSET);
@@ -217,7 +218,10 @@ static void ApplyGameVRConfigOverrides(std::string_view game_id, std::optional<u
   ApplyVRSetting(values, "LoadCustomShaders", Config::GFX_VR_LOAD_CUSTOM_SHADERS);
   ApplyVRSetting(values, "DisableCPUCull", Config::GFX_VR_DISABLE_CPU_CULL);
   ApplyVRSetting(values, "OpcodeReplay", Config::GFX_VR_OPCODE_REPLAY);
-  ApplyVRSetting(values, "AutoVBIFromHMD", Config::GFX_VR_AUTO_VBI_FROM_HMD);
+  const bool has_forced_vbi_frequency = values.find("ForcedVBIFrequency") != values.end();
+  ApplyVRSetting(values, "ForcedVBIFrequency", Config::GFX_VR_FORCED_VBI_FREQUENCY);
+  if (!has_forced_vbi_frequency)
+    ApplyVRSetting(values, "AutoVBIFromHMD", Config::GFX_VR_AUTO_VBI_FROM_HMD);
   ApplyVRSetting(values, "AutoLayerSpread", Config::GFX_VR_AUTO_LAYER_SPREAD);
   ApplyVRSetting(values, "LayerOffset", Config::GFX_VR_LAYER_OFFSET);
   ApplyVRSetting(values, "ElementDepth", Config::GFX_VR_ELEMENT_DEPTH);
@@ -265,6 +269,24 @@ void SConfig::LoadSettings()
 {
   INFO_LOG_FMT(BOOT, "Loading Settings from {}", File::GetUserPath(F_DOLPHINCONFIG_IDX));
   Config::Load();
+
+  const int forced_vbi_frequency = Config::Get(Config::GFX_VR_FORCED_VBI_FREQUENCY);
+  const int normalized_forced_vbi_frequency =
+      Config::NormalizeVRForcedVBIFrequency(forced_vbi_frequency);
+  if (normalized_forced_vbi_frequency != forced_vbi_frequency)
+  {
+    Config::SetBase(Config::GFX_VR_FORCED_VBI_FREQUENCY, normalized_forced_vbi_frequency);
+  }
+
+  // Migrate the legacy boolean VR VBI override to the new explicit frequency setting.
+  if (Config::Get(Config::GFX_VR_FORCED_VBI_FREQUENCY) ==
+          Config::GFX_VR_FORCED_VBI_FREQUENCY_OFF &&
+      Config::Get(Config::GFX_VR_AUTO_VBI_FROM_HMD))
+  {
+    Config::SetBase(Config::GFX_VR_FORCED_VBI_FREQUENCY,
+                    Config::GFX_VR_FORCED_VBI_FREQUENCY_90);
+    Config::SetBase(Config::GFX_VR_AUTO_VBI_FROM_HMD, false);
+  }
 }
 
 void SConfig::ResetAllSettings()

@@ -506,6 +506,23 @@ void HotkeyScheduler::Run()
         OSD::AddMessage(fmt::format("{}: {:.{}f}", label, new_value, precision));
       };
 
+      auto ToggleVRForcedVBI = [] {
+        const int current_value =
+            Config::NormalizeVRForcedVBIFrequency(Config::Get(Config::GFX_VR_FORCED_VBI_FREQUENCY));
+        const int new_value = current_value == Config::GFX_VR_FORCED_VBI_FREQUENCY_OFF ?
+                                  Config::GFX_VR_FORCED_VBI_FREQUENCY_AUTO :
+                                  Config::GFX_VR_FORCED_VBI_FREQUENCY_OFF;
+        Config::SetCurrent(Config::GFX_VR_AUTO_VBI_FROM_HMD, false);
+        Config::SetCurrent(Config::GFX_VR_FORCED_VBI_FREQUENCY, new_value);
+
+        const std::string label = new_value == Config::GFX_VR_FORCED_VBI_FREQUENCY_OFF ?
+                                      "Off" :
+                                  new_value == Config::GFX_VR_FORCED_VBI_FREQUENCY_AUTO ?
+                                      "Auto" :
+                                      fmt::format("{} Hz", new_value);
+        OSD::AddMessage(fmt::format("Force VBI: {}", label));
+      };
+
       if (IsHotkey(HK_VR_TOGGLE_OPENXR))
         ToggleVRSetting(Config::GFX_VR_ENABLE_OPENXR, "OpenXR");
 
@@ -632,7 +649,7 @@ void HotkeyScheduler::Run()
         ToggleVRSetting(Config::GFX_VR_DONT_CLEAR_SCREEN, "Don't Clear Screen");
 
       if (IsHotkey(HK_VR_TOGGLE_FORCE_VBI))
-        ToggleVRSetting(Config::GFX_VR_AUTO_VBI_FROM_HMD, "Force VBI");
+        ToggleVRForcedVBI();
 
       if (IsHotkey(HK_VR_TOGGLE_REMOVE_CINEMATIC_BARS))
         ToggleVRSetting(Config::GFX_VR_REMOVE_BARS, "Remove Cinematic Bars");

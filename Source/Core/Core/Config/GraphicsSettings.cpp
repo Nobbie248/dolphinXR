@@ -212,6 +212,7 @@ constexpr bool DEFAULT_VR_ANDROID_DIRECT_TO_HMD = false;
 constexpr bool DEFAULT_IMMEDIATE_XFB = false;
 #endif
 
+const Info<int> GFX_VR_FORCED_VBI_FREQUENCY{{System::GFX, "VR", "ForcedVBIFrequency"}, 0};
 const Info<bool> GFX_VR_AUTO_VBI_FROM_HMD{{System::GFX, "VR", "AutoVBIFromHMD"}, false};
 const Info<bool> GFX_VR_AUTO_LAYER_SPREAD{{System::GFX, "VR", "AutoLayerSpread"}, false};
 const Info<float> GFX_VR_LAYER_OFFSET{{System::GFX, "VR", "LayerOffset"}, 0.002f};

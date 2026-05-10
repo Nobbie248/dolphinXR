@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cmath>
 #include <string>
 
 #include "Common/Config/Config.h"
@@ -192,6 +193,7 @@ extern const Info<bool> GFX_VR_LOAD_CUSTOM_SHADERS;
 extern const Info<bool> GFX_VR_ENABLE_OPENXR_CONFIG_SCENE;
 extern const Info<bool> GFX_VR_DISABLE_CPU_CULL;
 extern const Info<OpenXROpcodeReplayMode> GFX_VR_OPCODE_REPLAY;
+extern const Info<int> GFX_VR_FORCED_VBI_FREQUENCY;
 extern const Info<bool> GFX_VR_AUTO_VBI_FROM_HMD;
 extern const Info<bool> GFX_VR_AUTO_LAYER_SPREAD;
 extern const Info<float> GFX_VR_LAYER_OFFSET;
@@ -222,6 +224,11 @@ static constexpr float GFX_VR_SCREEN_SIZE_STEP = 0.1f;
 static constexpr float GFX_VR_HEAD_LOCKED_CURVATURE_MIN = 0.0f;
 static constexpr float GFX_VR_HEAD_LOCKED_CURVATURE_MAX = 5.0f;
 static constexpr float GFX_VR_HEAD_LOCKED_CURVATURE_STEP = 0.01f;
+static constexpr int GFX_VR_FORCED_VBI_FREQUENCY_AUTO = -1;
+static constexpr int GFX_VR_FORCED_VBI_FREQUENCY_OFF = 0;
+static constexpr int GFX_VR_FORCED_VBI_FREQUENCY_72 = 72;
+static constexpr int GFX_VR_FORCED_VBI_FREQUENCY_90 = 90;
+static constexpr int GFX_VR_FORCED_VBI_FREQUENCY_120 = 120;
 static constexpr float GFX_VR_LAYER_OFFSET_MIN = 0.0001f;
 static constexpr float GFX_VR_LAYER_OFFSET_MAX = 0.01f;
 static constexpr float GFX_VR_LAYER_OFFSET_STEP = 0.0001f;
@@ -231,6 +238,43 @@ static constexpr float GFX_VR_ELEMENT_DEPTH_STEP = 0.0001f;
 static constexpr float GFX_VR_GAMMA_MIN = 1.0f;
 static constexpr float GFX_VR_GAMMA_MAX = 3.0f;
 static constexpr float GFX_VR_GAMMA_STEP = 0.1f;
+
+inline int NormalizeVRForcedVBIFrequency(int frequency)
+{
+  switch (frequency)
+  {
+  case GFX_VR_FORCED_VBI_FREQUENCY_AUTO:
+  case GFX_VR_FORCED_VBI_FREQUENCY_72:
+  case GFX_VR_FORCED_VBI_FREQUENCY_90:
+  case GFX_VR_FORCED_VBI_FREQUENCY_120:
+    return frequency;
+  default:
+    return GFX_VR_FORCED_VBI_FREQUENCY_OFF;
+  }
+}
+
+inline int ChooseClosestVRForcedVBIFrequency(float refresh_rate_hz)
+{
+  if (refresh_rate_hz <= 0.0f)
+    return GFX_VR_FORCED_VBI_FREQUENCY_OFF;
+
+  int closest_frequency = GFX_VR_FORCED_VBI_FREQUENCY_72;
+  float closest_distance = std::abs(refresh_rate_hz - GFX_VR_FORCED_VBI_FREQUENCY_72);
+
+  constexpr int frequencies[] = {GFX_VR_FORCED_VBI_FREQUENCY_90,
+                                 GFX_VR_FORCED_VBI_FREQUENCY_120};
+  for (const int frequency : frequencies)
+  {
+    const float distance = std::abs(refresh_rate_hz - static_cast<float>(frequency));
+    if (distance < closest_distance)
+    {
+      closest_frequency = frequency;
+      closest_distance = distance;
+    }
+  }
+
+  return closest_frequency;
+}
 
 // Graphics.Hacks
 
