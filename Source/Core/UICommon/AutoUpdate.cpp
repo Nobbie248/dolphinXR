@@ -142,11 +142,9 @@ std::string GenerateChangelog(const picojson::array& versions)
 
 bool AutoUpdateChecker::SystemSupportsAutoUpdates()
 {
-#if defined(AUTOUPDATE) && defined(OS_SUPPORTS_UPDATER)
-  return true;
-#else
+  // Dolphin-VR-ReduX is maintained as a separate branch and must not offer upstream auto-updates,
+  // which would replace the VR-specific build with incompatible binaries.
   return false;
-#endif
 }
 
 static std::string GetPlatformID()

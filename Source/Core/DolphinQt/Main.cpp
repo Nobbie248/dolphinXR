@@ -283,7 +283,7 @@ int main(int argc, char* argv[])
     }
 #endif
 
-    if (!Settings::Instance().IsBatchModeEnabled())
+    if (AutoUpdateChecker::SystemSupportsAutoUpdates() && !Settings::Instance().IsBatchModeEnabled())
     {
       auto* updater = new Updater(&win, Config::Get(Config::MAIN_AUTOUPDATE_UPDATE_TRACK),
                                   Config::Get(Config::MAIN_AUTOUPDATE_HASH_OVERRIDE));
