@@ -48,6 +48,14 @@ enum class OpenXROpcodeReplayMode : int
   Replay30To90 = 2,
 };
 
+enum class OpenXRMirrorView : int
+{
+  BothEyes = 0,
+  LeftEye = 1,
+  RightEye = 2,
+  None = 3,
+};
+
 enum class ShaderCompilationMode : int
 {
   Synchronous,
@@ -339,6 +347,7 @@ struct VideoConfig final
   bool vr_load_custom_shaders = false;
   bool vr_disable_cpu_cull = false;
   OpenXROpcodeReplayMode vr_opcode_replay_mode = OpenXROpcodeReplayMode::Off;
+  OpenXRMirrorView vr_mirror_view = OpenXRMirrorView::BothEyes;
   bool vr_auto_layer_spread = true;
   bool vr_remove_bars = true;       // Expand scissor/viewport to remove cinematic letterbox bars
   bool vr_ortho_scissor_fix = true;  // Expand scissor for orthographic VR draws

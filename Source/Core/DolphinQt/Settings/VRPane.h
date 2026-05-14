@@ -16,6 +16,7 @@ class ShaderHunterWidget;
 template <typename T>
 class ConfigChoiceMap;
 enum class OpenXROpcodeReplayMode : int;
+enum class OpenXRMirrorView : int;
 
 namespace Core
 {
@@ -54,6 +55,7 @@ private:
   ConfigBool* m_disable_cpu_cull = nullptr;
   ConfigBool* m_ortho_scissor_fix = nullptr;
   ConfigChoiceMap<OpenXROpcodeReplayMode>* m_opcode_replay_mode = nullptr;
+  ConfigChoiceMap<OpenXRMirrorView>* m_mirror_view = nullptr;
   ConfigChoiceMap<int>* m_forced_vbi_frequency = nullptr;
   ConfigSlider* m_clear_efb_slider = nullptr;
   QLabel* m_clear_efb_value = nullptr;

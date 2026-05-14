@@ -115,6 +115,15 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   openxr_layout->addWidget(m_units_per_meter, 1, 1);
   openxr_layout->addWidget(m_units_per_meter_value, 1, 2);
 
+  m_mirror_view = new ConfigChoiceMap<OpenXRMirrorView>(
+      {{tr("Both Eyes"), OpenXRMirrorView::BothEyes},
+       {tr("Left Eye"), OpenXRMirrorView::LeftEye},
+       {tr("Right Eye"), OpenXRMirrorView::RightEye},
+       {tr("None"), OpenXRMirrorView::None}},
+      Config::GFX_VR_MIRROR_VIEW);
+  openxr_layout->addWidget(new QLabel(tr("Desktop Mirror View:")), 2, 0);
+  openxr_layout->addWidget(m_mirror_view, 2, 1, 1, 2);
+
   camera_layout->addWidget(new ConfigFloatLabel(tr("Lean Back Angle (deg):"), m_lean_back_angle), 0,
                            0);
   camera_layout->addWidget(m_lean_back_angle, 0, 1);
@@ -525,6 +534,13 @@ void VRPane::AddDescriptions()
       "<br><br>This only affects OpenXR HMD output. The desktop mirror stays at the real game "
       "frame cadence."
       "<br><br><dolphin_emphasis>If unsure, leave this set to Off.</dolphin_emphasis>");
+  static constexpr char TR_MIRROR_VIEW_DESCRIPTION[] = QT_TR_NOOP(
+      "Selects what the desktop render window shows while OpenXR is active."
+      "<br><br>Both Eyes shows the current side-by-side mirror. Left Eye and Right Eye fill the "
+      "window with a single eye. None leaves the desktop window blank while continuing to render "
+      "normally to the headset."
+      "<br><br>This only affects the desktop mirror view; it does not affect the OpenXR headset "
+      "output.");
   static constexpr char TR_FORCED_VBI_FREQUENCY_DESCRIPTION[] = QT_TR_NOOP(
       "Forces Dolphin's VBI frequency to the selected rate while OpenXR VR is enabled."
       "<br><br>Auto samples the headset refresh rate once at OpenXR session startup and uses "
@@ -641,6 +657,7 @@ void VRPane::AddDescriptions()
   m_dont_clear_screen->SetDescription(tr(TR_DONT_CLEAR_SCREEN_DESCRIPTION));
   m_disable_cpu_cull->SetDescription(tr(TR_DISABLE_CPU_CULL_DESCRIPTION));
   m_opcode_replay_mode->SetDescription(tr(TR_OPCODE_REPLAY_DESCRIPTION));
+  m_mirror_view->SetDescription(tr(TR_MIRROR_VIEW_DESCRIPTION));
   m_forced_vbi_frequency->SetDescription(tr(TR_FORCED_VBI_FREQUENCY_DESCRIPTION));
   m_clear_efb_slider->SetDescription(tr(TR_CLEAR_EFB_COPIES_DESCRIPTION));
   m_remove_bars->SetDescription(tr(TR_REMOVE_BARS_DESCRIPTION));
@@ -692,6 +709,8 @@ void VRPane::ResetGeneralSettings()
                            Config::GFX_VR_HEAD_LOCKED_CURVATURE.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_OPCODE_REPLAY,
                            Config::GFX_VR_OPCODE_REPLAY.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_MIRROR_VIEW,
+                           Config::GFX_VR_MIRROR_VIEW.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_FORCED_VBI_FREQUENCY,
                            Config::GFX_VR_FORCED_VBI_FREQUENCY.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_AUTO_VBI_FROM_HMD,

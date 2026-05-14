@@ -1188,11 +1188,26 @@ void Presenter::RenderXFBToScreen(const MathUtil::Rectangle<int>& target_rc,
 #ifdef ENABLE_VR
   else if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR)
   {
-    // Mirror view on the desktop window (side-by-side, left eye | right eye).
-    // The HMD receives full-resolution images below.
-    const auto [left_rc, right_rc] = ConvertStereoRectangle(target_rc);
-    m_post_processor->BlitFromTexture(left_rc, source_rc, source_texture, 0);
-    m_post_processor->BlitFromTexture(right_rc, source_rc, source_texture, 1);
+    // Mirror view on the desktop window.
+    switch (g_ActiveConfig.vr_mirror_view)
+    {
+    case OpenXRMirrorView::BothEyes:
+    {
+      const auto [left_rc, right_rc] = ConvertStereoRectangle(target_rc);
+      m_post_processor->BlitFromTexture(left_rc, source_rc, source_texture, 0);
+      m_post_processor->BlitFromTexture(right_rc, source_rc, source_texture, 1);
+      break;
+    }
+    case OpenXRMirrorView::LeftEye:
+      m_post_processor->BlitFromTexture(target_rc, source_rc, source_texture, 0);
+      break;
+    case OpenXRMirrorView::RightEye:
+      m_post_processor->BlitFromTexture(target_rc, source_rc, source_texture, 1);
+      break;
+    case OpenXRMirrorView::None:
+      break;
+    }
+
     BlitCurrentSourceToOpenXREyes(source_texture, source_rc);
   }
 #endif

@@ -204,6 +204,8 @@ const Info<bool> GFX_VR_ENABLE_OPENXR_CONFIG_SCENE{{System::GFX, "VR", "EnableOp
 const Info<bool> GFX_VR_DISABLE_CPU_CULL{{System::GFX, "VR", "DisableCPUCull"}, false};
 const Info<OpenXROpcodeReplayMode> GFX_VR_OPCODE_REPLAY{
     {System::GFX, "VR", "OpcodeReplay"}, OpenXROpcodeReplayMode::Off};
+const Info<OpenXRMirrorView> GFX_VR_MIRROR_VIEW{{System::GFX, "VR", "MirrorView"},
+                                                OpenXRMirrorView::BothEyes};
 #if defined(__ANDROID__) && defined(ENABLE_VR)
 constexpr bool DEFAULT_VR_ANDROID_DIRECT_TO_HMD = true;
 constexpr bool DEFAULT_IMMEDIATE_XFB = true;
