@@ -56,6 +56,13 @@ enum class OpenXRMirrorView : int
   None = 3,
 };
 
+enum class OpenXRReferenceSpaceMode : int
+{
+  Local = 0,
+  StageHeight = 1,
+  Stage = 2,
+};
+
 enum class ShaderCompilationMode : int
 {
   Synchronous,
@@ -348,6 +355,8 @@ struct VideoConfig final
   bool vr_disable_cpu_cull = false;
   OpenXROpcodeReplayMode vr_opcode_replay_mode = OpenXROpcodeReplayMode::Off;
   OpenXRMirrorView vr_mirror_view = OpenXRMirrorView::BothEyes;
+  OpenXRReferenceSpaceMode vr_reference_space_mode = OpenXRReferenceSpaceMode::Local;
+  bool vr_use_openxr_play_space_center = false;
   bool vr_auto_layer_spread = true;
   bool vr_remove_bars = true;       // Expand scissor/viewport to remove cinematic letterbox bars
   bool vr_ortho_scissor_fix = true;  // Expand scissor for orthographic VR draws

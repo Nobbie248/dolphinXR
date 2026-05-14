@@ -67,7 +67,12 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   auto* ar_mode_layout = new QGridLayout;
   ar_mode_group->setLayout(ar_mode_layout);
 
-  m_enable_openxr = new ConfigBool(tr("Enable OpenXR"), Config::GFX_VR_ENABLE_OPENXR);
+  m_enable_openxr = new ConfigBool(tr("Enable VR"), Config::GFX_VR_ENABLE_OPENXR);
+  m_reference_space_mode = new ConfigChoiceMap<OpenXRReferenceSpaceMode>(
+      {{tr("LOCAL"), OpenXRReferenceSpaceMode::Local},
+       {tr("STAGE + Height"), OpenXRReferenceSpaceMode::StageHeight},
+       {tr("STAGE"), OpenXRReferenceSpaceMode::Stage}},
+      Config::GFX_VR_REFERENCE_SPACE_MODE);
   m_use_vulkan_multiview = new ConfigBool(tr("Use Vulkan Multiview"),
                                           Config::GFX_VR_USE_VULKAN_MULTIVIEW);
   m_auto_immediate_xfb =
@@ -452,6 +457,9 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
       Config::GFX_VR_ENABLE_OPENXR_CONFIG_SCENE);
   tools_layout->addWidget(m_enable_openxr_config_scene, 4, 0);
 
+  tools_layout->addWidget(new QLabel(tr("Default VR Position:")), 5, 0);
+  tools_layout->addWidget(m_reference_space_mode, 5, 1);
+
   general_layout->addStretch();
   hack_layout->addStretch();
   tools_tab_layout->addWidget(tools_group);
@@ -492,6 +500,16 @@ void VRPane::AddDescriptions()
       "Sets how many game world units correspond to one real-world meter."
       "<br><br>Higher values increase stereo scale and make the world appear smaller."
       "<br><br>Lower values decrease stereo scale and make the world appear larger.");
+  static constexpr char TR_REFERENCE_SPACE_MODE_DESCRIPTION[] = QT_TR_NOOP(
+      "Selects how Dolphin sets the default VR position when OpenXR starts."
+      "<br><br>LOCAL uses OpenXR <code>LOCAL</code> space and keeps the current behavior: Dolphin "
+      "sets home from the initial headset position."
+      "<br><br>STAGE + Height uses OpenXR <code>STAGE</code> space, keeps the play-space center "
+      "for horizontal position, and offsets height by the initial headset height."
+      "<br><br>STAGE uses OpenXR <code>STAGE</code> space and uses the play-space origin directly."
+      "<br><br>If <code>STAGE</code> is unavailable, Dolphin falls back to <code>LOCAL</code>."
+      "<br><br>This setting requires restarting emulation."
+      "<br><br><dolphin_emphasis>If unsure, use LOCAL.</dolphin_emphasis>");
   static constexpr char TR_LEAN_BACK_ANGLE_DESCRIPTION[] = QT_TR_NOOP(
       "Applies a constant pitch offset (in degrees) to the VR camera."
       "<br><br>Use this to compensate games where the default viewpoint feels tilted."
@@ -646,6 +664,7 @@ void VRPane::AddDescriptions()
   m_enable_openxr->SetDescription(tr(TR_ENABLE_OPENXR_DESCRIPTION));
   m_use_vulkan_multiview->SetDescription(tr(TR_USE_VULKAN_MULTIVIEW_DESCRIPTION));
   m_auto_immediate_xfb->SetDescription(tr(TR_AUTO_IMMEDIATE_XFB_DESCRIPTION));
+  m_reference_space_mode->SetDescription(tr(TR_REFERENCE_SPACE_MODE_DESCRIPTION));
   m_units_per_meter->SetDescription(tr(TR_UNITS_PER_METER_DESCRIPTION));
   m_lean_back_angle->SetDescription(tr(TR_LEAN_BACK_ANGLE_DESCRIPTION));
   m_camera_forward->SetDescription(tr(TR_CAMERA_FORWARD_DESCRIPTION));
@@ -677,6 +696,7 @@ void VRPane::OnEmulationStateChanged(Core::State state)
 {
   const bool running = state != Core::State::Uninitialized;
   m_enable_openxr->setEnabled(!running);
+  m_reference_space_mode->setEnabled(!running);
   m_use_vulkan_multiview->setEnabled(!running);
   m_reset_general_settings->setEnabled(!running);
 }
@@ -687,6 +707,8 @@ void VRPane::ResetGeneralSettings()
 
   Config::SetBaseOrCurrent(Config::GFX_VR_ENABLE_OPENXR,
                            Config::GFX_VR_ENABLE_OPENXR.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_REFERENCE_SPACE_MODE,
+                           Config::GFX_VR_REFERENCE_SPACE_MODE.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_UNITS_PER_METER,
                            Config::GFX_VR_UNITS_PER_METER.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_LEAN_BACK_ANGLE,

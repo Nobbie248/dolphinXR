@@ -211,6 +211,13 @@ void VideoConfig::Refresh()
   vr_disable_cpu_cull = Config::Get(Config::GFX_VR_DISABLE_CPU_CULL);
   vr_opcode_replay_mode = Config::Get(Config::GFX_VR_OPCODE_REPLAY);
   vr_mirror_view = Config::Get(Config::GFX_VR_MIRROR_VIEW);
+  vr_reference_space_mode = Config::Get(Config::GFX_VR_REFERENCE_SPACE_MODE);
+  vr_use_openxr_play_space_center = Config::Get(Config::GFX_VR_USE_OPENXR_PLAY_SPACE_CENTER);
+  if (!Config::GetAsString(Config::GFX_VR_REFERENCE_SPACE_MODE.GetLocation()) &&
+      vr_use_openxr_play_space_center)
+  {
+    vr_reference_space_mode = OpenXRReferenceSpaceMode::Stage;
+  }
   vr_auto_layer_spread = Config::Get(Config::GFX_VR_AUTO_LAYER_SPREAD);
   vr_remove_bars = Config::Get(Config::GFX_VR_REMOVE_BARS);
   vr_ortho_scissor_fix = Config::Get(Config::GFX_VR_ORTHO_SCISSOR_FIX);

@@ -17,6 +17,7 @@ template <typename T>
 class ConfigChoiceMap;
 enum class OpenXROpcodeReplayMode : int;
 enum class OpenXRMirrorView : int;
+enum class OpenXRReferenceSpaceMode : int;
 
 namespace Core
 {
@@ -35,6 +36,7 @@ private:
   void ResetGeneralSettings();
 
   ConfigBool* m_enable_openxr = nullptr;
+  ConfigChoiceMap<OpenXRReferenceSpaceMode>* m_reference_space_mode = nullptr;
   ConfigBool* m_auto_immediate_xfb = nullptr;
   ConfigFloatSlider* m_units_per_meter = nullptr;
   QLabel* m_units_per_meter_value = nullptr;

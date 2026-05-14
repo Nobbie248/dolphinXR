@@ -21,6 +21,7 @@ enum class FrameDumpResolutionType : int;
 enum class VertexLoaderType : int;
 enum class OpenXROpcodeReplayMode : int;
 enum class OpenXRMirrorView : int;
+enum class OpenXRReferenceSpaceMode : int;
 
 namespace Config
 {
@@ -195,6 +196,8 @@ extern const Info<bool> GFX_VR_ENABLE_OPENXR_CONFIG_SCENE;
 extern const Info<bool> GFX_VR_DISABLE_CPU_CULL;
 extern const Info<OpenXROpcodeReplayMode> GFX_VR_OPCODE_REPLAY;
 extern const Info<OpenXRMirrorView> GFX_VR_MIRROR_VIEW;
+extern const Info<OpenXRReferenceSpaceMode> GFX_VR_REFERENCE_SPACE_MODE;
+extern const Info<bool> GFX_VR_USE_OPENXR_PLAY_SPACE_CENTER;
 extern const Info<int> GFX_VR_FORCED_VBI_FREQUENCY;
 extern const Info<bool> GFX_VR_AUTO_VBI_FROM_HMD;
 extern const Info<bool> GFX_VR_AUTO_LAYER_SPREAD;
