@@ -5,6 +5,9 @@
 
 #include <QDialog>
 
+#include <optional>
+#include <vector>
+
 #include "VideoCommon/HideObjectEngine.h"
 
 class QComboBox;
@@ -39,6 +42,14 @@ private:
 
   void UpdateValueDisplay();
   void UpdateRangeLabel();
+  void UpdateRangeSlidersFromText();
+  void OnRangeSliderChanged();
+  bool ClampRangeBounds(bool lower_changed);
+  void SetRangeBoundsForCurrentType(const HideObjectEngine::HideObjectEntry& lower,
+                                    const HideObjectEngine::HideObjectEntry& upper);
+  void ResetRangeBoundsForCurrentType();
+  bool ParseRangeBounds(HideObjectEngine::HideObjectEntry* lower,
+                        HideObjectEngine::HideObjectEntry* upper) const;
   bool ParseValueFromUI();
   void ApplyTemporarily();
 
@@ -47,6 +58,7 @@ private:
 
   HideObjectEngine::HideObject m_result;
   HideObjectEngine::HideObjectEntry m_current_entry;
+  std::optional<size_t> m_existing_code_index;
 
   const std::vector<HideObjectEngine::HideObject>& m_all_codes;
 
@@ -57,6 +69,8 @@ private:
   QPushButton* m_down_button;
   QCheckBox* m_range_finder_toggle;
   QLabel* m_range_label;
+  QLineEdit* m_range_lower_edit;
+  QLineEdit* m_range_upper_edit;
   QSlider* m_range_lower_slider;
   QSlider* m_range_upper_slider;
 };

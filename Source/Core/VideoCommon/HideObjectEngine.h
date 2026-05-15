@@ -61,8 +61,20 @@ struct HideObject
   bool user_defined = true;
 };
 
+struct HideObjectRange
+{
+  HideObjectEntry lower;
+  HideObjectEntry upper;
+};
+
 // Flattened byte array for fast memcmp matching
 using SkipEntry = std::vector<u8>;
+
+struct SkipRangeEntry
+{
+  SkipEntry lower;
+  SkipEntry upper;
+};
 
 // --- Static INI helpers (direct file I/O, bypasses IniFile to avoid corruption) ---
 std::vector<HideObject> LoadFromINI(const std::string& game_id,
@@ -79,8 +91,10 @@ public:
   void LoadCodes(const std::string& game_id);
   void LoadCodesIfNeeded(const std::string& game_id);
 
-  // Convert HideObject list to flattened byte patterns for matching
-  void ApplyCodes(const std::vector<HideObject>& codes);
+  // Convert HideObject list to flattened byte patterns for matching.
+  // Optional ranges are runtime-only search helpers; they are not persisted.
+  void ApplyCodes(const std::vector<HideObject>& codes,
+                  const std::vector<HideObjectRange>& ranges = {});
 
   // Called from VertexLoaderManager::RunVertices — returns true if src matches any active code
   bool ShouldHide(const u8* src) const;
@@ -91,6 +105,7 @@ private:
 
   mutable std::mutex m_mutex;
   std::vector<SkipEntry> m_active_entries;  // Flattened byte patterns for memcmp
+  std::vector<SkipRangeEntry> m_active_range_entries;
   std::string m_loaded_game_id;
 
   // Thread-safety coordination between UI updates and render-thread checks
