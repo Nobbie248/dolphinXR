@@ -11,8 +11,6 @@
 #include "VideoCommon/HideObjectEngine.h"
 
 class QComboBox;
-class QCheckBox;
-class QLabel;
 class QLineEdit;
 class QPushButton;
 class QSlider;
@@ -36,20 +34,12 @@ private:
   void OnTypeChanged();
   void OnUpClicked();
   void OnDownClicked();
-  void OnRangeFinderToggled(bool enabled);
-  void OnRangeBoundsChanged();
+  void OnValueTextChanged();
+  void OnValueSliderChanged(int value);
   void OnAccept();
 
   void UpdateValueDisplay();
-  void UpdateRangeLabel();
-  void UpdateRangeSlidersFromText();
-  void OnRangeSliderChanged();
-  bool ClampRangeBounds(bool lower_changed);
-  void SetRangeBoundsForCurrentType(const HideObjectEngine::HideObjectEntry& lower,
-                                    const HideObjectEngine::HideObjectEntry& upper);
-  void ResetRangeBoundsForCurrentType();
-  bool ParseRangeBounds(HideObjectEngine::HideObjectEntry* lower,
-                        HideObjectEngine::HideObjectEntry* upper) const;
+  void UpdateValueSliderFromText();
   bool ParseValueFromUI();
   void ApplyTemporarily();
 
@@ -65,12 +55,7 @@ private:
   QLineEdit* m_name_edit;
   QComboBox* m_type_combo;
   QLineEdit* m_value_edit;
+  QSlider* m_value_slider;
   QPushButton* m_up_button;
   QPushButton* m_down_button;
-  QCheckBox* m_range_finder_toggle;
-  QLabel* m_range_label;
-  QLineEdit* m_range_lower_edit;
-  QLineEdit* m_range_upper_edit;
-  QSlider* m_range_lower_slider;
-  QSlider* m_range_upper_slider;
 };

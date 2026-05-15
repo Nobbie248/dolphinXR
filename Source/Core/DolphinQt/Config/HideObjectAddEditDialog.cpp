@@ -3,10 +3,9 @@
 
 #include "DolphinQt/Config/HideObjectAddEditDialog.h"
 
-#include <algorithm>
+#include <utility>
 #include <vector>
 
-#include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QGridLayout>
@@ -96,14 +95,6 @@ bool TryParseEntryValue(const QString& text, HideObjectEngine::HideObjectType ty
   return true;
 }
 
-bool EntryLess(const HideObjectEngine::HideObjectEntry& lhs,
-               const HideObjectEngine::HideObjectEntry& rhs)
-{
-  if (lhs.value_upper != rhs.value_upper)
-    return lhs.value_upper < rhs.value_upper;
-  return lhs.value_lower < rhs.value_lower;
-}
-
 std::vector<u8> EntryToBytes(const HideObjectEngine::HideObjectEntry& entry)
 {
   const int byte_count = HideObjectEngine::GetByteCount(entry.type);
@@ -151,48 +142,24 @@ HideObjectEngine::HideObjectEntry EntryFromBytes(HideObjectEngine::HideObjectTyp
   return entry;
 }
 
-int GetRangeSliderMaximum(HideObjectEngine::HideObjectType type)
-{
-  const int slider_bytes = std::min(HideObjectEngine::GetByteCount(type), 3);
-  return (1 << (slider_bytes * 8)) - 1;
-}
-
-int RangeSliderValueFromEntry(const HideObjectEngine::HideObjectEntry& entry)
+int LastByteSliderValueFromEntry(const HideObjectEngine::HideObjectEntry& entry)
 {
   const std::vector<u8> bytes = EntryToBytes(entry);
-  const size_t slider_bytes = std::min<size_t>(bytes.size(), 3);
-  const size_t start = bytes.size() - slider_bytes;
-
-  int value = 0;
-  for (size_t i = 0; i < slider_bytes; ++i)
-    value = (value << 8) | bytes[start + i];
-  return value;
+  return bytes.empty() ? 0 : bytes.back();
 }
 
-HideObjectEngine::HideObjectEntry EntryFromRangeSliderValue(HideObjectEngine::HideObjectType type,
-                                                            int slider_value,
-                                                            const HideObjectEngine::HideObjectEntry& base)
+HideObjectEngine::HideObjectEntry EntryFromLastByteSliderValue(
+    HideObjectEngine::HideObjectType type, int slider_value,
+    const HideObjectEngine::HideObjectEntry& base)
 {
   const int byte_count = HideObjectEngine::GetByteCount(type);
-  const int slider_bytes = std::min(byte_count, 3);
   std::vector<u8> bytes = EntryToBytes(base);
   if (static_cast<int>(bytes.size()) != byte_count)
     bytes.assign(static_cast<size_t>(byte_count), 0);
 
-  const int start = byte_count - slider_bytes;
-  for (int i = 0; i < slider_bytes; ++i)
-  {
-    const int shift = (slider_bytes - i - 1) * 8;
-    bytes[static_cast<size_t>(start + i)] = static_cast<u8>((slider_value >> shift) & 0xFF);
-  }
+  bytes.back() = static_cast<u8>(slider_value & 0xFF);
 
   return EntryFromBytes(type, bytes);
-}
-
-HideObjectEngine::HideObjectEntry MakeFilledEntry(HideObjectEngine::HideObjectType type,
-                                                  u8 fill_byte)
-{
-  return EntryFromBytes(type, std::vector<u8>(HideObjectEngine::GetByteCount(type), fill_byte));
 }
 
 HideObjectEngine::HideObjectEntry ResizeEntryForType(const HideObjectEngine::HideObjectEntry& entry,
@@ -268,25 +235,14 @@ void HideObjectAddEditDialog::CreateWidgets()
   auto* value_label = new QLabel(tr("Value (hex):"));
   m_value_edit = new QLineEdit;
   m_value_edit->setFont(QFont(QStringLiteral("Courier New"), 10));
+  m_value_slider = new QSlider(Qt::Horizontal);
+  m_value_slider->setRange(0, 0xFF);
+  m_value_slider->setSingleStep(1);
+  m_value_slider->setPageStep(0x10);
+  m_value_slider->setToolTip(tr("Adjusts the last byte of the value from 00 to FF."));
 
   m_up_button = new QPushButton(tr("Up"));
   m_down_button = new QPushButton(tr("Down"));
-  m_range_finder_toggle = new QCheckBox(tr("Range Finder"));
-  m_range_label = new QLabel;
-  m_range_lower_edit = new QLineEdit;
-  m_range_upper_edit = new QLineEdit;
-  m_range_lower_slider = new QSlider(Qt::Horizontal);
-  m_range_upper_slider = new QSlider(Qt::Horizontal);
-  m_range_lower_edit->setFont(QFont(QStringLiteral("Courier New"), 10));
-  m_range_upper_edit->setFont(QFont(QStringLiteral("Courier New"), 10));
-
-  const QString range_tooltip =
-      tr("Sliders are exact through 24 bits. For larger sizes, sliders adjust the last 24 bits. "
-         "Use the text boxes for exact full-width bounds.");
-  m_range_lower_edit->setToolTip(range_tooltip);
-  m_range_upper_edit->setToolTip(range_tooltip);
-  m_range_lower_slider->setToolTip(range_tooltip);
-  m_range_upper_slider->setToolTip(range_tooltip);
 
   const QString tooltip =
       tr("The Up/Down buttons can be used to find new codes.\n"
@@ -309,21 +265,7 @@ void HideObjectAddEditDialog::CreateWidgets()
   grid->addWidget(m_value_edit, 2, 1);
   grid->addWidget(m_up_button, 2, 2);
   grid->addWidget(m_down_button, 2, 3);
-  grid->addWidget(m_range_finder_toggle, 3, 0, 1, 4);
-  grid->addWidget(m_range_label, 4, 0, 1, 4);
-  grid->addWidget(new QLabel(tr("Lower Bound:")), 5, 0);
-  grid->addWidget(m_range_lower_edit, 5, 1, 1, 3);
-  grid->addWidget(m_range_lower_slider, 6, 1, 1, 3);
-  grid->addWidget(new QLabel(tr("Upper Bound:")), 7, 0);
-  grid->addWidget(m_range_upper_edit, 7, 1, 1, 3);
-  grid->addWidget(m_range_upper_slider, 8, 1, 1, 3);
-
-  m_range_label->setEnabled(false);
-  m_range_lower_edit->setEnabled(false);
-  m_range_upper_edit->setEnabled(false);
-  m_range_lower_slider->setEnabled(false);
-  m_range_upper_slider->setEnabled(false);
-  ResetRangeBoundsForCurrentType();
+  grid->addWidget(m_value_slider, 3, 1, 1, 3);
 
   auto* layout = new QVBoxLayout{this};
   layout->addLayout(grid);
@@ -337,23 +279,31 @@ void HideObjectAddEditDialog::ConnectWidgets()
 {
   connect(m_type_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
           &HideObjectAddEditDialog::OnTypeChanged);
+  connect(m_value_edit, &QLineEdit::textChanged, this,
+          &HideObjectAddEditDialog::OnValueTextChanged);
+  connect(m_value_slider, &QSlider::valueChanged, this,
+          &HideObjectAddEditDialog::OnValueSliderChanged);
   connect(m_up_button, &QPushButton::clicked, this, &HideObjectAddEditDialog::OnUpClicked);
   connect(m_down_button, &QPushButton::clicked, this, &HideObjectAddEditDialog::OnDownClicked);
-  connect(m_range_finder_toggle, &QCheckBox::toggled, this,
-          &HideObjectAddEditDialog::OnRangeFinderToggled);
-  connect(m_range_lower_edit, &QLineEdit::textChanged, this,
-          &HideObjectAddEditDialog::OnRangeBoundsChanged);
-  connect(m_range_upper_edit, &QLineEdit::textChanged, this,
-          &HideObjectAddEditDialog::OnRangeBoundsChanged);
-  connect(m_range_lower_slider, &QSlider::valueChanged, this,
-          &HideObjectAddEditDialog::OnRangeSliderChanged);
-  connect(m_range_upper_slider, &QSlider::valueChanged, this,
-          &HideObjectAddEditDialog::OnRangeSliderChanged);
 }
 
 void HideObjectAddEditDialog::UpdateValueDisplay()
 {
-  m_value_edit->setText(FormatEntryValue(m_current_entry));
+  {
+    const QSignalBlocker blocker(m_value_edit);
+    m_value_edit->setText(FormatEntryValue(m_current_entry));
+  }
+  UpdateValueSliderFromText();
+}
+
+void HideObjectAddEditDialog::UpdateValueSliderFromText()
+{
+  HideObjectEngine::HideObjectEntry parsed;
+  if (!TryParseEntryValue(m_value_edit->text(), m_current_entry.type, &parsed))
+    return;
+
+  const QSignalBlocker blocker(m_value_slider);
+  m_value_slider->setValue(LastByteSliderValueFromEntry(parsed));
 }
 
 bool HideObjectAddEditDialog::ParseValueFromUI()
@@ -380,10 +330,6 @@ bool HideObjectAddEditDialog::ParseValueFromUI()
 
 void HideObjectAddEditDialog::OnTypeChanged()
 {
-  HideObjectEngine::HideObjectEntry previous_range_lower;
-  HideObjectEngine::HideObjectEntry previous_range_upper;
-  const bool had_valid_range = ParseRangeBounds(&previous_range_lower, &previous_range_upper);
-
   if (!ParseValueFromUI())
     return;
 
@@ -391,23 +337,6 @@ void HideObjectAddEditDialog::OnTypeChanged()
   m_current_entry = ResizeEntryForType(m_current_entry, new_type, 0x00);
 
   UpdateValueDisplay();
-
-  if (had_valid_range)
-  {
-    HideObjectEngine::HideObjectEntry new_lower =
-        ResizeEntryForType(previous_range_lower, new_type, 0x00);
-    HideObjectEngine::HideObjectEntry new_upper =
-        ResizeEntryForType(previous_range_upper, new_type, 0xFF);
-    if (EntryLess(new_upper, new_lower))
-      new_upper = new_lower;
-
-    SetRangeBoundsForCurrentType(new_lower, new_upper);
-  }
-  else
-  {
-    ResetRangeBoundsForCurrentType();
-  }
-
   ApplyTemporarily();
 }
 
@@ -439,164 +368,20 @@ void HideObjectAddEditDialog::OnDownClicked()
   ApplyTemporarily();
 }
 
-void HideObjectAddEditDialog::OnRangeFinderToggled(bool enabled)
+void HideObjectAddEditDialog::OnValueTextChanged()
 {
-  if (enabled)
-  {
-    HideObjectEngine::HideObjectEntry current_entry;
-    if (TryParseEntryValue(m_value_edit->text(), m_current_entry.type, &current_entry))
-    {
-      m_current_entry = current_entry;
-      {
-        const QSignalBlocker blocker(m_range_lower_edit);
-        m_range_lower_edit->setText(FormatEntryValue(m_current_entry));
-      }
-      ClampRangeBounds(true);
-      UpdateRangeSlidersFromText();
-    }
-  }
+  UpdateValueSliderFromText();
+}
 
-  m_range_label->setEnabled(enabled);
-  m_range_lower_edit->setEnabled(enabled);
-  m_range_upper_edit->setEnabled(enabled);
-  m_range_lower_slider->setEnabled(enabled);
-  m_range_upper_slider->setEnabled(enabled);
-  UpdateRangeLabel();
+void HideObjectAddEditDialog::OnValueSliderChanged(int value)
+{
+  HideObjectEngine::HideObjectEntry current_entry;
+  if (!TryParseEntryValue(m_value_edit->text(), m_current_entry.type, &current_entry))
+    return;
+
+  m_current_entry = EntryFromLastByteSliderValue(m_current_entry.type, value, current_entry);
+  UpdateValueDisplay();
   ApplyTemporarily();
-}
-
-void HideObjectAddEditDialog::OnRangeBoundsChanged()
-{
-  if (sender() == m_range_lower_edit || sender() == m_range_upper_edit)
-    ClampRangeBounds(sender() == m_range_lower_edit);
-
-  UpdateRangeLabel();
-  UpdateRangeSlidersFromText();
-  if (!m_range_finder_toggle->isChecked())
-    return;
-
-  ApplyTemporarily();
-}
-
-void HideObjectAddEditDialog::OnRangeSliderChanged()
-{
-  const bool lower_changed = sender() == m_range_lower_slider;
-  QLineEdit* const edit = lower_changed ? m_range_lower_edit : m_range_upper_edit;
-  QSlider* const slider = lower_changed ? m_range_lower_slider : m_range_upper_slider;
-
-  HideObjectEngine::HideObjectEntry base;
-  if (!TryParseEntryValue(edit->text(), m_current_entry.type, &base))
-    return;
-
-  {
-    const QSignalBlocker blocker(edit);
-    edit->setText(
-        FormatEntryValue(EntryFromRangeSliderValue(m_current_entry.type, slider->value(), base)));
-  }
-
-  ClampRangeBounds(lower_changed);
-  UpdateRangeSlidersFromText();
-  UpdateRangeLabel();
-  if (m_range_finder_toggle->isChecked())
-    ApplyTemporarily();
-}
-
-void HideObjectAddEditDialog::UpdateRangeLabel()
-{
-  HideObjectEngine::HideObjectEntry lower;
-  HideObjectEngine::HideObjectEntry upper;
-  if (!ParseRangeBounds(&lower, &upper))
-  {
-    m_range_label->setText(tr("Invalid range"));
-    return;
-  }
-
-  m_range_label->clear();
-}
-
-void HideObjectAddEditDialog::UpdateRangeSlidersFromText()
-{
-  HideObjectEngine::HideObjectEntry lower;
-  HideObjectEngine::HideObjectEntry upper;
-
-  if (TryParseEntryValue(m_range_lower_edit->text(), m_current_entry.type, &lower))
-  {
-    const QSignalBlocker blocker(m_range_lower_slider);
-    m_range_lower_slider->setValue(RangeSliderValueFromEntry(lower));
-  }
-
-  if (TryParseEntryValue(m_range_upper_edit->text(), m_current_entry.type, &upper))
-  {
-    const QSignalBlocker blocker(m_range_upper_slider);
-    m_range_upper_slider->setValue(RangeSliderValueFromEntry(upper));
-  }
-}
-
-bool HideObjectAddEditDialog::ClampRangeBounds(bool lower_changed)
-{
-  HideObjectEngine::HideObjectEntry lower;
-  HideObjectEngine::HideObjectEntry upper;
-  if (!TryParseEntryValue(m_range_lower_edit->text(), m_current_entry.type, &lower) ||
-      !TryParseEntryValue(m_range_upper_edit->text(), m_current_entry.type, &upper))
-  {
-    return false;
-  }
-
-  if (!EntryLess(upper, lower))
-    return true;
-
-  QLineEdit* const edit_to_update = lower_changed ? m_range_upper_edit : m_range_lower_edit;
-  const HideObjectEngine::HideObjectEntry& value_to_copy = lower_changed ? lower : upper;
-  const QSignalBlocker blocker(edit_to_update);
-  edit_to_update->setText(FormatEntryValue(value_to_copy));
-  return true;
-}
-
-void HideObjectAddEditDialog::SetRangeBoundsForCurrentType(
-    const HideObjectEngine::HideObjectEntry& lower, const HideObjectEngine::HideObjectEntry& upper)
-{
-  const int char_len = HideObjectEngine::GetByteCount(m_current_entry.type) * 2;
-  const QSignalBlocker lower_blocker(m_range_lower_edit);
-  const QSignalBlocker upper_blocker(m_range_upper_edit);
-  const QSignalBlocker lower_slider_blocker(m_range_lower_slider);
-  const QSignalBlocker upper_slider_blocker(m_range_upper_slider);
-  const int slider_max = GetRangeSliderMaximum(m_current_entry.type);
-
-  m_range_lower_edit->setMaxLength(char_len + 2);
-  m_range_upper_edit->setMaxLength(char_len + 2);
-  m_range_lower_edit->setText(FormatEntryValue(lower));
-  m_range_upper_edit->setText(FormatEntryValue(upper));
-  m_range_lower_slider->setRange(0, slider_max);
-  m_range_upper_slider->setRange(0, slider_max);
-  m_range_lower_slider->setValue(RangeSliderValueFromEntry(lower));
-  m_range_upper_slider->setValue(RangeSliderValueFromEntry(upper));
-
-  UpdateRangeLabel();
-}
-
-void HideObjectAddEditDialog::ResetRangeBoundsForCurrentType()
-{
-  SetRangeBoundsForCurrentType(MakeFilledEntry(m_current_entry.type, 0x00),
-                               MakeFilledEntry(m_current_entry.type, 0xFF));
-}
-
-bool HideObjectAddEditDialog::ParseRangeBounds(HideObjectEngine::HideObjectEntry* lower,
-                                               HideObjectEngine::HideObjectEntry* upper) const
-{
-  HideObjectEngine::HideObjectEntry parsed_lower;
-  HideObjectEngine::HideObjectEntry parsed_upper;
-  if (!TryParseEntryValue(m_range_lower_edit->text(), m_current_entry.type, &parsed_lower) ||
-      !TryParseEntryValue(m_range_upper_edit->text(), m_current_entry.type, &parsed_upper))
-  {
-    return false;
-  }
-
-  if (EntryLess(parsed_upper, parsed_lower))
-    return false;
-
-  *lower = parsed_lower;
-  *upper = parsed_upper;
-  return true;
 }
 
 void HideObjectAddEditDialog::ApplyTemporarily()
@@ -613,28 +398,12 @@ void HideObjectAddEditDialog::ApplyTemporarily()
     temp_list.push_back(m_all_codes[i]);
   }
 
-  if (m_range_finder_toggle->isChecked())
-  {
-    HideObjectEngine::HideObjectRange range;
-    if (ParseRangeBounds(&range.lower, &range.upper))
-    {
-      HideObjectEngine::Engine::GetInstance().ApplyCodes(temp_list, {range});
-      return;
-    }
-
-    HideObjectEngine::Engine::GetInstance().ApplyCodes(temp_list);
-    return;
-  }
-  else
-  {
-    // Single-value brute force: add only the current temporary entry.
-    HideObjectEngine::HideObject temp_code;
-    temp_code.name = "temp_brute_force";
-    temp_code.entries.push_back(m_current_entry);
-    temp_code.active = true;
-    temp_code.user_defined = false;
-    temp_list.push_back(std::move(temp_code));
-  }
+  HideObjectEngine::HideObject temp_code;
+  temp_code.name = "temp_brute_force";
+  temp_code.entries.push_back(m_current_entry);
+  temp_code.active = true;
+  temp_code.user_defined = false;
+  temp_list.push_back(std::move(temp_code));
 
   HideObjectEngine::Engine::GetInstance().ApplyCodes(temp_list);
 }

@@ -3,11 +3,11 @@
 
 #include "VideoCommon/HideObjectEngine.h"
 
-#include <algorithm>
 #include <fstream>
 #include <map>
 #include <set>
 #include <sstream>
+#include <utility>
 
 #include "Common/CommonPaths.h"
 #include "Common/FileUtil.h"
@@ -372,22 +372,11 @@ static SkipEntry BuildSkipEntry(const HideObjectEntry& entry)
   return skip_entry;
 }
 
-static int CompareSkipEntries(const SkipEntry& lhs, const SkipEntry& rhs)
-{
-  const size_t size = std::min(lhs.size(), rhs.size());
-  const int result = std::memcmp(lhs.data(), rhs.data(), size);
-  if (result != 0 || lhs.size() == rhs.size())
-    return result;
-  return lhs.size() < rhs.size() ? -1 : 1;
-}
-
-void Engine::ApplyCodes(const std::vector<HideObject>& codes,
-                        const std::vector<HideObjectRange>& ranges)
+void Engine::ApplyCodes(const std::vector<HideObject>& codes)
 {
   m_updating.store(true, std::memory_order_release);
 
   std::vector<SkipEntry> new_entries;
-  std::vector<SkipRangeEntry> new_range_entries;
 
   for (const auto& code : codes)
   {
@@ -398,20 +387,9 @@ void Engine::ApplyCodes(const std::vector<HideObject>& codes,
       new_entries.push_back(BuildSkipEntry(entry));
   }
 
-  for (const auto& range : ranges)
-  {
-    SkipRangeEntry skip_range{BuildSkipEntry(range.lower), BuildSkipEntry(range.upper)};
-    if (skip_range.lower.size() != skip_range.upper.size())
-      continue;
-    if (CompareSkipEntries(skip_range.upper, skip_range.lower) < 0)
-      std::swap(skip_range.lower, skip_range.upper);
-    new_range_entries.push_back(std::move(skip_range));
-  }
-
   {
     std::lock_guard lock(m_mutex);
     m_active_entries = std::move(new_entries);
-    m_active_range_entries = std::move(new_range_entries);
   }
 
   m_updating.store(false, std::memory_order_release);
@@ -456,21 +434,12 @@ bool Engine::ShouldHide(const u8* src) const
       return true;
   }
 
-  for (const auto& range : m_active_range_entries)
-  {
-    if (std::memcmp(src, range.lower.data(), range.lower.size()) >= 0 &&
-        std::memcmp(src, range.upper.data(), range.upper.size()) <= 0)
-    {
-      return true;
-    }
-  }
-
   return false;
 }
 
 bool Engine::HasCodes() const
 {
-  return !m_active_entries.empty() || !m_active_range_entries.empty();
+  return !m_active_entries.empty();
 }
 
 }  // namespace HideObjectEngine
