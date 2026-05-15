@@ -54,8 +54,6 @@ add_executable(dolphin-emu
   Config/ElementsGroupOverrideWidget.h
   Config/ElementsHuntingDialog.cpp
   Config/ElementsHuntingDialog.h
-  Config/ImportShaderFindElementDialog.cpp
-  Config/ImportShaderFindElementDialog.h
   Config/TextureHashBrowserDialog.cpp
   Config/TextureHashBrowserDialog.h
   Config/CommonControllersWidget.cpp

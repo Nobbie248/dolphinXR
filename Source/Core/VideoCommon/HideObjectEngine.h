@@ -64,6 +64,17 @@ struct HideObject
 // Flattened byte array for fast memcmp matching
 using SkipEntry = std::vector<u8>;
 
+struct CapturedHideObjectEntries
+{
+  std::vector<HideObjectEntry> entries;
+  size_t requested_draws = 0;
+  size_t matched_draws = 0;
+  size_t prefixes_seen = 0;
+  size_t shorter_than_128bit = 0;
+};
+
+std::optional<HideObjectEntry> BuildEntryFromPrefix(const u8* data, size_t available_bytes);
+
 // --- Static INI helpers (direct file I/O, bypasses IniFile to avoid corruption) ---
 std::vector<HideObject> LoadFromINI(const std::string& game_id,
                                     std::optional<u16> revision = std::nullopt);
@@ -82,6 +93,16 @@ public:
   // Convert HideObject list to flattened byte patterns for matching.
   void ApplyCodes(const std::vector<HideObject>& codes);
 
+  // Runtime-only capture used by Element Hunter to export selected draws to Hide Objects.
+  void SetCaptureEnabled(bool enabled);
+  bool IsCaptureEnabled() const;
+  void CaptureVertexPrefix(const u8* src, size_t available_bytes);
+  void CommitCapturedPrefixesForDraw(u32 draw_sequence);
+  void DiscardPendingCapturedPrefixes();
+  void OnFrameEnd();
+  CapturedHideObjectEntries
+  GetCapturedEntriesForDrawSequences(const std::vector<u32>& draw_sequences) const;
+
   // Called from VertexLoaderManager::RunVertices — returns true if src matches any active code
   bool ShouldHide(const u8* src) const;
   bool HasCodes() const;
@@ -92,6 +113,18 @@ private:
   mutable std::mutex m_mutex;
   std::vector<SkipEntry> m_active_entries;  // Flattened byte patterns for memcmp
   std::string m_loaded_game_id;
+
+  struct CapturedPrefix
+  {
+    u32 draw_sequence = 0;
+    SkipEntry prefix;
+  };
+
+  mutable std::mutex m_capture_mutex;
+  std::atomic<bool> m_capture_enabled{false};
+  std::vector<SkipEntry> m_pending_capture_prefixes;
+  std::vector<CapturedPrefix> m_collecting_capture_prefixes;
+  std::vector<CapturedPrefix> m_display_capture_prefixes;
 
   // Thread-safety coordination between UI updates and render-thread checks
   std::atomic<bool> m_updating{false};

@@ -239,13 +239,6 @@ std::vector<u64> CollectNonZeroTextureHashes(const std::array<u64, 8>& textures)
   return hashes;
 }
 
-const char* GetShaderTypeName(ElementsGroupManager::ShaderType type)
-{
-  return type == ElementsGroupManager::ShaderType::Vertex   ? "VS" :
-         type == ElementsGroupManager::ShaderType::Geometry ? "GS" :
-                                                              "PS";
-}
-
 void HashCombine(size_t& seed, size_t value)
 {
   seed ^= value + 0x9e3779b9 + (seed << 6) + (seed >> 2);
@@ -662,7 +655,6 @@ LoadElementGroupOverridesFromINIFile(const std::string& path)
       current.handling = HandlingType::Skip;
       current.enabled = false;
       current.user_defined = true;
-      current.refinement_type = ShaderType::Pixel;
       has_entry = true;
       current_format.clear();
       current_selected_match_filters_v3.clear();
@@ -720,19 +712,6 @@ LoadElementGroupOverridesFromINIFile(const std::string& path)
     else if (key == "selected_match_mode")
       current.selected_match_filter_excluded =
           (value == "exclude" || value == "excluded" || value == "not");
-    else if (key == "refine_enabled")
-      current.refinement_enabled = (value == "1" || value == "true" || value == "yes");
-    else if (key == "refine_type")
-      current.refinement_type = value == "VS"   ? ShaderType::Vertex :
-                                value == "GS"   ? ShaderType::Geometry :
-                                                   ShaderType::Pixel;
-    else if (key == "refine_hash")
-      current.refinement_hash = std::strtoull(value.c_str(), nullptr, 16);
-    else if (key == "refine_family_match")
-      current.refinement_family_match =
-          (value == "1" || value == "true" || value == "yes" || value == "family");
-    else if (key == "refine_family_signature")
-      current.refinement_family_signature = std::strtoull(value.c_str(), nullptr, 16);
     else if (key == "comments")
       current.comments = value;
     else if (key == "credits")
@@ -865,22 +844,6 @@ void ElementsGroupManager::SaveOverridesToINI(const std::string& game_id,
       out << "element_end=" << entry.element_end << "\n";
     if (entry.element_reference_total > 0)
       out << "element_total=" << entry.element_reference_total << "\n";
-    if (entry.refinement_enabled)
-    {
-      out << "refine_enabled=1\n";
-      out << "refine_type=" << GetShaderTypeName(entry.refinement_type) << "\n";
-      if (entry.refinement_hash != 0)
-        out << "refine_hash=" << fmt::format("{:016x}", entry.refinement_hash) << "\n";
-      if (entry.refinement_family_match)
-      {
-        out << "refine_family_match=1\n";
-        if (entry.refinement_family_signature != 0)
-        {
-          out << "refine_family_signature="
-              << fmt::format("{:016x}", entry.refinement_family_signature) << "\n";
-        }
-      }
-    }
     if (!entry.comments.empty())
       out << "comments=" << entry.comments << "\n";
     if (!entry.credits.empty())
@@ -1737,21 +1700,6 @@ bool ElementsGroupManager::DoesSelectedMatchFilterPass(const ElementGroupOverrid
   return entry.selected_match_filter_excluded ? !included : included;
 }
 
-bool ElementsGroupManager::DoesOptionalRefinementPass(const ElementGroupOverride& entry,
-                                                      const DrawRecord& draw) const
-{
-  if (!entry.refinement_enabled)
-    return true;
-
-  if (entry.refinement_family_match)
-  {
-    const u64 draw_family = draw.GetFamily(entry.refinement_type);
-    return draw_family != 0 && draw_family == entry.refinement_family_signature;
-  }
-
-  return entry.refinement_hash != 0 && draw.GetHash(entry.refinement_type) == entry.refinement_hash;
-}
-
 bool ElementsGroupManager::DoesEntryMatch(const ElementGroupOverride& entry, const DrawRecord& draw,
                                           bool include_condition) const
 {
@@ -1774,9 +1722,6 @@ bool ElementsGroupManager::DoesEntryMatch(const ElementGroupOverride& entry, con
     if (entry.condition_inverted ? active : !active)
       return false;
   }
-
-  if (!DoesOptionalRefinementPass(entry, draw))
-    return false;
 
   return true;
 }

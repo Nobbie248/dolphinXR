@@ -3,10 +3,12 @@
 
 #include "VideoCommon/HideObjectEngine.h"
 
+#include <algorithm>
 #include <fstream>
 #include <map>
 #include <set>
 #include <sstream>
+#include <tuple>
 #include <utility>
 
 #include "Common/CommonPaths.h"
@@ -42,6 +44,32 @@ HideObjectType ParseTypeName(const std::string& name)
       return static_cast<HideObjectType>(i);
   }
   return HideObjectType::Bits16;  // Default
+}
+
+std::optional<HideObjectEntry> BuildEntryFromPrefix(const u8* data, size_t available_bytes)
+{
+  if (!data || available_bytes == 0)
+    return std::nullopt;
+
+  const size_t byte_count = std::min<size_t>(available_bytes, GetByteCount(HideObjectType::Bits128));
+  HideObjectEntry entry;
+  entry.type = static_cast<HideObjectType>(byte_count - 1);
+
+  if (byte_count > 8)
+  {
+    const size_t upper_bytes = byte_count - 8;
+    for (size_t i = 0; i < upper_bytes; ++i)
+      entry.value_upper = (entry.value_upper << 8) | data[i];
+    for (size_t i = upper_bytes; i < byte_count; ++i)
+      entry.value_lower = (entry.value_lower << 8) | data[i];
+  }
+  else
+  {
+    for (size_t i = 0; i < byte_count; ++i)
+      entry.value_lower = (entry.value_lower << 8) | data[i];
+  }
+
+  return entry;
 }
 
 // ============================================================================
@@ -393,6 +421,114 @@ void Engine::ApplyCodes(const std::vector<HideObject>& codes)
   }
 
   m_updating.store(false, std::memory_order_release);
+}
+
+void Engine::SetCaptureEnabled(bool enabled)
+{
+  m_capture_enabled.store(enabled, std::memory_order_release);
+
+  std::lock_guard lock(m_capture_mutex);
+  m_pending_capture_prefixes.clear();
+  m_collecting_capture_prefixes.clear();
+  m_display_capture_prefixes.clear();
+}
+
+bool Engine::IsCaptureEnabled() const
+{
+  return m_capture_enabled.load(std::memory_order_acquire);
+}
+
+void Engine::CaptureVertexPrefix(const u8* src, size_t available_bytes)
+{
+  if (!m_capture_enabled.load(std::memory_order_acquire) || !src || available_bytes == 0)
+    return;
+
+  const size_t byte_count = std::min<size_t>(available_bytes, GetByteCount(HideObjectType::Bits128));
+  SkipEntry prefix(src, src + byte_count);
+
+  std::lock_guard lock(m_capture_mutex);
+  if (!m_capture_enabled.load(std::memory_order_relaxed))
+    return;
+  m_pending_capture_prefixes.push_back(std::move(prefix));
+}
+
+void Engine::CommitCapturedPrefixesForDraw(u32 draw_sequence)
+{
+  if (!m_capture_enabled.load(std::memory_order_acquire))
+    return;
+
+  std::lock_guard lock(m_capture_mutex);
+  if (!m_capture_enabled.load(std::memory_order_relaxed))
+  {
+    m_pending_capture_prefixes.clear();
+    return;
+  }
+
+  for (auto& prefix : m_pending_capture_prefixes)
+    m_collecting_capture_prefixes.push_back(CapturedPrefix{draw_sequence, std::move(prefix)});
+  m_pending_capture_prefixes.clear();
+}
+
+void Engine::DiscardPendingCapturedPrefixes()
+{
+  std::lock_guard lock(m_capture_mutex);
+  m_pending_capture_prefixes.clear();
+}
+
+void Engine::OnFrameEnd()
+{
+  std::lock_guard lock(m_capture_mutex);
+  if (!m_capture_enabled.load(std::memory_order_relaxed))
+  {
+    m_pending_capture_prefixes.clear();
+    m_collecting_capture_prefixes.clear();
+    m_display_capture_prefixes.clear();
+    return;
+  }
+
+  m_display_capture_prefixes = std::move(m_collecting_capture_prefixes);
+  m_collecting_capture_prefixes.clear();
+  m_pending_capture_prefixes.clear();
+}
+
+CapturedHideObjectEntries
+Engine::GetCapturedEntriesForDrawSequences(const std::vector<u32>& draw_sequences) const
+{
+  CapturedHideObjectEntries result;
+
+  std::set<u32> requested_draws(draw_sequences.begin(), draw_sequences.end());
+  result.requested_draws = requested_draws.size();
+  if (requested_draws.empty())
+    return result;
+
+  std::set<u32> matched_draws;
+  std::set<std::tuple<int, u64, u64>> seen_entries;
+
+  std::lock_guard lock(m_capture_mutex);
+  for (const auto& captured : m_display_capture_prefixes)
+  {
+    if (!requested_draws.contains(captured.draw_sequence))
+      continue;
+
+    result.prefixes_seen++;
+    matched_draws.insert(captured.draw_sequence);
+
+    const std::optional<HideObjectEntry> entry =
+        BuildEntryFromPrefix(captured.prefix.data(), captured.prefix.size());
+    if (!entry)
+      continue;
+
+    if (GetByteCount(entry->type) < GetByteCount(HideObjectType::Bits128))
+      result.shorter_than_128bit++;
+
+    const auto key =
+        std::make_tuple(static_cast<int>(entry->type), entry->value_upper, entry->value_lower);
+    if (seen_entries.insert(key).second)
+      result.entries.push_back(*entry);
+  }
+
+  result.matched_draws = matched_draws.size();
+  return result;
 }
 
 void Engine::LoadCodes(const std::string& game_id)

@@ -36,7 +36,6 @@ private:
   void OnItemChanged(QListWidgetItem* item);
   void OnSelectionChanged();
   void OnAddClicked();
-  void OnImportClicked();
   void OnEditClicked();
   void OnRemoveClicked();
   void OnRefreshClicked();
@@ -47,7 +46,6 @@ private:
   std::optional<u16> m_revision;
   QListWidget* m_code_list = nullptr;
   QPushButton* m_code_add = nullptr;
-  QPushButton* m_code_import = nullptr;
   QPushButton* m_code_edit = nullptr;
   QPushButton* m_code_remove = nullptr;
   QPushButton* m_code_refresh = nullptr;

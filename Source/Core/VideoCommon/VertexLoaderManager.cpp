@@ -456,6 +456,8 @@ int RunVertices(int vtx_attr_group, OpcodeDecoder::Primitive primitive, int coun
       count -= run;
       DataReader dst = g_vertex_manager->PrepareForAdditionalData(primitive, run, stride,
                                                                   cullall || can_cpu_cull);
+      HideObjectEngine::Engine::GetInstance().CaptureVertexPrefix(
+          src, static_cast<size_t>(run) * loader->m_vertex_size);
 
       const int num_loaded = loader->RunVertices(src, dst.GetPointer(), run);
       src += loader->m_vertex_size * max_vertices;

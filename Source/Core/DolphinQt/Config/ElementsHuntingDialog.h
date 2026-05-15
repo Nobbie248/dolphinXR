@@ -36,6 +36,7 @@ private:
   void RequestRefresh();
   void RefreshPendingTextureSummary();
   void SaveCurrentOverride();
+  void SaveCurrentHideObjectCode();
   void OnSeedSelectionChanged();
   void OnCurrentMatchSelectionChanged();
   void OnCurrentMatchItemChanged(QListWidgetItem* item);
@@ -62,6 +63,7 @@ private:
   QPushButton* m_view_textures_button = nullptr;
   QListWidget* m_current_match_list = nullptr;
   QPushButton* m_save_button = nullptr;
+  QPushButton* m_save_hide_objects_button = nullptr;
   QTimer* m_update_timer = nullptr;
   bool m_refresh_pending = true;
   std::vector<u64> m_pending_texture_hashes;

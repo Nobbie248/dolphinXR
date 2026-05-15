@@ -23,7 +23,6 @@
 #include <QScrollArea>
 #include <QSignalBlocker>
 #include <QSpinBox>
-#include <QToolButton>
 #include <QVBoxLayout>
 
 #include <fmt/format.h>
@@ -167,9 +166,7 @@ std::vector<TextureHashBrowserEntry> CollectTextureBrowserEntries(
 
 ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
     QWidget* parent, const ElementsGroupManager::ElementGroupOverride* edit_override,
-    const std::vector<std::string>& available_flags,
-    const ShaderHunter::ShaderOverride* import_shader,
-    const ElementsGroupManager::RuntimeElementSignature* import_runtime_element)
+    const std::vector<std::string>& available_flags)
     : QDialog(parent), m_available_flags(available_flags)
 {
   setWindowTitle(edit_override ? tr("Edit Elements Group Override") :
@@ -282,41 +279,6 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
   m_add_current_match_button = new QPushButton(tr("Add Current Hunt Match"));
   m_remove_selected_match_button = new QPushButton(tr("Remove Selected Match"));
 
-  m_refinement_toggle = new QToolButton;
-  m_refinement_toggle->setText(tr("Advanced Shader Refinement"));
-  m_refinement_toggle->setCheckable(true);
-  m_refinement_toggle->setChecked(false);
-  m_refinement_toggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-  m_refinement_toggle->setArrowType(Qt::RightArrow);
-
-  m_refinement_frame = new QFrame;
-  m_refinement_frame->setVisible(false);
-  auto* refinement_form = new QFormLayout(m_refinement_frame);
-  m_refinement_enable_check = new QCheckBox(tr("Enable shader refinement"));
-  refinement_form->addRow(m_refinement_enable_check);
-
-  m_refinement_type_combo = new QComboBox;
-  m_refinement_type_combo->addItem(tr("Pixel Shader"),
-                                   static_cast<int>(ElementsGroupManager::ShaderType::Pixel));
-  m_refinement_type_combo->addItem(tr("Vertex Shader"),
-                                   static_cast<int>(ElementsGroupManager::ShaderType::Vertex));
-  m_refinement_type_combo->addItem(tr("Geometry Shader"),
-                                   static_cast<int>(ElementsGroupManager::ShaderType::Geometry));
-  refinement_form->addRow(tr("Shader Type:"), m_refinement_type_combo);
-
-  m_refinement_family_check = new QCheckBox(tr("Use Family Signature"));
-  refinement_form->addRow(m_refinement_family_check);
-
-  m_refinement_hash_label = new QLabel(tr("Exact Hash:"));
-  m_refinement_hash_edit = new QLineEdit;
-  m_refinement_hash_edit->setPlaceholderText(tr("0000000000000000"));
-  refinement_form->addRow(m_refinement_hash_label, m_refinement_hash_edit);
-
-  m_refinement_family_signature_label = new QLabel(tr("Family Signature:"));
-  m_refinement_family_signature_edit = new QLineEdit;
-  m_refinement_family_signature_edit->setPlaceholderText(tr("0000000000000000"));
-  refinement_form->addRow(m_refinement_family_signature_label, m_refinement_family_signature_edit);
-
   auto* form = new QFormLayout;
   form->addRow(tr("Name:"), m_name_edit);
   form->addRow(tr("Handling:"), m_handling_combo);
@@ -351,8 +313,6 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
   selected_match_buttons->addWidget(m_add_current_match_button);
   selected_match_buttons->addWidget(m_remove_selected_match_button);
   layout->addLayout(selected_match_buttons);
-  layout->addWidget(m_refinement_toggle);
-  layout->addWidget(m_refinement_frame);
   auto* notes_form = new QFormLayout;
   notes_form->addRow(tr("Comments:"), m_comments_edit);
   notes_form->addRow(tr("Credits:"), m_credits_edit);
@@ -396,15 +356,6 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
       RefreshRuntimeElementSummary();
     });
   }
-  connect(m_refinement_toggle, &QToolButton::toggled, this, [this](bool checked) {
-    m_refinement_widgets_visible = checked;
-    m_refinement_toggle->setArrowType(checked ? Qt::DownArrow : Qt::RightArrow);
-    m_refinement_frame->setVisible(checked);
-  });
-  connect(m_refinement_enable_check, &QCheckBox::toggled, this,
-          &ElementsGroupOverrideAddEditDialog::RefreshRefinementUi);
-  connect(m_refinement_family_check, &QCheckBox::toggled, this,
-          &ElementsGroupOverrideAddEditDialog::RefreshRefinementUi);
 
   if (edit_override)
   {
@@ -452,53 +403,6 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
     m_runtime_element = edit_override->runtime_element;
     m_selected_match_filters = edit_override->selected_match_filter;
     m_selected_match_filters_excluded = edit_override->selected_match_filter_excluded;
-    m_refinement_enable_check->setChecked(edit_override->refinement_enabled);
-    {
-      const int idx =
-          m_refinement_type_combo->findData(static_cast<int>(edit_override->refinement_type));
-      if (idx >= 0)
-        m_refinement_type_combo->setCurrentIndex(idx);
-    }
-    m_refinement_family_check->setChecked(edit_override->refinement_family_match);
-    m_refinement_hash_edit->setText(ToHashHex(edit_override->refinement_hash));
-    m_refinement_family_signature_edit->setText(
-        ToHashHex(edit_override->refinement_family_signature));
-  }
-  else if (import_shader)
-  {
-    const QString import_name = QString::fromStdString(import_shader->name).trimmed();
-    m_name_edit->setText(import_name.isEmpty() ? tr("Imported Element Override") :
-                                                tr("Imported from %1").arg(import_name));
-
-    {
-      const int handling_idx =
-          m_handling_combo->findData(static_cast<int>(import_shader->handling));
-      if (handling_idx >= 0)
-        m_handling_combo->setCurrentIndex(handling_idx);
-    }
-
-    {
-      const int idx = m_texture_mode_combo->findData(import_shader->texture_hashes_excluded);
-      if (idx >= 0)
-        m_texture_mode_combo->setCurrentIndex(idx);
-    }
-    SetTextureHashValues(import_shader->texture_hashes);
-
-    m_refinement_enable_check->setChecked(true);
-    {
-      const int idx =
-          m_refinement_type_combo->findData(static_cast<int>(import_shader->type));
-      if (idx >= 0)
-        m_refinement_type_combo->setCurrentIndex(idx);
-    }
-    m_refinement_family_check->setChecked(import_shader->match_mode ==
-                                          ShaderHunter::MatchMode::ShaderFamily &&
-                                          import_shader->hash_family_match);
-    m_refinement_hash_edit->setText(ToHashHex(import_shader->hash));
-    m_refinement_family_signature_edit->setText(ToHashHex(import_shader->family_signature));
-
-    if (m_refinement_enable_check->isChecked())
-      m_refinement_toggle->setChecked(true);
   }
   else
   {
@@ -520,13 +424,6 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
   m_element_end_label->setVisible(m_element_filter_check->isChecked());
   m_element_end_spin->setVisible(m_element_filter_check->isChecked());
   RefreshRuntimeElementSummary();
-  RefreshRefinementUi();
-
-  if (import_runtime_element != nullptr && import_runtime_element->valid)
-  {
-    m_runtime_element = *import_runtime_element;
-    RefreshRuntimeElementSummary();
-  }
 }
 
 ElementsGroupManager::ElementGroupOverride ElementsGroupOverrideAddEditDialog::GetResult() const
@@ -558,14 +455,6 @@ ElementsGroupManager::ElementGroupOverride ElementsGroupOverrideAddEditDialog::G
     result.element_end = m_element_end_spin->value();
     result.element_reference_total = std::max(m_edit_element_reference_total, result.element_end + 1);
   }
-  result.refinement_enabled = m_refinement_enable_check->isChecked();
-  result.refinement_type = static_cast<ElementsGroupManager::ShaderType>(
-      m_refinement_type_combo->currentData().toInt());
-  result.refinement_family_match = m_refinement_family_check->isChecked();
-  result.refinement_hash = std::strtoull(m_refinement_hash_edit->text().trimmed().toStdString().c_str(),
-                                         nullptr, 16);
-  result.refinement_family_signature = std::strtoull(
-      m_refinement_family_signature_edit->text().trimmed().toStdString().c_str(), nullptr, 16);
   return result;
 }
 
@@ -716,18 +605,6 @@ void ElementsGroupOverrideAddEditDialog::RefreshHandlingUi()
   m_condition_mode_combo->setVisible(!is_flag);
 }
 
-void ElementsGroupOverrideAddEditDialog::RefreshRefinementUi()
-{
-  const bool enabled = m_refinement_enable_check->isChecked();
-  const bool use_family = enabled && m_refinement_family_check->isChecked();
-  m_refinement_type_combo->setEnabled(enabled);
-  m_refinement_family_check->setEnabled(enabled);
-  m_refinement_hash_label->setVisible(enabled && !use_family);
-  m_refinement_hash_edit->setVisible(enabled && !use_family);
-  m_refinement_family_signature_label->setVisible(enabled && use_family);
-  m_refinement_family_signature_edit->setVisible(enabled && use_family);
-}
-
 void ElementsGroupOverrideAddEditDialog::CaptureCurrentSeed()
 {
   const auto status = ElementsGroupManager::GetInstance().GetStatus();
@@ -854,24 +731,6 @@ void ElementsGroupOverrideAddEditDialog::OnAccept()
     QMessageBox::warning(this, tr("Elements Group Override"),
                          tr("Draw End must be greater than or equal to Draw Start."));
     return;
-  }
-  if (result.refinement_enabled)
-  {
-    if (result.refinement_family_match)
-    {
-      if (result.refinement_family_signature == 0)
-      {
-        QMessageBox::warning(this, tr("Elements Group Override"),
-                             tr("Family refinement requires a non-zero family signature."));
-        return;
-      }
-    }
-    else if (result.refinement_hash == 0)
-    {
-      QMessageBox::warning(this, tr("Elements Group Override"),
-                           tr("Exact refinement requires a non-zero shader hash."));
-      return;
-    }
   }
 
   accept();

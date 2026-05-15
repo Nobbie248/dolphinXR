@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <unordered_map>
+#include <utility>
 
 #include <QCheckBox>
 #include <QCloseEvent>
@@ -12,7 +13,9 @@
 #include <QDialogButtonBox>
 #include <QHBoxLayout>
 #include <QAbstractItemView>
+#include <QInputDialog>
 #include <QLabel>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
@@ -25,6 +28,7 @@
 #include "DolphinQt/Config/ElementsGroupOverrideAddEditDialog.h"
 #include "DolphinQt/Config/TextureHashBrowserDialog.h"
 #include "VideoCommon/ElementsGroupManager.h"
+#include "VideoCommon/HideObjectEngine.h"
 #include "VideoCommon/ShaderHunter.h"
 
 namespace
@@ -223,6 +227,30 @@ std::vector<std::string> CollectAvailableFlags(const std::string& game_id)
   }
   return flags;
 }
+
+bool HideObjectNameExists(const std::vector<HideObjectEngine::HideObject>& codes,
+                          const QString& name)
+{
+  const std::string candidate = name.toStdString();
+  return std::any_of(codes.begin(), codes.end(), [&candidate](const auto& code) {
+    return code.name == candidate;
+  });
+}
+
+QString MakeUniqueHideObjectName(int draw_count,
+                                 const std::vector<HideObjectEngine::HideObject>& codes)
+{
+  const QString base = QObject::tr("Element Hide %1 Draws").arg(draw_count);
+  if (!HideObjectNameExists(codes, base))
+    return base;
+
+  for (int suffix = 2;; ++suffix)
+  {
+    const QString candidate = QStringLiteral("%1 %2").arg(base).arg(suffix);
+    if (!HideObjectNameExists(codes, candidate))
+      return candidate;
+  }
+}
 }  // namespace
 
 ElementsHuntingDialog::ElementsHuntingDialog(std::string game_id, QWidget* parent)
@@ -233,6 +261,7 @@ ElementsHuntingDialog::ElementsHuntingDialog(std::string game_id, QWidget* paren
   setMinimumWidth(420);
 
   ElementsGroupManager::GetInstance().SetPopupOpen(true);
+  HideObjectEngine::Engine::GetInstance().SetCaptureEnabled(true);
   if (!m_game_id.empty())
     ElementsGroupManager::GetInstance().LoadOverridesIfNeeded(m_game_id);
 
@@ -343,6 +372,8 @@ void ElementsHuntingDialog::CreateWidgets()
   auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close);
   m_save_button = buttons->addButton(tr("Save To Elements Group Override"),
                                      QDialogButtonBox::ActionRole);
+  m_save_hide_objects_button =
+      buttons->addButton(tr("Save To Hide Objects"), QDialogButtonBox::ActionRole);
   connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::close);
   layout->addWidget(buttons);
 }
@@ -402,6 +433,8 @@ void ElementsHuntingDialog::ConnectWidgets()
   connect(m_current_match_list, &QListWidget::itemChanged, this,
           &ElementsHuntingDialog::OnCurrentMatchItemChanged);
   connect(m_save_button, &QPushButton::clicked, this, &ElementsHuntingDialog::SaveCurrentOverride);
+  connect(m_save_hide_objects_button, &QPushButton::clicked, this,
+          &ElementsHuntingDialog::SaveCurrentHideObjectCode);
 }
 
 void ElementsHuntingDialog::UpdateDisplay()
@@ -679,7 +712,6 @@ void ElementsHuntingDialog::SaveCurrentOverride()
       !m_pending_texture_hashes.empty() && m_texture_mode_combo->currentData().toBool();
   initial.selected_match_filter = manager.GetSelectedMatchFilters();
   initial.selected_match_filter_excluded = manager.GetSelectedMatchFilterExcluded();
-  initial.refinement_enabled = false;
 
   ElementsGroupOverrideAddEditDialog dialog(this, &initial, CollectAvailableFlags(m_game_id));
   if (dialog.exec() != QDialog::Accepted)
@@ -690,6 +722,101 @@ void ElementsHuntingDialog::SaveCurrentOverride()
   ElementsGroupManager::SaveOverridesToINI(m_game_id, overrides);
   manager.LoadOverrides(m_game_id);
   emit OverridesChanged();
+}
+
+void ElementsHuntingDialog::SaveCurrentHideObjectCode()
+{
+  if (m_game_id.empty())
+  {
+    QMessageBox::warning(this, tr("Elements Hunting"), tr("No game is currently running."));
+    return;
+  }
+
+  auto& manager = ElementsGroupManager::GetInstance();
+  const auto draws = manager.GetCurrentTextureSourceDraws();
+  if (draws.empty())
+  {
+    QMessageBox::warning(this, tr("Elements Hunting"),
+                         tr("No current Element Hunter matches are available."));
+    return;
+  }
+
+  std::vector<u32> draw_sequences;
+  draw_sequences.reserve(draws.size());
+  for (const auto& draw : draws)
+  {
+    if (draw.draw_sequence != 0)
+      draw_sequences.push_back(draw.draw_sequence);
+  }
+
+  auto& hide_engine = HideObjectEngine::Engine::GetInstance();
+  const auto captured = hide_engine.GetCapturedEntriesForDrawSequences(draw_sequences);
+  if (captured.entries.empty())
+  {
+    QMessageBox::warning(
+        this, tr("Elements Hunting"),
+        tr("No captured vertex prefixes were found for the current matches.\n"
+           "Let the game run with this window open, refresh the matches, then try again."));
+    return;
+  }
+
+  auto codes = HideObjectEngine::LoadFromINI(m_game_id);
+  QString suggested_name =
+      MakeUniqueHideObjectName(static_cast<int>(draw_sequences.size()), codes);
+  QString code_name;
+  for (;;)
+  {
+    bool accepted = false;
+    code_name = QInputDialog::getText(this, tr("Save To Hide Objects"), tr("Code name:"),
+                                      QLineEdit::Normal, suggested_name, &accepted)
+                    .trimmed();
+    if (!accepted)
+      return;
+    if (code_name.isEmpty())
+    {
+      QMessageBox::warning(this, tr("Save To Hide Objects"), tr("Code name cannot be empty."));
+      continue;
+    }
+    if (HideObjectNameExists(codes, code_name))
+    {
+      QMessageBox::warning(this, tr("Save To Hide Objects"),
+                           tr("A Hide Object code already uses that name."));
+      suggested_name = code_name;
+      continue;
+    }
+    break;
+  }
+
+  HideObjectEngine::HideObject code;
+  code.name = code_name.toStdString();
+  code.entries = captured.entries;
+  code.active = true;
+  code.user_defined = true;
+  codes.push_back(std::move(code));
+
+  HideObjectEngine::SaveToINI(m_game_id, codes);
+  hide_engine.ApplyCodes(codes);
+
+  QString message =
+      tr("Saved '%1' with %2 hide entries from %3 matched draws.")
+          .arg(code_name)
+          .arg(captured.entries.size())
+          .arg(captured.matched_draws);
+  if (captured.matched_draws < captured.requested_draws)
+  {
+    message += QStringLiteral("\n");
+    message += tr("%1 selected draws did not have captured vertex prefixes yet.")
+                   .arg(captured.requested_draws - captured.matched_draws);
+  }
+  if (captured.shorter_than_128bit > 0)
+  {
+    message += QStringLiteral("\n");
+    message += tr("%1 captured prefixes used less than 128 bits because their vertex data was "
+                  "shorter than 16 bytes.")
+                   .arg(captured.shorter_than_128bit);
+  }
+
+  QMessageBox::information(this, tr("Save To Hide Objects"), message);
 }
 
 void ElementsHuntingDialog::OnCurrentMatchSelectionChanged()
@@ -717,5 +844,6 @@ void ElementsHuntingDialog::closeEvent(QCloseEvent* event)
   auto& manager = ElementsGroupManager::GetInstance();
   manager.SetHuntEnabled(false);
   manager.SetPopupOpen(false);
+  HideObjectEngine::Engine::GetInstance().SetCaptureEnabled(false);
   QDialog::closeEvent(event);
 }

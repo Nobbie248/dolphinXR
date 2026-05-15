@@ -89,11 +89,6 @@ public:
     bool texture_hashes_excluded = false;
     std::vector<SelectedSubgroupSignature> selected_match_filter;
     bool selected_match_filter_excluded = false;
-    bool refinement_enabled = false;
-    ShaderType refinement_type = ShaderType::Pixel;
-    u64 refinement_hash = 0;
-    bool refinement_family_match = false;
-    u64 refinement_family_signature = 0;
     bool enabled = true;
     bool user_defined = true;
     std::string flag_group;
@@ -234,7 +229,6 @@ private:
                                           const DrawRecord& draw) const;
   bool DoesEntryMatchForRange(const ElementGroupOverride& entry, const DrawRecord& draw) const;
   bool DoesSelectedMatchFilterPass(const ElementGroupOverride& entry, const DrawRecord& draw) const;
-  bool DoesOptionalRefinementPass(const ElementGroupOverride& entry, const DrawRecord& draw) const;
   bool DoesEntryMatch(const ElementGroupOverride& entry, const DrawRecord& draw,
                       bool include_condition) const;
   bool DoesTextureFilterPass(const DrawRecord& draw, const ElementGroupOverride& entry) const;

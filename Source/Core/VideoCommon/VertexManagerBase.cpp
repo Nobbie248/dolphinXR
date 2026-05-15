@@ -529,6 +529,7 @@ void VertexManagerBase::Flush()
       DolphinAnalytics::Instance().ReportGameQuirk(GameQuirk::MismatchedGPUColorsBetweenXFAndBP);
     }
 
+    HideObjectEngine::Engine::GetInstance().DiscardPendingCapturedPrefixes();
     return;
   }
 
@@ -611,6 +612,7 @@ void VertexManagerBase::Flush()
   auto& geometry_shader_manager = system.GetGeometryShaderManager();
   auto& vertex_shader_manager = system.GetVertexShaderManager();
   auto& xf_state_manager = system.GetXFStateManager();
+  bool committed_hide_object_capture = false;
 
   if (g_ActiveConfig.bGraphicMods)
   {
@@ -698,7 +700,10 @@ void VertexManagerBase::Flush()
     // must be careful to not upload any utility vertices, as the binding will be lost otherwise.
     const u32 num_indices = m_index_generator.GetIndexLen();
     if (num_indices == 0)
+    {
+      HideObjectEngine::Engine::GetInstance().DiscardPendingCapturedPrefixes();
       return;
+    }
 
     // Texture loading can cause palettes to be applied (-> uniforms -> draws).
     // Palette application does not use vertices, only a full-screen quad, so this is okay.
@@ -803,6 +808,10 @@ void VertexManagerBase::Flush()
                 .signature = draw_signature,
                 .textures = tex_hashes,
                 .texture_names = tex_names});
+
+            HideObjectEngine::Engine::GetInstance().CommitCapturedPrefixesForDraw(
+                element_draw->draw_sequence);
+            committed_hide_object_capture = true;
 
             const auto preview_action = elements.RegisterDraw(*element_draw);
             elements_skip = preview_action == ElementsGroupManager::PreviewAction::Skip;
@@ -1035,11 +1044,18 @@ void VertexManagerBase::Flush()
       }
     }
 
+    if (!committed_hide_object_capture)
+      HideObjectEngine::Engine::GetInstance().DiscardPendingCapturedPrefixes();
+
     // Even if we skip the draw, emulated state should still be impacted
     OnDraw();
 
     // The EFB cache is now potentially stale.
     g_framebuffer_manager->FlagPeekCacheAsOutOfDate();
+  }
+  else
+  {
+    HideObjectEngine::Engine::GetInstance().DiscardPendingCapturedPrefixes();
   }
 
   if (xfmem.numTexGen.numTexGens != bpmem.genMode.numtexgens)
@@ -1380,6 +1396,7 @@ void VertexManagerBase::OnEndFrame()
   hunter.OnFrameEnd();
   CullingCodeFinder::GetInstance().OnFrameEnd();
   ElementsGroupManager::GetInstance().OnFrameEnd();
+  HideObjectEngine::Engine::GetInstance().OnFrameEnd();
   auto& system = Core::System::GetInstance();
   system.GetGeometryShaderManager().vr_ortho_draw_counter = 0;
   m_draw_counter = 0;

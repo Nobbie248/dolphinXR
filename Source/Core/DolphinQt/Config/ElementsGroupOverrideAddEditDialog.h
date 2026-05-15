@@ -12,7 +12,6 @@
 class QCheckBox;
 class QComboBox;
 class QDoubleSpinBox;
-class QFrame;
 class QLabel;
 class QLineEdit;
 class QPlainTextEdit;
@@ -20,7 +19,6 @@ class QPushButton;
 class QListWidget;
 class QScrollArea;
 class QSpinBox;
-class QToolButton;
 class QVBoxLayout;
 class QWidget;
 
@@ -31,9 +29,7 @@ public:
   explicit ElementsGroupOverrideAddEditDialog(
       QWidget* parent,
       const ElementsGroupManager::ElementGroupOverride* edit_override = nullptr,
-      const std::vector<std::string>& available_flags = {},
-      const ShaderHunter::ShaderOverride* import_shader = nullptr,
-      const ElementsGroupManager::RuntimeElementSignature* import_runtime_element = nullptr);
+      const std::vector<std::string>& available_flags = {});
 
   ElementsGroupManager::ElementGroupOverride GetResult() const;
 
@@ -46,7 +42,6 @@ private:
   void ShowTextureBrowser();
   void RefreshRuntimeElementSummary();
   void RefreshHandlingUi();
-  void RefreshRefinementUi();
   void CaptureCurrentSeed();
   void AddCurrentHuntMatch();
   void RemoveSelectedMatchFilter();
@@ -55,7 +50,6 @@ private:
   std::vector<std::string> m_available_flags;
   int m_edit_element_reference_total = 0;
   bool m_updating_texture_hash_fields = false;
-  bool m_refinement_widgets_visible = false;
 
   QLineEdit* m_name_edit = nullptr;
   QPlainTextEdit* m_comments_edit = nullptr;
@@ -95,15 +89,6 @@ private:
   QListWidget* m_selected_match_list = nullptr;
   QPushButton* m_add_current_match_button = nullptr;
   QPushButton* m_remove_selected_match_button = nullptr;
-  QToolButton* m_refinement_toggle = nullptr;
-  QFrame* m_refinement_frame = nullptr;
-  QCheckBox* m_refinement_enable_check = nullptr;
-  QComboBox* m_refinement_type_combo = nullptr;
-  QCheckBox* m_refinement_family_check = nullptr;
-  QLineEdit* m_refinement_hash_edit = nullptr;
-  QLabel* m_refinement_hash_label = nullptr;
-  QLineEdit* m_refinement_family_signature_edit = nullptr;
-  QLabel* m_refinement_family_signature_label = nullptr;
 
   ElementsGroupManager::RuntimeElementSignature m_runtime_element;
   std::vector<ElementsGroupManager::SelectedSubgroupSignature> m_selected_match_filters;
