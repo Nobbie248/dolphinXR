@@ -22,6 +22,7 @@ enum class VertexLoaderType : int;
 enum class OpenXROpcodeReplayMode : int;
 enum class OpenXRMirrorView : int;
 enum class OpenXRReferenceSpaceMode : int;
+enum class OpenXRTrackingMode : int;
 
 namespace Config
 {
@@ -197,7 +198,9 @@ extern const Info<bool> GFX_VR_DISABLE_CPU_CULL;
 extern const Info<OpenXROpcodeReplayMode> GFX_VR_OPCODE_REPLAY;
 extern const Info<OpenXRMirrorView> GFX_VR_MIRROR_VIEW;
 extern const Info<OpenXRReferenceSpaceMode> GFX_VR_REFERENCE_SPACE_MODE;
+extern const Info<OpenXRTrackingMode> GFX_VR_TRACKING_MODE;
 extern const Info<bool> GFX_VR_USE_OPENXR_PLAY_SPACE_CENTER;
+extern const Info<int> GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE;
 extern const Info<int> GFX_VR_FORCED_VBI_FREQUENCY;
 extern const Info<bool> GFX_VR_AUTO_VBI_FROM_HMD;
 extern const Info<bool> GFX_VR_AUTO_LAYER_SPREAD;
@@ -235,6 +238,10 @@ static constexpr int GFX_VR_FORCED_VBI_FREQUENCY_OFF = 0;
 static constexpr int GFX_VR_FORCED_VBI_FREQUENCY_72 = 72;
 static constexpr int GFX_VR_FORCED_VBI_FREQUENCY_90 = 90;
 static constexpr int GFX_VR_FORCED_VBI_FREQUENCY_120 = 120;
+static constexpr int GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_AUTO = -1;
+static constexpr int GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_72 = 72;
+static constexpr int GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_90 = 90;
+static constexpr int GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_120 = 120;
 static constexpr float GFX_VR_LAYER_OFFSET_MIN = 0.0001f;
 static constexpr float GFX_VR_LAYER_OFFSET_MAX = 0.01f;
 static constexpr float GFX_VR_LAYER_OFFSET_STEP = 0.0001f;
@@ -256,6 +263,22 @@ inline int NormalizeVRForcedVBIFrequency(int frequency)
     return frequency;
   default:
     return GFX_VR_FORCED_VBI_FREQUENCY_OFF;
+  }
+}
+
+inline int NormalizeVROpcodeReplayTargetRefreshRate(int refresh_rate)
+{
+  switch (refresh_rate)
+  {
+  case GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_AUTO:
+  case 0:  // Legacy value from the previous OutputRefreshRate Auto option.
+    return GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_AUTO;
+  case GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_72:
+  case GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_90:
+  case GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_120:
+    return refresh_rate;
+  default:
+    return GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_90;
   }
 }
 

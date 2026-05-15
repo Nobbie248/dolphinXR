@@ -903,8 +903,9 @@ bool Presenter::PrepareOpenXRFrame(OpenXRFrameOwner owner)
   // The compositor ATW-corrects the replay to its actual display time.  This matches
   // the Hydra approach (minimal pose delta between real and replay) and avoids visible
   // "jumping" from prediction-error differences between real and replay poses.
-  const bool started =
-      StartOpenXRFrameNow(&m_last_openxr_wait_frame_ms, &m_last_openxr_locate_views_ms, true);
+  const bool do_locate_views = owner != OpenXRFrameOwner::Replay;
+  const bool started = StartOpenXRFrameNow(&m_last_openxr_wait_frame_ms,
+                                           &m_last_openxr_locate_views_ms, do_locate_views);
   m_openxr_frame_owner = started ? owner : OpenXRFrameOwner::None;
   return started;
 }
@@ -1077,7 +1078,12 @@ bool Presenter::MaybeRunOpenXROpcodeReplayFrames()
     static int no_data_count = 0;
     if (++no_data_count % 60 == 1)
     {
-      WARN_LOG_FMT(VIDEO, "OpcodeReplay MaybeRun: NO replay data (count={})", no_data_count);
+      const double native_period_ms = VR::g_openxr->GetNativeDisplayPeriodMs();
+      WARN_LOG_FMT(VIDEO,
+                   "OpcodeReplay MaybeRun: NO replay data (count={}, native_period_ms={:.3f}, "
+                   "capture_armed={})",
+                   no_data_count, native_period_ms,
+                   VideoCommon::OpenXROpcodeReplay::IsCaptureArmed());
     }
     return false;
   }

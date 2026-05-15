@@ -305,12 +305,10 @@ bool D3DOpenXR::SubmitFrame()
 {
   ASSERT(VR::g_openxr != nullptr);
 
-  // Use the snapshot captured when the GS pose cache was last refreshed — that's the
-  // pose the geometry was actually rendered with.  Using the live m_eye_views here
-  // would pick up any LocateViews that ran between the last draw and xrEndFrame
-  // (e.g. the BPStructs XFB-copy boundary LocateViews), causing ATW to reproject
-  // against the wrong render pose and produce alternating-frame judder on rotation.
-  const auto& eye_views = VR::g_openxr->GetRenderedEyeViews();
+  // Use the submit snapshot captured when the GS pose cache was last refreshed. Using
+  // live m_eye_views here would pick up LocateViews that ran between the last draw and
+  // xrEndFrame, causing ATW to reproject against the wrong pose.
+  const auto& eye_views = VR::g_openxr->GetSubmittedEyeViews();
 
   for (uint32_t eye = 0; eye < 2; ++eye)
   {

@@ -212,6 +212,9 @@ void VideoConfig::Refresh()
   vr_opcode_replay_mode = Config::Get(Config::GFX_VR_OPCODE_REPLAY);
   vr_mirror_view = Config::Get(Config::GFX_VR_MIRROR_VIEW);
   vr_reference_space_mode = Config::Get(Config::GFX_VR_REFERENCE_SPACE_MODE);
+  vr_tracking_mode = Config::Get(Config::GFX_VR_TRACKING_MODE);
+  vr_opcode_replay_target_refresh_rate = Config::NormalizeVROpcodeReplayTargetRefreshRate(
+      Config::Get(Config::GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE));
   vr_use_openxr_play_space_center = Config::Get(Config::GFX_VR_USE_OPENXR_PLAY_SPACE_CENTER);
   if (!Config::GetAsString(Config::GFX_VR_REFERENCE_SPACE_MODE.GetLocation()) &&
       vr_use_openxr_play_space_center)

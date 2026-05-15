@@ -2,12 +2,14 @@
 
 #include "VideoCommon/OpenXROpcodeReplay.h"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <mutex>
 #include <vector>
 
 #include "Common/Logging/Log.h"
+#include "Core/Config/GraphicsSettings.h"
 #include "VideoCommon/VideoConfig.h"
 
 namespace VideoCommon::OpenXROpcodeReplay
@@ -58,10 +60,52 @@ struct ReplayState
 
 ReplayState s_state;
 
+int GetConfiguredInputRefreshRateUnlocked()
+{
+  switch (g_ActiveConfig.vr_opcode_replay_mode)
+  {
+  case OpenXROpcodeReplayMode::Input25Hz:
+    return 25;
+  case OpenXROpcodeReplayMode::Input30Hz:
+    return 30;
+  case OpenXROpcodeReplayMode::Input50Hz:
+    return 50;
+  case OpenXROpcodeReplayMode::Input60Hz:
+    return 60;
+  case OpenXROpcodeReplayMode::Off:
+  default:
+    return 0;
+  }
+}
+
+int GetConfiguredTargetRefreshRateUnlocked(double display_period_ms)
+{
+  const int configured_refresh_rate = Config::NormalizeVROpcodeReplayTargetRefreshRate(
+      g_ActiveConfig.vr_opcode_replay_target_refresh_rate);
+  if (configured_refresh_rate == Config::GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_AUTO)
+  {
+    if (display_period_ms <= 0.0)
+      return 0;
+
+    const float refresh_rate_hz = static_cast<float>(1000.0 / display_period_ms);
+    return Config::ChooseClosestVRForcedVBIFrequency(refresh_rate_hz);
+  }
+
+  switch (configured_refresh_rate)
+  {
+  case Config::GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_72:
+  case Config::GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_90:
+  case Config::GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_120:
+    return configured_refresh_rate;
+  default:
+    return 90;
+  }
+}
+
 bool IsConfiguredUnlocked()
 {
   return g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
-         g_ActiveConfig.vr_opcode_replay_mode != OpenXROpcodeReplayMode::Off;
+         GetConfiguredInputRefreshRateUnlocked() > 0;
 }
 
 void ClearUnlocked(ReplayState& state)
@@ -95,7 +139,12 @@ void ClearUnlocked(ReplayState& state)
 
 int CalculateReplayCountForFrameUnlocked(double display_period_ms, u64 frame_index)
 {
-  constexpr double target_period_ms = 1000.0 / 90.0;
+  const int input_refresh_rate = GetConfiguredInputRefreshRateUnlocked();
+  const int target_refresh_rate = GetConfiguredTargetRefreshRateUnlocked(display_period_ms);
+  if (input_refresh_rate <= 0 || target_refresh_rate <= input_refresh_rate)
+    return 0;
+
+  const double target_period_ms = 1000.0 / static_cast<double>(target_refresh_rate);
   constexpr double tolerance_ms = 0.8;
   if (!(display_period_ms > 0.0 &&
         std::abs(display_period_ms - target_period_ms) <= tolerance_ms))
@@ -103,16 +152,14 @@ int CalculateReplayCountForFrameUnlocked(double display_period_ms, u64 frame_ind
     return 0;
   }
 
-  switch (g_ActiveConfig.vr_opcode_replay_mode)
-  {
-  case OpenXROpcodeReplayMode::Replay60To90:
-    return (frame_index % 2) == 1 ? 1 : 0;
-  case OpenXROpcodeReplayMode::Replay30To90:
-    return 2;
-  case OpenXROpcodeReplayMode::Off:
-  default:
+  const u64 start_slot =
+      (frame_index * static_cast<u64>(target_refresh_rate)) / static_cast<u64>(input_refresh_rate);
+  const u64 end_slot = ((frame_index + 1) * static_cast<u64>(target_refresh_rate)) /
+                       static_cast<u64>(input_refresh_rate);
+  if (end_slot <= start_slot)
     return 0;
-  }
+
+  return std::max(0, static_cast<int>(end_slot - start_slot) - 1);
 }
 }  // namespace
 

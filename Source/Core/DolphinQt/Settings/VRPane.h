@@ -18,6 +18,7 @@ class ConfigChoiceMap;
 enum class OpenXROpcodeReplayMode : int;
 enum class OpenXRMirrorView : int;
 enum class OpenXRReferenceSpaceMode : int;
+enum class OpenXRTrackingMode : int;
 
 namespace Core
 {
@@ -37,6 +38,7 @@ private:
 
   ConfigBool* m_enable_openxr = nullptr;
   ConfigChoiceMap<OpenXRReferenceSpaceMode>* m_reference_space_mode = nullptr;
+  ConfigChoiceMap<OpenXRTrackingMode>* m_tracking_mode = nullptr;
   ConfigBool* m_auto_immediate_xfb = nullptr;
   ConfigFloatSlider* m_units_per_meter = nullptr;
   QLabel* m_units_per_meter_value = nullptr;
@@ -58,6 +60,7 @@ private:
   ConfigBool* m_ortho_scissor_fix = nullptr;
   ConfigChoiceMap<OpenXROpcodeReplayMode>* m_opcode_replay_mode = nullptr;
   ConfigChoiceMap<OpenXRMirrorView>* m_mirror_view = nullptr;
+  ConfigChoiceMap<int>* m_replay_refresh_rate = nullptr;
   ConfigChoiceMap<int>* m_forced_vbi_frequency = nullptr;
   ConfigSlider* m_clear_efb_slider = nullptr;
   QLabel* m_clear_efb_value = nullptr;

@@ -1294,7 +1294,7 @@ bool VulkanOpenXR::SubmitFrame()
                                   XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT;
     }
 
-    const auto& eye_views = VR::g_openxr->GetRenderedEyeViews();
+    const auto& eye_views = VR::g_openxr->GetSubmittedEyeViews();
     const bool submit_layered =
         m_frame_uses_layered_swapchain && m_use_layered_swapchain &&
         m_layered_swapchain.swapchain != XR_NULL_HANDLE;
@@ -1379,7 +1379,7 @@ bool VulkanOpenXR::SubmitFrame()
   }
 #endif
 
-  const auto& eye_views = VR::g_openxr->GetEyeViews();
+  const auto& eye_views = VR::g_openxr->GetSubmittedEyeViews();
   const bool submit_layered =
       m_frame_uses_layered_swapchain && m_use_layered_swapchain &&
       m_layered_swapchain.swapchain != XR_NULL_HANDLE;

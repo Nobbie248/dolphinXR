@@ -37,8 +37,10 @@ private:
   {
     Inherit = -1,
     Off = 0,
-    Replay60To90 = 1,
-    Replay30To90 = 2,
+    Input25Hz = 3,
+    Input30Hz = 2,
+    Input50Hz = 4,
+    Input60Hz = 1,
   };
 
   enum class ForcedVBIFrequencyMode
@@ -46,6 +48,15 @@ private:
     Inherit = -1,
     Auto = -2,
     Off = 0,
+    Hz72 = 72,
+    Hz90 = 90,
+    Hz120 = 120,
+  };
+
+  enum class ReplayRefreshRateMode
+  {
+    Inherit = -1,
+    Auto = -2,
     Hz72 = 72,
     Hz90 = 90,
     Hz120 = 120,
@@ -75,6 +86,10 @@ private:
   static void SetForcedVBIFrequencyMode(QComboBox* combo, ForcedVBIFrequencyMode mode);
   static ForcedVBIFrequencyMode GetForcedVBIFrequencyMode(const QComboBox* combo);
   static void PopulateForcedVBIFrequencyModeCombo(QComboBox* combo);
+  static ReplayRefreshRateMode ParseReplayRefreshRateMode(const ValueMap& values);
+  static void SetReplayRefreshRateMode(QComboBox* combo, ReplayRefreshRateMode mode);
+  static ReplayRefreshRateMode GetReplayRefreshRateMode(const QComboBox* combo);
+  static void PopulateReplayRefreshRateModeCombo(QComboBox* combo);
 
   const std::string m_game_id;
   const std::optional<u16> m_revision;
@@ -96,6 +111,7 @@ private:
   QComboBox* m_dont_clear_screen_mode = nullptr;
   QComboBox* m_lock_head_pose_mode = nullptr;
   QComboBox* m_opcode_replay_mode = nullptr;
+  QComboBox* m_replay_refresh_rate_mode = nullptr;
   QComboBox* m_forced_vbi_frequency_mode = nullptr;
 
   QTabWidget* m_default_tab = nullptr;
