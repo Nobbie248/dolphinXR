@@ -118,6 +118,8 @@ add_library(videocommon
   LightingShaderGen.cpp
   LightingShaderGen.h
   LookUpTables.h
+  MetroidElementClassifier.cpp
+  MetroidElementClassifier.h
   NativeVertexFormat.h
   NetPlayChatUI.cpp
   NetPlayChatUI.h

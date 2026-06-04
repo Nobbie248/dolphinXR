@@ -314,6 +314,8 @@ public:
 
   static bool AllCopyFilterCoefsNeeded(const std::array<u32, 3>& coefficients);
   static bool CopyFilterCanOverflow(const std::array<u32, 3>& coefficients);
+  static bool IsMetroidPrime1ThermalStereoSourceCandidate(u32 width, u32 height, u32 layers,
+                                                          bool is_depth_copy, bool is_xfb_copy);
 
   // Get a new sampler state
   static SamplerState GetSamplerState(u32 index, float custom_tex_scale, bool custom_tex,
@@ -443,6 +445,7 @@ private:
     bool disable_vram_copies;
     bool arbitrary_mipmap_detection;
     bool graphics_mods;
+    bool metroid_thermal_visor_fix;
     u32 graphics_mod_change_count;
   };
   BackupConfig m_backup_config = {};

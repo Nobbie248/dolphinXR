@@ -32,6 +32,7 @@
 #include "VideoCommon/GraphicsModSystem/Runtime/GraphicsModActionData.h"
 #include "VideoCommon/GraphicsModSystem/Runtime/GraphicsModManager.h"
 #include "VideoCommon/IndexGenerator.h"
+#include "VideoCommon/MetroidElementClassifier.h"
 #include "VideoCommon/NativeVertexFormat.h"
 #include "VideoCommon/OpcodeDecoding.h"
 #include "VideoCommon/PerfQueryBase.h"
@@ -59,6 +60,12 @@ using OpcodeDecoder::Primitive;
 
 namespace
 {
+struct MetroidLayerBehavior
+{
+  bool skip = false;
+  ShaderHunter::HandlingType handling = ShaderHunter::HandlingType::Skip;
+};
+
 ShaderHunter::RuntimeElementSignature BuildRuntimeElementSignature(const XFMemory& xf_memory,
                                                                    const BPMemory& bp_memory,
                                                                    int ortho_layer)
@@ -108,6 +115,106 @@ ShaderHunter::RuntimeElementSignature BuildRuntimeElementSignature(const XFMemor
   signature.blend_color_update = bp_memory.blendmode.color_update != 0;
   signature.blend_alpha_update = bp_memory.blendmode.alpha_update != 0;
   return signature;
+}
+
+MetroidProjectionMetrics BuildMetroidProjectionMetrics(const XFMemory& xf_memory,
+                                                       u32 projection_sequence)
+{
+  MetroidProjectionMetrics metrics;
+  metrics.projection_sequence = projection_sequence;
+  metrics.perspective = xf_memory.projection.type == ProjectionType::Perspective;
+
+  const float* projection = xf_memory.projection.rawProjection.data();
+  if (metrics.perspective)
+  {
+    metrics.hfov = 2.0f * std::atan(1.0f / projection[0]) * 180.0f / 3.14159265f;
+    metrics.vfov = 2.0f * std::atan(1.0f / projection[2]) * 180.0f / 3.14159265f;
+    metrics.zfar = projection[5] / projection[4];
+    metrics.znear = metrics.zfar * projection[4] / (projection[4] - 1.0f);
+  }
+  else
+  {
+    metrics.left = -(projection[1] + 1.0f) / projection[0];
+    metrics.right = metrics.left + 2.0f / projection[0];
+    metrics.bottom = -(projection[3] + 1.0f) / projection[2];
+    metrics.top = metrics.bottom + 2.0f / projection[2];
+    metrics.zfar = projection[5] / projection[4];
+    metrics.znear = (1.0f + projection[4] * metrics.zfar) / projection[4];
+  }
+
+  return metrics;
+}
+
+MetroidElementProfile GetMetroidProfileForGameID(std::string_view game_id)
+{
+  if (game_id.starts_with("GM8") || game_id.starts_with("D43") || game_id.starts_with("D93"))
+    return MetroidElementProfile::Prime1GC;
+  if (game_id.starts_with("G2M") || game_id.starts_with("P2M"))
+    return MetroidElementProfile::Prime2GC;
+  if (game_id.starts_with("R3I"))
+    return MetroidElementProfile::Prime1Wii;
+  if (game_id.starts_with("R32"))
+    return MetroidElementProfile::Prime2Wii;
+  if (game_id.starts_with("RM3"))
+    return MetroidElementProfile::Prime3;
+  if (game_id.starts_with("R3M") || game_id.starts_with("R3O"))
+    return MetroidElementProfile::TrilogyAuto;
+
+  return MetroidElementProfile::None;
+}
+
+MetroidElementClassifier& GetMetroidElementClassifier()
+{
+  static MetroidElementClassifier classifier;
+  return classifier;
+}
+
+bool IsMetroidProfileActive()
+{
+  return GetMetroidProfileForGameID(SConfig::GetInstance().GetGameID()) !=
+         MetroidElementProfile::None;
+}
+
+MetroidLayerBehavior GetMetroidLayerBehavior(MetroidElementLayer layer)
+{
+  switch (layer)
+  {
+  case MetroidElementLayer::EFBCopy:
+  case MetroidElementLayer::BlackBars:
+    return {.skip = true};
+
+  case MetroidElementLayer::Helmet:
+  case MetroidElementLayer::HUD:
+  case MetroidElementLayer::MorphballHUD:
+  case MetroidElementLayer::XRayHUD:
+  case MetroidElementLayer::DarkVisorHUD:
+  case MetroidElementLayer::UnknownHUD:
+  case MetroidElementLayer::VisorRadarHint:
+  case MetroidElementLayer::RadarDot:
+  case MetroidElementLayer::MorphballMapOrHint:
+  case MetroidElementLayer::MapOrHint:
+  case MetroidElementLayer::MorphballMap:
+  case MetroidElementLayer::Map:
+  case MetroidElementLayer::Map0:
+  case MetroidElementLayer::Map1:
+  case MetroidElementLayer::Map2:
+  case MetroidElementLayer::Dialog:
+  case MetroidElementLayer::MapMap:
+  case MetroidElementLayer::MapLegend:
+  case MetroidElementLayer::InventorySamus:
+  case MetroidElementLayer::InventorySamusOutline:
+  case MetroidElementLayer::MapNorth:
+  case MetroidElementLayer::ScanVisor:
+  case MetroidElementLayer::ScanText:
+  case MetroidElementLayer::ScanHologram:
+  case MetroidElementLayer::Visor:
+  case MetroidElementLayer::VisorBootup:
+  case MetroidElementLayer::UnknownVisor:
+    return {.handling = ShaderHunter::HandlingType::HeadLocked};
+
+  default:
+    return {};
+  }
 }
 }  // namespace
 
@@ -728,7 +835,9 @@ void VertexManagerBase::Flush()
         const bool hunter_has_overrides = hunter.HasOverrides();
         const bool elements_popup_open = elements.IsPopupOpen();
         const bool elements_has_overrides = elements.HasOverrides();
-        const bool elements_runtime_active = elements_popup_open || elements_has_overrides;
+        const bool metroid_profile_active = IsMetroidProfileActive();
+        const bool elements_runtime_active =
+            elements_popup_open || elements_has_overrides || metroid_profile_active;
         const bool hunter_needs_families = hunter.NeedsShaderFamilySignatures();
         const bool hunter_needs_textures = hunter.NeedsTextureHashes();
         const bool hunter_needs_counters = hunter.NeedsOverrideDrawCounters();
@@ -794,6 +903,7 @@ void VertexManagerBase::Flush()
           }
 
           std::optional<ElementsGroupManager::DrawRecord> element_draw;
+          MetroidElementLayer metroid_layer = MetroidElementLayer::Unknown;
           if (elements_runtime_active)
           {
             element_draw.emplace(ElementsGroupManager::DrawRecord{
@@ -808,6 +918,14 @@ void VertexManagerBase::Flush()
                 .signature = draw_signature,
                 .textures = tex_hashes,
                 .texture_names = tex_names});
+
+            if (metroid_profile_active)
+            {
+              const MetroidElementProfile metroid_profile =
+                  GetMetroidProfileForGameID(SConfig::GetInstance().GetGameID());
+              metroid_layer = GetMetroidElementClassifier().Classify(
+                  metroid_profile, BuildMetroidProjectionMetrics(xfmem, m_draw_counter));
+            }
 
             HideObjectEngine::Engine::GetInstance().CommitCapturedPrefixesForDraw(
                 element_draw->draw_sequence);
@@ -832,6 +950,9 @@ void VertexManagerBase::Flush()
 
           if (!hunter_skip && !elements_skip && elements_has_overrides)
             elements_skip = elements.ShouldSkipByOverride(*element_draw);
+
+          if (!hunter_skip && !elements_skip && metroid_profile_active)
+            elements_skip = GetMetroidLayerBehavior(metroid_layer).skip;
 
           if (!hunter_skip && !elements_skip && hunter_has_overrides)
             hunter_skip = hunter.ShouldSkipByOverride(vs_hash, ps_hash, gs_hash);
@@ -873,6 +994,8 @@ void VertexManagerBase::Flush()
                 units_per_meter = hunter.GetOverrideUnitsPerMeter(vs_hash, ps_hash, gs_hash);
               }
             }
+            if (handling == ShaderHunter::HandlingType::Skip && metroid_profile_active)
+              handling = GetMetroidLayerBehavior(metroid_layer).handling;
 
             if (handling == ShaderHunter::HandlingType::Screen)
             {
@@ -1397,6 +1520,7 @@ void VertexManagerBase::OnEndFrame()
   CullingCodeFinder::GetInstance().OnFrameEnd();
   ElementsGroupManager::GetInstance().OnFrameEnd();
   HideObjectEngine::Engine::GetInstance().OnFrameEnd();
+  GetMetroidElementClassifier().ResetFrame();
   auto& system = Core::System::GetInstance();
   system.GetGeometryShaderManager().vr_ortho_draw_counter = 0;
   m_draw_counter = 0;

@@ -1,3 +1,5 @@
 add_dolphin_test(VertexLoaderTest VertexLoaderTest.cpp)
 add_dolphin_test(CullingCodeFinderTest CullingCodeFinderTest.cpp)
 add_dolphin_test(HideObjectEngineTest HideObjectEngineTest.cpp)
+add_dolphin_test(MetroidElementClassifierTest MetroidElementClassifierTest.cpp)
+add_dolphin_test(TextureCacheBaseTest TextureCacheBaseTest.cpp)

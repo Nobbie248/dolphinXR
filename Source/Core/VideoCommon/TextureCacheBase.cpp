@@ -68,6 +68,13 @@ static int xfb_count = 0;
 
 std::unique_ptr<TextureCacheBase> g_texture_cache;
 
+static bool IsMetroidPrime1GC()
+{
+  const std::string& game_id = SConfig::GetInstance().GetGameID();
+  return game_id.starts_with("GM8") || game_id.starts_with("D43") ||
+         game_id.starts_with("D93");
+}
+
 TCacheEntry::TCacheEntry(std::unique_ptr<AbstractTexture> tex,
                          std::unique_ptr<AbstractFramebuffer> fb)
     : texture(std::move(tex)), framebuffer(std::move(fb))
@@ -166,6 +173,7 @@ void TextureCacheBase::OnConfigChanged(const VideoConfig& config)
       config.bDisableCopyToVRAM != m_backup_config.disable_vram_copies ||
       config.bArbitraryMipmapDetection != m_backup_config.arbitrary_mipmap_detection ||
       config.bGraphicMods != m_backup_config.graphics_mods ||
+      config.vr_metroid_thermal_visor_fix != m_backup_config.metroid_thermal_visor_fix ||
       change_count != m_backup_config.graphics_mod_change_count)
   {
     Invalidate();
@@ -258,6 +266,7 @@ void TextureCacheBase::SetBackupConfig(const VideoConfig& config)
   m_backup_config.disable_vram_copies = config.bDisableCopyToVRAM;
   m_backup_config.arbitrary_mipmap_detection = config.bArbitraryMipmapDetection;
   m_backup_config.graphics_mods = config.bGraphicMods;
+  m_backup_config.metroid_thermal_visor_fix = config.vr_metroid_thermal_visor_fix;
   m_backup_config.graphics_mod_change_count =
       config.graphics_mod_config ? config.graphics_mod_config->GetChangeCount() : 0;
 }
@@ -277,7 +286,20 @@ RcTcacheEntry TextureCacheBase::ApplyPaletteToEntry(RcTcacheEntry& entry, const 
 {
   DEBUG_ASSERT(g_backend_info.bSupportsPaletteConversion);
 
-  const AbstractPipeline* pipeline = g_shader_cache->GetPaletteConversionPipeline(tlutfmt);
+  bool use_layered_pipeline =
+      g_ActiveConfig.vr_metroid_thermal_visor_fix &&
+      g_backend_info.api_type == APIType::Vulkan &&
+      g_ActiveConfig.stereo_mode == StereoMode::OpenXR && IsMetroidPrime1GC() &&
+      IsMetroidPrime1ThermalStereoSourceCandidate(entry->native_width, entry->native_height,
+                                                  entry->GetNumLayers(), false,
+                                                  entry->is_xfb_copy);
+  const AbstractPipeline* pipeline =
+      g_shader_cache->GetPaletteConversionPipeline(tlutfmt, use_layered_pipeline);
+  if (!pipeline && use_layered_pipeline)
+  {
+    use_layered_pipeline = false;
+    pipeline = g_shader_cache->GetPaletteConversionPipeline(tlutfmt);
+  }
   if (!pipeline)
   {
     ERROR_LOG_FMT(VIDEO, "Failed to get conversion pipeline for format {}", tlutfmt);
@@ -2174,6 +2196,14 @@ bool TextureCacheBase::CopyFilterCanOverflow(const std::array<u32, 3>& coefficie
   // colors are clamped to the range [0, 255], but if the sum is higher than 128, that clamping
   // breaks (as colors end up >= 512, which wraps back to 0).
   return coefficients[0] + coefficients[1] + coefficients[2] >= 128;
+}
+
+bool TextureCacheBase::IsMetroidPrime1ThermalStereoSourceCandidate(u32 width, u32 height,
+                                                                   u32 layers,
+                                                                   bool is_depth_copy,
+                                                                   bool is_xfb_copy)
+{
+  return !is_depth_copy && !is_xfb_copy && width == 640 && height == 448 && layers >= 2;
 }
 
 void TextureCacheBase::CopyRenderTargetToTexture(

@@ -104,7 +104,7 @@ public:
   }
 
   // Palette texture conversion pipelines
-  const AbstractPipeline* GetPaletteConversionPipeline(TLUTFormat format);
+  const AbstractPipeline* GetPaletteConversionPipeline(TLUTFormat format, bool layered = false);
 
   // Texture reinterpret pipelines
   const AbstractPipeline* GetTextureReinterpretPipeline(TextureFormat from_format,
@@ -244,6 +244,8 @@ private:
   // Palette conversion pipelines
   std::array<std::unique_ptr<AbstractPipeline>, NUM_PALETTE_CONVERSION_SHADERS>
       m_palette_conversion_pipelines;
+  std::array<std::unique_ptr<AbstractPipeline>, NUM_PALETTE_CONVERSION_SHADERS>
+      m_layered_palette_conversion_pipelines;
 
   // Texture reinterpreting pipeline
   std::map<std::pair<TextureFormat, TextureFormat>, std::unique_ptr<AbstractPipeline>>

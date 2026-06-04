@@ -412,6 +412,8 @@ void ShaderCache::ClearCaches()
   m_rgba8_stereo_copy_pipeline.reset();
   for (auto& pipeline : m_palette_conversion_pipelines)
     pipeline.reset();
+  for (auto& pipeline : m_layered_palette_conversion_pipelines)
+    pipeline.reset();
   m_texture_reinterpret_pipelines.clear();
   m_texture_decoding_shaders.clear();
 
@@ -1449,15 +1451,26 @@ bool ShaderCache::CompileSharedPipelines()
       m_palette_conversion_pipelines[i] = g_gfx->CreatePipeline(config);
       if (!m_palette_conversion_pipelines[i])
         return false;
+
+      if (UseGeometryShaderForEFBCopies())
+      {
+        config.geometry_shader = m_texcoord_geometry_shader.get();
+        m_layered_palette_conversion_pipelines[i] = g_gfx->CreatePipeline(config);
+        if (!m_layered_palette_conversion_pipelines[i])
+          return false;
+        config.geometry_shader = nullptr;
+      }
     }
   }
 
   return true;
 }
 
-const AbstractPipeline* ShaderCache::GetPaletteConversionPipeline(TLUTFormat format)
+const AbstractPipeline* ShaderCache::GetPaletteConversionPipeline(TLUTFormat format, bool layered)
 {
   ASSERT(static_cast<size_t>(format) < NUM_PALETTE_CONVERSION_SHADERS);
+  if (layered)
+    return m_layered_palette_conversion_pipelines[static_cast<size_t>(format)].get();
   return m_palette_conversion_pipelines[static_cast<size_t>(format)].get();
 }
 
