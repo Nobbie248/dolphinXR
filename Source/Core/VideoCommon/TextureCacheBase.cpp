@@ -75,6 +75,37 @@ static bool IsMetroidPrime1GC()
          game_id.starts_with("D93");
 }
 
+static bool IsMetroidPrime2GC()
+{
+  const std::string& game_id = SConfig::GetInstance().GetGameID();
+  return game_id.starts_with("G2M") || game_id.starts_with("P2M");
+}
+
+static bool IsMetroidVulkanPaletteFixGame()
+{
+  return IsMetroidPrime1GC() || IsMetroidPrime2GC();
+}
+
+static bool IsMetroidD3DPaletteFixGame()
+{
+  return IsMetroidPrime1GC() || IsMetroidPrime2GC();
+}
+
+static bool IsMetroidPrime2FullViewDarkTextureCandidate(u32 width, u32 height, u32 layers,
+                                                        bool is_depth_copy, bool is_xfb_copy)
+{
+  return IsMetroidPrime2GC() && g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
+         !is_depth_copy && !is_xfb_copy && width == 640 && (height == 448 || height == 528) &&
+         layers >= 2;
+}
+
+static bool IsMetroidPrime2DarkHighlightTextureCandidate(u32 width, u32 height, u32 layers,
+                                                         bool is_depth_copy, bool is_xfb_copy)
+{
+  return IsMetroidPrime2GC() && g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
+         !is_depth_copy && !is_xfb_copy && width == 408 && height == 286 && layers >= 2;
+}
+
 TCacheEntry::TCacheEntry(std::unique_ptr<AbstractTexture> tex,
                          std::unique_ptr<AbstractFramebuffer> fb)
     : texture(std::move(tex)), framebuffer(std::move(fb))
@@ -289,17 +320,25 @@ RcTcacheEntry TextureCacheBase::ApplyPaletteToEntry(RcTcacheEntry& entry, const 
 {
   DEBUG_ASSERT(g_backend_info.bSupportsPaletteConversion);
 
-  const bool backend_fix_enabled =
-      (g_backend_info.api_type == APIType::Vulkan &&
-       g_ActiveConfig.vr_metroid_thermal_visor_fix) ||
-      (g_backend_info.api_type == APIType::D3D &&
-       g_ActiveConfig.vr_metroid_d3d_thermal_palette_fix);
-  bool use_layered_pipeline =
-      backend_fix_enabled && g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
-      IsMetroidPrime1GC() &&
+  const bool vulkan_fix_enabled =
+      g_backend_info.api_type == APIType::Vulkan &&
+      g_ActiveConfig.vr_metroid_thermal_visor_fix && IsMetroidVulkanPaletteFixGame();
+  const bool d3d_fix_enabled =
+      g_backend_info.api_type == APIType::D3D &&
+      g_ActiveConfig.vr_metroid_d3d_thermal_palette_fix && IsMetroidD3DPaletteFixGame();
+  const bool mp1_layered_palette_candidate =
       IsMetroidPrime1ThermalStereoSourceCandidate(entry->native_width, entry->native_height,
                                                   entry->GetNumLayers(), false,
                                                   entry->is_xfb_copy);
+  const bool mp2_highlight_palette_candidate =
+      IsMetroidPrime2DarkHighlightTextureCandidate(entry->native_width, entry->native_height,
+                                                   entry->GetNumLayers(), false,
+                                                   entry->is_xfb_copy);
+  bool use_layered_pipeline =
+      (vulkan_fix_enabled || d3d_fix_enabled) &&
+      g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
+      (mp1_layered_palette_candidate ||
+       ((vulkan_fix_enabled || d3d_fix_enabled) && mp2_highlight_palette_candidate));
   const AbstractPipeline* pipeline =
       g_shader_cache->GetPaletteConversionPipeline(tlutfmt, use_layered_pipeline);
   if (!pipeline && use_layered_pipeline)
@@ -1141,6 +1180,28 @@ std::string TextureCacheBase::GetBoundTextureName(u32 stage) const
   if (stage >= m_bound_textures.size() || !m_bound_textures[stage])
     return {};
   return m_bound_textures[stage]->texture_info_name;
+}
+
+bool TextureCacheBase::IsBoundMetroidPrime2DarkTexture(u32 stage) const
+{
+  if (stage >= m_bound_textures.size() || !m_bound_textures[stage])
+    return false;
+
+  const RcTcacheEntry& entry = m_bound_textures[stage];
+  return IsMetroidPrime2FullViewDarkTextureCandidate(entry->native_width, entry->native_height,
+                                                     entry->GetNumLayers(), false,
+                                                     entry->is_xfb_copy);
+}
+
+bool TextureCacheBase::IsBoundMetroidPrime2DarkHighlightTexture(u32 stage) const
+{
+  if (stage >= m_bound_textures.size() || !m_bound_textures[stage])
+    return false;
+
+  const RcTcacheEntry& entry = m_bound_textures[stage];
+  return IsMetroidPrime2DarkHighlightTextureCandidate(entry->native_width, entry->native_height,
+                                                      entry->GetNumLayers(), false,
+                                                      entry->is_xfb_copy);
 }
 
 void TextureCacheBase::BindTextures(BitSet32 used_textures,

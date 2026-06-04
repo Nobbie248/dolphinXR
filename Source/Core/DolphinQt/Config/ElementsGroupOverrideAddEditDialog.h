@@ -42,6 +42,9 @@ private:
   void ShowTextureBrowser();
   void RefreshRuntimeElementSummary();
   void RefreshHandlingUi();
+  void RefreshMatchKindUi();
+  std::vector<MetroidElementLayer> CollectProfileLayers() const;
+  void SetProfileLayers(const std::vector<MetroidElementLayer>& layers);
   void CaptureCurrentSeed();
   void AddCurrentHuntMatch();
   void RemoveSelectedMatchFilter();
@@ -54,6 +57,11 @@ private:
   QLineEdit* m_name_edit = nullptr;
   QPlainTextEdit* m_comments_edit = nullptr;
   QLineEdit* m_credits_edit = nullptr;
+  QComboBox* m_match_kind_combo = nullptr;
+  QLabel* m_profile_label = nullptr;
+  QComboBox* m_profile_combo = nullptr;
+  QLabel* m_profile_layers_label = nullptr;
+  QListWidget* m_profile_layers_list = nullptr;
   QComboBox* m_handling_combo = nullptr;
   QSpinBox* m_layer_spin = nullptr;
   QLabel* m_layer_label = nullptr;

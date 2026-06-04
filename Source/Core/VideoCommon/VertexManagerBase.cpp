@@ -175,12 +175,26 @@ bool IsMetroidProfileActive()
          MetroidElementProfile::None;
 }
 
+bool IsMetroidPrime2Profile(MetroidElementProfile profile)
+{
+  return profile == MetroidElementProfile::Prime2GC ||
+         profile == MetroidElementProfile::Prime2Wii;
+}
+
 MetroidLayerBehavior GetMetroidLayerBehavior(MetroidElementLayer layer)
 {
   switch (layer)
   {
   case MetroidElementLayer::EFBCopy:
   case MetroidElementLayer::BlackBars:
+  case MetroidElementLayer::ScanVisor:
+  case MetroidElementLayer::ScanDarken:
+  case MetroidElementLayer::ScanHighlighter:
+  case MetroidElementLayer::ScanBox:
+  case MetroidElementLayer::ScanCircle:
+  case MetroidElementLayer::ScanReticle:
+  case MetroidElementLayer::ScanIcons:
+  case MetroidElementLayer::ScanCross:
     return {.skip = true};
 
   case MetroidElementLayer::Helmet:
@@ -204,7 +218,6 @@ MetroidLayerBehavior GetMetroidLayerBehavior(MetroidElementLayer layer)
   case MetroidElementLayer::InventorySamus:
   case MetroidElementLayer::InventorySamusOutline:
   case MetroidElementLayer::MapNorth:
-  case MetroidElementLayer::ScanVisor:
   case MetroidElementLayer::ScanText:
   case MetroidElementLayer::ScanHologram:
   case MetroidElementLayer::Visor:
@@ -904,6 +917,10 @@ void VertexManagerBase::Flush()
 
           std::optional<ElementsGroupManager::DrawRecord> element_draw;
           MetroidElementLayer metroid_layer = MetroidElementLayer::Unknown;
+          MetroidElementProfile metroid_profile = MetroidElementProfile::None;
+          MetroidProjectionMetrics metroid_metrics{};
+          bool uses_mp2_dark_copy = false;
+          bool uses_mp2_dark_highlight_copy = false;
           if (elements_runtime_active)
           {
             element_draw.emplace(ElementsGroupManager::DrawRecord{
@@ -921,10 +938,27 @@ void VertexManagerBase::Flush()
 
             if (metroid_profile_active)
             {
-              const MetroidElementProfile metroid_profile =
-                  GetMetroidProfileForGameID(SConfig::GetInstance().GetGameID());
-              metroid_layer = GetMetroidElementClassifier().Classify(
-                  metroid_profile, BuildMetroidProjectionMetrics(xfmem, m_draw_counter));
+              metroid_profile = GetMetroidProfileForGameID(SConfig::GetInstance().GetGameID());
+              metroid_metrics = BuildMetroidProjectionMetrics(xfmem, m_draw_counter);
+              metroid_layer =
+                  GetMetroidElementClassifier().Classify(metroid_profile, metroid_metrics);
+              element_draw->profile_id = metroid_profile;
+              element_draw->profile_layer = metroid_layer;
+              element_draw->profile_layer_name =
+                  std::string(MetroidElementLayerToDisplayName(metroid_layer));
+
+              if (IsMetroidPrime2Profile(metroid_profile))
+              {
+                for (const u32 i : used_textures)
+                {
+                  if (g_texture_cache->IsBoundMetroidPrime2DarkTexture(i))
+                    uses_mp2_dark_copy = true;
+                  if (g_texture_cache->IsBoundMetroidPrime2DarkHighlightTexture(i))
+                    uses_mp2_dark_highlight_copy = true;
+                  if (uses_mp2_dark_copy && uses_mp2_dark_highlight_copy)
+                    break;
+                }
+              }
             }
 
             HideObjectEngine::Engine::GetInstance().CommitCapturedPrefixesForDraw(
@@ -996,6 +1030,15 @@ void VertexManagerBase::Flush()
             }
             if (handling == ShaderHunter::HandlingType::Skip && metroid_profile_active)
               handling = GetMetroidLayerBehavior(metroid_layer).handling;
+            if (handling == ShaderHunter::HandlingType::Skip && uses_mp2_dark_copy)
+            {
+              handling = ShaderHunter::HandlingType::Fullscreen;
+            }
+            if (handling == ShaderHunter::HandlingType::Skip && uses_mp2_dark_highlight_copy &&
+                !metroid_metrics.perspective)
+            {
+              handling = ShaderHunter::HandlingType::Fullscreen;
+            }
 
             if (handling == ShaderHunter::HandlingType::Screen)
             {

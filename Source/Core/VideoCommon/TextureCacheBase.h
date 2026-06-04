@@ -290,6 +290,8 @@ public:
   u64 GetBoundTextureHash(u32 stage) const;
   // Returns the full texture info name (e.g. "tex1_64x64_091555bc4ec6eaf4_..._9").
   std::string GetBoundTextureName(u32 stage) const;
+  bool IsBoundMetroidPrime2DarkTexture(u32 stage) const;
+  bool IsBoundMetroidPrime2DarkHighlightTexture(u32 stage) const;
   void CopyRenderTargetToTexture(u32 dstAddr, EFBCopyFormat dstFormat, u32 width, u32 height,
                                  u32 dstStride, bool is_depth_copy,
                                  const MathUtil::Rectangle<int>& srcRect, bool isIntensity,

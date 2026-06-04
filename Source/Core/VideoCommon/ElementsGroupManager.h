@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "VideoCommon/MetroidElementClassifier.h"
 #include "VideoCommon/ShaderHunter.h"
 
 class ElementsGroupManager
@@ -28,6 +29,12 @@ public:
     Pink = 2
   };
 
+  enum class MatchKind
+  {
+    RuntimeSignature = 0,
+    ProfileLayer = 1,
+  };
+
   struct DrawRecord
   {
     int draw_index = -1;
@@ -39,6 +46,9 @@ public:
     u64 ps_family = 0;
     u64 gs_family = 0;
     RuntimeElementSignature signature;
+    MetroidElementProfile profile_id = MetroidElementProfile::None;
+    MetroidElementLayer profile_layer = MetroidElementLayer::Unknown;
+    std::string profile_layer_name;
     std::array<u64, 8> textures{};
     std::array<std::string, 8> texture_names{};
 
@@ -77,8 +87,11 @@ public:
     std::string name;
     std::string comments;
     std::string credits;
+    MatchKind match_kind = MatchKind::RuntimeSignature;
     HandlingType handling = HandlingType::Skip;
     RuntimeElementSignature runtime_element;
+    MetroidElementProfile profile_id = MetroidElementProfile::None;
+    std::vector<MetroidElementLayer> profile_layers;
     int layer = -1;
     float element_depth = -1.0f;
     float units_per_meter = -1.0f;

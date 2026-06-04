@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <string_view>
 #include <unordered_map>
 
 #include <QCheckBox>
@@ -184,6 +185,37 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
   m_credits_edit = new QLineEdit;
   m_credits_edit->setPlaceholderText(tr("Optional author/credits..."));
 
+  m_match_kind_combo = new QComboBox;
+  m_match_kind_combo->addItem(tr("Runtime Signature"),
+                              static_cast<int>(ElementsGroupManager::MatchKind::RuntimeSignature));
+  m_match_kind_combo->addItem(tr("Profile Layer"),
+                              static_cast<int>(ElementsGroupManager::MatchKind::ProfileLayer));
+
+  m_profile_label = new QLabel(tr("Profile:"));
+  m_profile_combo = new QComboBox;
+  for (MetroidElementProfile profile : GetMetroidElementProfiles())
+  {
+    const std::string_view label = MetroidElementProfileToDisplayName(profile);
+    m_profile_combo->addItem(QString::fromUtf8(label.data(), static_cast<int>(label.size())),
+                             static_cast<int>(profile));
+  }
+
+  m_profile_layers_label = new QLabel(tr("Profile Layers:"));
+  m_profile_layers_list = new QListWidget;
+  m_profile_layers_list->setMinimumHeight(160);
+  for (MetroidElementLayer layer : GetMetroidElementLayers())
+  {
+    if (layer == MetroidElementLayer::Unknown)
+      continue;
+    const std::string_view label = MetroidElementLayerToDisplayName(layer);
+    auto* item = new QListWidgetItem(
+        QString::fromUtf8(label.data(), static_cast<int>(label.size())));
+    item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+    item->setCheckState(Qt::Unchecked);
+    item->setData(Qt::UserRole, static_cast<int>(layer));
+    m_profile_layers_list->addItem(item);
+  }
+
   m_handling_combo = new QComboBox;
   m_handling_combo->addItem(tr("Skip"),
                             static_cast<int>(ElementsGroupManager::HandlingType::Skip));
@@ -281,6 +313,9 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
 
   auto* form = new QFormLayout;
   form->addRow(tr("Name:"), m_name_edit);
+  form->addRow(tr("Match Type:"), m_match_kind_combo);
+  form->addRow(m_profile_label, m_profile_combo);
+  form->addRow(m_profile_layers_label, m_profile_layers_list);
   form->addRow(tr("Handling:"), m_handling_combo);
   form->addRow(m_layer_label, m_layer_spin);
   form->addRow(m_element_depth_label, m_element_depth_spin);
@@ -324,6 +359,8 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
   connect(buttons, &QDialogButtonBox::accepted, this,
           &ElementsGroupOverrideAddEditDialog::OnAccept);
   connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+  connect(m_match_kind_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+          &ElementsGroupOverrideAddEditDialog::RefreshMatchKindUi);
   connect(m_handling_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
           &ElementsGroupOverrideAddEditDialog::RefreshHandlingUi);
   connect(m_element_filter_check, &QCheckBox::toggled, this, [this](bool checked) {
@@ -362,6 +399,17 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
     m_name_edit->setText(QString::fromStdString(edit_override->name));
     m_comments_edit->setPlainText(QString::fromStdString(edit_override->comments));
     m_credits_edit->setText(QString::fromStdString(edit_override->credits));
+    {
+      const int idx = m_match_kind_combo->findData(static_cast<int>(edit_override->match_kind));
+      if (idx >= 0)
+        m_match_kind_combo->setCurrentIndex(idx);
+    }
+    {
+      const int idx = m_profile_combo->findData(static_cast<int>(edit_override->profile_id));
+      if (idx >= 0)
+        m_profile_combo->setCurrentIndex(idx);
+      SetProfileLayers(edit_override->profile_layers);
+    }
     {
       const int handling_idx = m_handling_combo->findData(static_cast<int>(edit_override->handling));
       if (handling_idx >= 0)
@@ -419,6 +467,7 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
   m_remove_selected_match_button->setEnabled(false);
 
   RefreshHandlingUi();
+  RefreshMatchKindUi();
   m_element_start_label->setVisible(m_element_filter_check->isChecked());
   m_element_start_spin->setVisible(m_element_filter_check->isChecked());
   m_element_end_label->setVisible(m_element_filter_check->isChecked());
@@ -432,9 +481,13 @@ ElementsGroupManager::ElementGroupOverride ElementsGroupOverrideAddEditDialog::G
   result.name = m_name_edit->text().trimmed().toStdString();
   result.comments = m_comments_edit->toPlainText().trimmed().toStdString();
   result.credits = m_credits_edit->text().trimmed().toStdString();
+  result.match_kind = static_cast<ElementsGroupManager::MatchKind>(
+      m_match_kind_combo->currentData().toInt());
   result.handling = static_cast<ElementsGroupManager::HandlingType>(
       m_handling_combo->currentData().toInt());
   result.runtime_element = m_runtime_element;
+  result.profile_id = static_cast<MetroidElementProfile>(m_profile_combo->currentData().toInt());
+  result.profile_layers = CollectProfileLayers();
   result.layer = m_layer_spin->value();
   result.element_depth = m_element_depth_spin->value();
   result.units_per_meter = m_units_per_meter_spin->value() > 0.0 ? m_units_per_meter_spin->value() :
@@ -454,6 +507,17 @@ ElementsGroupManager::ElementGroupOverride ElementsGroupOverrideAddEditDialog::G
     result.element_start = m_element_start_spin->value();
     result.element_end = m_element_end_spin->value();
     result.element_reference_total = std::max(m_edit_element_reference_total, result.element_end + 1);
+  }
+  if (result.match_kind == ElementsGroupManager::MatchKind::ProfileLayer)
+  {
+    result.runtime_element = {};
+    result.selected_match_filter.clear();
+    result.selected_match_filter_excluded = false;
+  }
+  else
+  {
+    result.profile_id = MetroidElementProfile::None;
+    result.profile_layers.clear();
   }
   return result;
 }
@@ -605,6 +669,55 @@ void ElementsGroupOverrideAddEditDialog::RefreshHandlingUi()
   m_condition_mode_combo->setVisible(!is_flag);
 }
 
+std::vector<MetroidElementLayer> ElementsGroupOverrideAddEditDialog::CollectProfileLayers() const
+{
+  std::vector<MetroidElementLayer> layers;
+  for (int i = 0; i < m_profile_layers_list->count(); ++i)
+  {
+    const QListWidgetItem* item = m_profile_layers_list->item(i);
+    if (item->checkState() == Qt::Checked)
+      layers.push_back(static_cast<MetroidElementLayer>(item->data(Qt::UserRole).toInt()));
+  }
+  return layers;
+}
+
+void ElementsGroupOverrideAddEditDialog::SetProfileLayers(
+    const std::vector<MetroidElementLayer>& layers)
+{
+  for (int i = 0; i < m_profile_layers_list->count(); ++i)
+  {
+    QListWidgetItem* item = m_profile_layers_list->item(i);
+    const auto layer = static_cast<MetroidElementLayer>(item->data(Qt::UserRole).toInt());
+    item->setCheckState(std::find(layers.begin(), layers.end(), layer) != layers.end() ?
+                            Qt::Checked :
+                            Qt::Unchecked);
+  }
+}
+
+void ElementsGroupOverrideAddEditDialog::RefreshMatchKindUi()
+{
+  const auto match_kind = static_cast<ElementsGroupManager::MatchKind>(
+      m_match_kind_combo->currentData().toInt());
+  const bool profile_layer = match_kind == ElementsGroupManager::MatchKind::ProfileLayer;
+
+  m_profile_label->setVisible(profile_layer);
+  m_profile_combo->setVisible(profile_layer);
+  m_profile_layers_label->setVisible(profile_layer);
+  m_profile_layers_list->setVisible(profile_layer);
+
+  m_capture_seed_button->setVisible(!profile_layer);
+  m_runtime_element_summary_label->setVisible(!profile_layer);
+  m_runtime_use_projection_check->setVisible(!profile_layer);
+  m_runtime_use_layer_check->setVisible(!profile_layer);
+  m_runtime_use_viewport_check->setVisible(!profile_layer);
+  m_runtime_use_scissor_check->setVisible(!profile_layer);
+  m_runtime_use_render_state_check->setVisible(!profile_layer);
+  m_selected_match_mode_combo->setVisible(!profile_layer);
+  m_selected_match_list->setVisible(!profile_layer);
+  m_add_current_match_button->setVisible(!profile_layer);
+  m_remove_selected_match_button->setVisible(!profile_layer);
+}
+
 void ElementsGroupOverrideAddEditDialog::CaptureCurrentSeed()
 {
   const auto status = ElementsGroupManager::GetInstance().GetStatus();
@@ -706,13 +819,29 @@ void ElementsGroupOverrideAddEditDialog::OnAccept()
     QMessageBox::warning(this, tr("Elements Group Override"), tr("Name cannot be empty."));
     return;
   }
-  if (!result.runtime_element.valid)
+  if (result.match_kind == ElementsGroupManager::MatchKind::ProfileLayer)
+  {
+    if (result.profile_id == MetroidElementProfile::None)
+    {
+      QMessageBox::warning(this, tr("Elements Group Override"),
+                           tr("A Metroid profile is required."));
+      return;
+    }
+    if (result.profile_layers.empty())
+    {
+      QMessageBox::warning(this, tr("Elements Group Override"),
+                           tr("Select at least one profile layer."));
+      return;
+    }
+  }
+  else if (!result.runtime_element.valid)
   {
     QMessageBox::warning(this, tr("Elements Group Override"),
                          tr("A runtime element signature is required."));
     return;
   }
-  if (!result.runtime_element.use_projection && !result.runtime_element.use_layer &&
+  if (result.match_kind == ElementsGroupManager::MatchKind::RuntimeSignature &&
+      !result.runtime_element.use_projection && !result.runtime_element.use_layer &&
       !result.runtime_element.use_viewport && !result.runtime_element.use_scissor &&
       !result.runtime_element.use_render_state)
   {

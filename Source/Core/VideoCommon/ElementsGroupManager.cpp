@@ -225,6 +225,38 @@ std::vector<u64> ParseTextureHashList(const std::string& value)
   return hashes;
 }
 
+std::vector<MetroidElementLayer> ParseProfileLayerList(const std::string& value)
+{
+  std::vector<MetroidElementLayer> layers;
+  std::string token;
+
+  auto flush_token = [&]() {
+    if (token.empty())
+      return;
+    if (const auto layer = MetroidElementLayerFromString(token))
+      layers.push_back(*layer);
+    token.clear();
+  };
+
+  for (char c : value)
+  {
+    if (c == ',' || c == ';' || std::isspace(static_cast<unsigned char>(c)))
+      flush_token();
+    else
+      token.push_back(c);
+  }
+  flush_token();
+  return layers;
+}
+
+void SortDeduplicateProfileLayers(std::vector<MetroidElementLayer>* layers)
+{
+  std::sort(layers->begin(), layers->end(), [](MetroidElementLayer lhs, MetroidElementLayer rhs) {
+    return static_cast<int>(lhs) < static_cast<int>(rhs);
+  });
+  layers->erase(std::unique(layers->begin(), layers->end()), layers->end());
+}
+
 std::vector<u64> CollectNonZeroTextureHashes(const std::array<u64, 8>& textures)
 {
   std::vector<u64> hashes;
@@ -284,6 +316,20 @@ size_t ComputeRuntimeElementKey(const ShaderHunter::RuntimeElementSignature& sig
   HashCombineValue(seed, sig.zfunc);
   HashCombineValue(seed, sig.blend_color_update);
   HashCombineValue(seed, sig.blend_alpha_update);
+  HashCombineValue(seed, texture_excluded);
+  for (const u64 texture_hash : texture_hashes)
+    HashCombineValue(seed, texture_hash);
+  return seed;
+}
+
+size_t ComputeProfileElementKey(MetroidElementProfile profile,
+                                const std::vector<MetroidElementLayer>& layers,
+                                const std::vector<u64>& texture_hashes, bool texture_excluded)
+{
+  size_t seed = 0;
+  HashCombineValue(seed, static_cast<int>(profile));
+  for (const MetroidElementLayer layer : layers)
+    HashCombineValue(seed, static_cast<int>(layer));
   HashCombineValue(seed, texture_excluded);
   for (const u64 texture_hash : texture_hashes)
     HashCombineValue(seed, texture_hash);
@@ -577,9 +623,11 @@ LoadElementGroupOverridesFromINIFile(const std::string& path)
   std::map<int, SelectedSubgroupSignature> current_selected_match_filters_v4;
 
   auto commit_entry = [&]() {
-    if (!has_entry || current.name.empty() ||
-        (current_format != "element_only_v2" && current_format != "element_only_v3" &&
-         current_format != "element_only_v4" && current_format != "element_only_v5"))
+    const bool runtime_format =
+        current_format == "element_only_v2" || current_format == "element_only_v3" ||
+        current_format == "element_only_v4" || current_format == "element_only_v5";
+    const bool profile_format = current_format == "element_profile_v1";
+    if (!has_entry || current.name.empty() || (!runtime_format && !profile_format))
       return;
     current.enabled = parsed.has_enable_section ? (parsed.enabled_names.count(current.name) > 0) :
                                                   true;
@@ -627,8 +675,18 @@ LoadElementGroupOverridesFromINIFile(const std::string& path)
         }
       }
     }
-    if (current.runtime_element.valid)
+    if (profile_format)
+    {
+      current.match_kind = ElementsGroupManager::MatchKind::ProfileLayer;
+      SortDeduplicateProfileLayers(&current.profile_layers);
+      if (current.profile_id != MetroidElementProfile::None && !current.profile_layers.empty())
+        parsed.entries.push_back(current);
+    }
+    else if (current.runtime_element.valid)
+    {
+      current.match_kind = ElementsGroupManager::MatchKind::RuntimeSignature;
       parsed.entries.push_back(current);
+    }
   };
 
   std::string line;
@@ -671,7 +729,12 @@ LoadElementGroupOverridesFromINIFile(const std::string& path)
       continue;
 
     if (key == "format")
+    {
       current_format = value;
+      current.match_kind = current_format == "element_profile_v1" ?
+                               ElementsGroupManager::MatchKind::ProfileLayer :
+                               ElementsGroupManager::MatchKind::RuntimeSignature;
+    }
     else if (key == "handling")
       current.handling = value == "screen"          ? HandlingType::Screen :
                          value == "fullscreen"      ? HandlingType::Fullscreen :
@@ -716,6 +779,17 @@ LoadElementGroupOverridesFromINIFile(const std::string& path)
       current.comments = value;
     else if (key == "credits")
       current.credits = value;
+    else if (key == "profile")
+    {
+      if (const auto profile = MetroidElementProfileFromString(value))
+        current.profile_id = *profile;
+    }
+    else if (key == "profile_layer" || key == "profile_layers")
+    {
+      const auto parsed_layers = ParseProfileLayerList(value);
+      current.profile_layers.insert(current.profile_layers.end(), parsed_layers.begin(),
+                                    parsed_layers.end());
+    }
     else if (current_format == "element_only_v3" && key.rfind("selected_match_", 0) == 0)
     {
       const size_t prefix_len = std::string("selected_match_").size();
@@ -823,7 +897,9 @@ void ElementsGroupManager::SaveOverridesToINI(const std::string& game_id,
   for (const auto& entry : overrides)
   {
     out << "$" << entry.name << "\n";
-    out << "format=element_only_v5\n";
+    out << "format="
+        << (entry.match_kind == MatchKind::ProfileLayer ? "element_profile_v1" : "element_only_v5")
+        << "\n";
     out << "handling=" << GetHandlingName(entry.handling) << "\n";
     if (entry.layer >= 0)
       out << "layer=" << entry.layer << "\n";
@@ -860,12 +936,21 @@ void ElementsGroupManager::SaveOverridesToINI(const std::string& game_id,
           << (entry.selected_match_filter_excluded ? "exclude" : "include") << "\n";
     }
 
-    const auto& sig = entry.runtime_element;
-    SaveRuntimeElementSignature(out, sig, "");
-    for (size_t i = 0; i < entry.selected_match_filter.size(); ++i)
+    if (entry.match_kind == MatchKind::ProfileLayer)
     {
-      SaveSelectedSubgroupSignature(out, entry.selected_match_filter[i],
-                                    fmt::format("selected_match_{}_", i));
+      out << "profile=" << MetroidElementProfileToININame(entry.profile_id) << "\n";
+      for (const MetroidElementLayer layer : entry.profile_layers)
+        out << "profile_layer=" << MetroidElementLayerToININame(layer) << "\n";
+    }
+    else
+    {
+      const auto& sig = entry.runtime_element;
+      SaveRuntimeElementSignature(out, sig, "");
+      for (size_t i = 0; i < entry.selected_match_filter.size(); ++i)
+      {
+        SaveSelectedSubgroupSignature(out, entry.selected_match_filter[i],
+                                      fmt::format("selected_match_{}_", i));
+      }
     }
     out << "\n";
   }
@@ -1635,8 +1720,19 @@ bool ElementsGroupManager::DoesTextureFilterPass(const DrawRecord& draw,
 ElementsGroupManager::CounterKey ElementsGroupManager::GetCounterKey(
     const ElementGroupOverride& entry) const
 {
-  size_t seed = ComputeRuntimeElementKey(entry.runtime_element, entry.texture_hashes,
-                                         entry.texture_hashes_excluded);
+  size_t seed = 0;
+  HashCombineValue(seed, static_cast<int>(entry.match_kind));
+  if (entry.match_kind == MatchKind::ProfileLayer)
+  {
+    HashCombineValue(seed, ComputeProfileElementKey(entry.profile_id, entry.profile_layers,
+                                                    entry.texture_hashes,
+                                                    entry.texture_hashes_excluded));
+  }
+  else
+  {
+    HashCombineValue(seed, ComputeRuntimeElementKey(entry.runtime_element, entry.texture_hashes,
+                                                    entry.texture_hashes_excluded));
+  }
   for (const SelectedSubgroupSignature& filter : entry.selected_match_filter)
   {
     HashCombineValue(seed, ComputeSelectedSubgroupKey(filter));
@@ -1670,11 +1766,30 @@ std::pair<int, int> ElementsGroupManager::ResolveElementRange(const ElementGroup
 bool ElementsGroupManager::DoesEntryMatchForRange(const ElementGroupOverride& entry,
                                                   const DrawRecord& draw) const
 {
-  if (!entry.enabled || !entry.runtime_element.valid)
+  if (!entry.enabled)
     return false;
 
-  if (!RuntimeElementMatcher::Matches(entry.runtime_element, draw.signature))
-    return false;
+  if (entry.match_kind == MatchKind::ProfileLayer)
+  {
+    if (entry.profile_id == MetroidElementProfile::None || entry.profile_layers.empty() ||
+        draw.profile_id != entry.profile_id)
+    {
+      return false;
+    }
+    if (std::find(entry.profile_layers.begin(), entry.profile_layers.end(), draw.profile_layer) ==
+        entry.profile_layers.end())
+    {
+      return false;
+    }
+  }
+  else
+  {
+    if (!entry.runtime_element.valid)
+      return false;
+
+    if (!RuntimeElementMatcher::Matches(entry.runtime_element, draw.signature))
+      return false;
+  }
 
   if (!DoesSelectedMatchFilterPass(entry, draw))
     return false;

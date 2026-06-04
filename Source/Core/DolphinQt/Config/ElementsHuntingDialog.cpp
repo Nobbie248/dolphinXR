@@ -114,11 +114,19 @@ QString FormatSeedSummary(const ElementsGroupManager::SeedCandidate& candidate,
 
 QString FormatMatchLabel(const ElementsGroupManager::DrawRecord& draw)
 {
-  return QObject::tr("Draw #%1 | VS %2 | PS %3 | GS %4")
+  QString label = QObject::tr("Draw #%1 | VS %2 | PS %3 | GS %4")
       .arg(draw.draw_index + 1)
       .arg(static_cast<qulonglong>(draw.vs_hash), 16, 16, QLatin1Char('0'))
       .arg(static_cast<qulonglong>(draw.ps_hash), 16, 16, QLatin1Char('0'))
       .arg(static_cast<qulonglong>(draw.gs_hash), 16, 16, QLatin1Char('0'));
+  if (draw.profile_id != MetroidElementProfile::None)
+  {
+    label += QObject::tr(" | Profile %1")
+                 .arg(QString::fromStdString(draw.profile_layer_name.empty() ?
+                                                  std::string("Unknown") :
+                                                  draw.profile_layer_name));
+  }
+  return label;
 }
 
 QString FormatTextureSummary(const std::vector<u64>& textures)
@@ -156,6 +164,14 @@ QString FormatCurrentMatchLabel(const ElementsGroupManager::CurrentMatchCandidat
   label += QObject::tr(" | x%1").arg(candidate.raw_draw_count);
   if (candidate.representative_draw.draw_index >= 0)
     label += QObject::tr(" | Draw #%1").arg(candidate.representative_draw.draw_index + 1);
+  if (candidate.representative_draw.profile_id != MetroidElementProfile::None)
+  {
+    label += QObject::tr(" | Profile %1")
+                 .arg(QString::fromStdString(
+                     candidate.representative_draw.profile_layer_name.empty() ?
+                         std::string("Unknown") :
+                         candidate.representative_draw.profile_layer_name));
+  }
   if (!candidate.active_this_frame)
     label += QObject::tr(" | Inactive");
   return label;

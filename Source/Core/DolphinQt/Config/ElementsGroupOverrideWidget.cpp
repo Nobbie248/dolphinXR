@@ -4,12 +4,14 @@
 #include "DolphinQt/Config/ElementsGroupOverrideWidget.h"
 
 #include <algorithm>
+#include <string_view>
 
 #include <QDialog>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QListWidget>
 #include <QPushButton>
+#include <QStringList>
 #include <QSignalBlocker>
 #include <QVBoxLayout>
 
@@ -18,6 +20,14 @@
 #include "DolphinQt/Config/ElementsHuntingDialog.h"
 #include "DolphinQt/QtUtils/NonDefaultQPushButton.h"
 #include "VideoCommon/ShaderHunter.h"
+
+namespace
+{
+QString ToQString(std::string_view value)
+{
+  return QString::fromUtf8(value.data(), static_cast<int>(value.size()));
+}
+}  // namespace
 
 ElementsGroupOverrideWidget::ElementsGroupOverrideWidget(std::string game_id,
                                                          std::optional<u16> revision)
@@ -107,16 +117,34 @@ void ElementsGroupOverrideWidget::UpdateList()
                                                  entry.handling == ShaderHunter::HandlingType::Flag         ? "flag" :
                                                  entry.handling == ShaderHunter::HandlingType::UnitsPerMeter ? "units_per_meter" :
                                                                                                              "skip"));
-    if (entry.runtime_element.use_projection)
-      label += QStringLiteral(" proj");
-    if (entry.runtime_element.use_layer)
-      label += QStringLiteral(" layer");
-    if (entry.runtime_element.use_viewport)
-      label += QStringLiteral(" vp");
-    if (entry.runtime_element.use_scissor)
-      label += QStringLiteral(" scissor");
-    if (entry.runtime_element.use_render_state)
-      label += QStringLiteral(" state");
+    if (entry.match_kind == ElementsGroupManager::MatchKind::ProfileLayer)
+    {
+      label += QStringLiteral(" profile:%1")
+                   .arg(ToQString(MetroidElementProfileToININame(entry.profile_id)));
+      if (!entry.profile_layers.empty())
+      {
+        QStringList layers;
+        const int shown = std::min<int>(3, static_cast<int>(entry.profile_layers.size()));
+        for (int layer_index = 0; layer_index < shown; ++layer_index)
+          layers << ToQString(MetroidElementLayerToDisplayName(entry.profile_layers[layer_index]));
+        if (static_cast<int>(entry.profile_layers.size()) > shown)
+          layers << tr("+%1 more").arg(static_cast<int>(entry.profile_layers.size()) - shown);
+        label += QStringLiteral(" [%1]").arg(layers.join(QStringLiteral(", ")));
+      }
+    }
+    else
+    {
+      if (entry.runtime_element.use_projection)
+        label += QStringLiteral(" proj");
+      if (entry.runtime_element.use_layer)
+        label += QStringLiteral(" layer");
+      if (entry.runtime_element.use_viewport)
+        label += QStringLiteral(" vp");
+      if (entry.runtime_element.use_scissor)
+        label += QStringLiteral(" scissor");
+      if (entry.runtime_element.use_render_state)
+        label += QStringLiteral(" state");
+    }
     if (!entry.texture_hashes.empty())
       label += QStringLiteral(" tex");
     if (!entry.selected_match_filter.empty())

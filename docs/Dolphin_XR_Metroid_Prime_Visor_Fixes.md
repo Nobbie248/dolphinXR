@@ -2,19 +2,23 @@
 
 ## Current Status
 
-Last updated 2026-06-04.
+Last updated 2026-06-05.
 
 Metroid Prime 1 GC thermal visor is working correctly on both Vulkan/OpenXR and D3D11/OpenXR.
 The heat effect appears in both eyes, updates each frame, and uses the correct per-eye view for
 each eye. Mario Kart Wii EFB copies were also re-tested after the D3D11 change and remained
 correct.
 
+Metroid Prime 2 GC dark visor is also working on both Vulkan/OpenXR and D3D11/OpenXR. The grey
+dark visor overlay keeps the normal per-eye EFB copy behavior, and the red highlight overlay is
+visible in both eyes through the layered palette conversion path.
+
 Current-good test baseline:
 
 - Backends: Vulkan and D3D11
 - OpenXR runtime: VirtualDesktopXR
 - Headset: Meta Quest 3
-- Game: Metroid Prime 1 GC
+- Games: Metroid Prime 1 GC and Metroid Prime 2 GC
 - Regression check: Mario Kart Wii EFB copies
 
 The current implementation is intentionally smaller than the earlier D3D11 experiment. Both Vulkan
@@ -35,12 +39,16 @@ Two separate VR pane toggles control the backend-specific palette conversion pat
 
 Both toggles are default-on in the VR settings pane. Both are still tightly gated to:
 
-- Metroid Prime 1 GC profile only
+- Metroid Prime 1 GC or Metroid Prime 2 GC profile only
 - OpenXR only
-- 640x448 stereo EFB copy source
 - color copy only
 - non-XFB copy
 - source texture with at least 2 layers
+
+The candidate dimensions are intentionally narrow:
+
+- MP1 thermal/X-Ray palette source: 640x448 stereo EFB copy.
+- MP2 dark visor red highlight palette source: 408x286 stereo EFB copy.
 
 ## Why Vulkan Works
 
@@ -88,6 +96,29 @@ This keeps the D3D11 fix narrow:
 - Only D3D11/OpenXR uses it when `Metroid Prime Thermal Palette Fix (D3D11)` is enabled.
 - Mario Kart Wii EFB copies remain unaffected in testing.
 - No X-Ray-specific D3D11 shader fallback is added by this fix.
+
+## Metroid Prime 2 Dark Visor
+
+Metroid Prime 2's dark visor needed a different split than MP1:
+
+- The grey dark visor overlay is a full-view stereo EFB copy, commonly 640x448. It should keep the
+  normal per-eye EFB copy path. Forcing source layer 0 made the right eye a copy of the left eye and
+  was removed.
+- The red highlight overlay is a smaller paletted stereo EFB copy, 408x286. This is the path that
+  needed layered palette conversion.
+
+The working MP2 fix is therefore:
+
+1. Keep the full-view grey overlay as a normal stereo EFB copy.
+2. Detect the MP2 408x286 dark-highlight palette source in `TextureCacheBase::ApplyPaletteToEntry`.
+3. Use the layered palette conversion pipeline for that source on Vulkan or D3D11 when the matching
+   Metroid visor toggle is enabled.
+4. In `VertexManagerBase`, treat draws that consume the MP2 dark visor EFB copies as fullscreen
+   overlays when no explicit element/shader override already matched.
+
+This keeps MP2 on the same low-risk architecture as the MP1 fix: texture-cache palette conversion
+preserves the two eye layers, while generated game shaders and backend shader interfaces remain
+unchanged.
 
 ## Current Thermal Path
 
@@ -137,6 +168,7 @@ Key pieces now involved:
 
 - `TextureCacheBase`
   - Detects MP1 thermal stereo source candidates.
+  - Detects MP2 dark visor red-highlight palette source candidates.
   - Invalidates the texture cache when either backend thermal palette toggle changes.
   - Chooses a layered palette-conversion pipeline when the active backend toggle and source gates
     match.
@@ -149,6 +181,8 @@ Key pieces now involved:
 - `VertexManagerBase`
   - Runs the Metroid element classifier.
   - Keeps classified HUD/visor/map-style layers headlocked.
+  - Applies fullscreen handling for MP2 dark visor EFB copy consumers when no explicit override
+    already matched.
   - Does not contain a D3D11 `tex0.z` visor fallback in the current fix.
 
 - `DolphinQt/Settings/VRPane`
@@ -162,6 +196,8 @@ The current runtime path should be checked visually:
 - Vulkan/OpenXR should keep the thermal effect aligned and updating in both eyes.
 - D3D11/OpenXR should keep the thermal effect aligned and updating in both eyes with
   `Metroid Prime Thermal Palette Fix (D3D11)` enabled.
+- MP2 Vulkan/OpenXR and D3D11/OpenXR should keep the dark visor grey overlay per-eye and should
+  show the red highlight overlay in both eyes.
 - Mario Kart Wii EFB copies should remain correct with the D3D11 toggle enabled.
 - D3D11 should not need `MonoOverlayRightShift`, thermal UV offsets, shader skips, `tex0.z`, or
   `cvr_layer_override`.
@@ -169,6 +205,7 @@ The current runtime path should be checked visually:
 If targeted diagnostics are reintroduced later, the useful invariants are:
 
 - The MP1 thermal source is a 2-layer 640x448 color EFB copy.
+- The MP2 dark highlight source is a 2-layer 408x286 color EFB copy.
 - The palette conversion uses the layered pipeline for 2-layer sources.
 - The D3D11 fix is palette-conversion only.
 - No generated D3D11 game shader code should change for this fix.
@@ -176,8 +213,9 @@ If targeted diagnostics are reintroduced later, the useful invariants are:
 ## Remaining Work
 
 - Keep both Vulkan/OpenXR and D3D11/OpenXR as reference paths for MP1 GC thermal visor validation.
+- Keep both Vulkan/OpenXR and D3D11/OpenXR as reference paths for MP2 GC dark visor validation.
 - Keep Mario Kart Wii EFB copies as the regression check before adding any future D3D11 visor work.
-- Consider extending the same layered palette-source reasoning to MP2, MP3, and Trilogy if their
+- Consider extending the same layered palette-source reasoning to MP3 and Trilogy if their
   thermal/visor effects use the same kind of paletted stereo EFB source.
 
 ## Files Touched
@@ -193,6 +231,7 @@ If targeted diagnostics are reintroduced later, the useful invariants are:
 
 - `Source/Core/VideoCommon/TextureCacheBase.h/.cpp`
   - Detects MP1 thermal stereo source candidates.
+  - Detects MP2 dark visor red-highlight palette source candidates.
   - Selects layered palette conversion for Vulkan or D3D11 when the matching toggle is enabled.
 
 - `Source/Core/VideoCommon/ShaderCache.h/.cpp`
@@ -203,3 +242,5 @@ If targeted diagnostics are reintroduced later, the useful invariants are:
 
 - `Source/Core/VideoCommon/VertexManagerBase.cpp`
   - Applies the clean Metroid classifier behavior for headlocked classified layers.
+  - Applies fullscreen handling for MP2 dark visor EFB copy consumers when no explicit override
+    already matched.
