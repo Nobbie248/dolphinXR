@@ -231,7 +231,9 @@ const Info<float> GFX_VR_ELEMENT_DEPTH{{System::GFX, "VR", "ElementDepth"}, 0.00
 const Info<bool> GFX_VR_REMOVE_BARS{{System::GFX, "VR", "RemoveCinematicBars"}, true};
 const Info<bool> GFX_VR_ORTHO_SCISSOR_FIX{{System::GFX, "VR", "OrthoScissorFix"}, true};
 const Info<bool> GFX_VR_METROID_THERMAL_VISOR_FIX{
-    {System::GFX, "VR", "MetroidThermalVisorFix"}, false};
+    {System::GFX, "VR", "MetroidThermalVisorFix"}, true};
+const Info<bool> GFX_VR_METROID_D3D_THERMAL_PALETTE_FIX{
+    {System::GFX, "VR", "MetroidD3DThermalPaletteFix"}, true};
 const Info<bool> GFX_VR_LOCK_HEAD_POSE{{System::GFX, "VR", "LockHeadPosePerFrame"}, false};
 const Info<bool> GFX_VR_AR_MODE{{System::GFX, "VR", "ARMode"}, false};
 const Info<bool> GFX_VR_AR_MODE_DEBUG{{System::GFX, "VR", "ARModeDebug"}, false};

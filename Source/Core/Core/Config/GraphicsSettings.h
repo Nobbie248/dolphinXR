@@ -209,6 +209,7 @@ extern const Info<float> GFX_VR_ELEMENT_DEPTH;
 extern const Info<bool> GFX_VR_REMOVE_BARS;
 extern const Info<bool> GFX_VR_ORTHO_SCISSOR_FIX;
 extern const Info<bool> GFX_VR_METROID_THERMAL_VISOR_FIX;
+extern const Info<bool> GFX_VR_METROID_D3D_THERMAL_PALETTE_FIX;
 extern const Info<bool> GFX_VR_LOCK_HEAD_POSE;
 extern const Info<bool> GFX_VR_AR_MODE;
 extern const Info<bool> GFX_VR_AR_MODE_DEBUG;

@@ -347,6 +347,9 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
       new ConfigBool(tr("Ortho Scissor Fix"), Config::GFX_VR_ORTHO_SCISSOR_FIX);
   m_metroid_thermal_visor_fix = new ConfigBool(
       tr("Metroid Prime Thermal Visor Fix (Vulkan)"), Config::GFX_VR_METROID_THERMAL_VISOR_FIX);
+  m_metroid_d3d_thermal_palette_fix =
+      new ConfigBool(tr("Metroid Prime Thermal Palette Fix (D3D11)"),
+                     Config::GFX_VR_METROID_D3D_THERMAL_PALETTE_FIX);
   m_lock_head_pose =
       new ConfigBool(tr("Lock Head Pose Per Frame"), Config::GFX_VR_LOCK_HEAD_POSE);
   m_ar_mode_debug =
@@ -360,6 +363,7 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   hacks_group_layout->addWidget(m_remove_bars);
   hacks_group_layout->addWidget(m_ortho_scissor_fix);
   hacks_group_layout->addWidget(m_metroid_thermal_visor_fix);
+  hacks_group_layout->addWidget(m_metroid_d3d_thermal_palette_fix);
   hack_layout->addWidget(hacks_group);
 
   ar_mode_layout->addWidget(m_ar_mode, 0, 0, 1, 3);
@@ -657,7 +661,14 @@ void VRPane::AddDescriptions()
       "flattening it to one eye."
       "<br><br>The fix is limited to Metroid Prime thermal-sized color EFB copies. Disable it if "
       "a build needs to compare against the original texture conversion behavior."
-      "<br><br><dolphin_emphasis>If unsure, leave this unchecked.</dolphin_emphasis>");
+      "<br><br><dolphin_emphasis>If unsure, leave this checked.</dolphin_emphasis>");
+  static constexpr char TR_METROID_D3D_THERMAL_PALETTE_FIX_DESCRIPTION[] = QT_TR_NOOP(
+      "Uses the same layered palette conversion path for Metroid Prime's thermal visor EFB copy "
+      "when running the D3D11 backend in OpenXR."
+      "<br><br>This only changes palette conversion for Metroid Prime thermal-sized stereo EFB "
+      "copies. It does not change normal D3D11 game shaders, X-Ray handling, or non-Metroid "
+      "games."
+      "<br><br><dolphin_emphasis>If unsure, leave this checked.</dolphin_emphasis>");
   static constexpr char TR_LOCK_HEAD_POSE_DESCRIPTION[] = QT_TR_NOOP(
       "Snaps OpenXR head-tracking updates to game-frame boundaries (XFB copies) so every draw "
       "call within a single game frame uses one consistent head pose."
@@ -738,6 +749,8 @@ void VRPane::AddDescriptions()
   m_remove_bars->SetDescription(tr(TR_REMOVE_BARS_DESCRIPTION));
   m_ortho_scissor_fix->SetDescription(tr(TR_ORTHO_SCISSOR_FIX_DESCRIPTION));
   m_metroid_thermal_visor_fix->SetDescription(tr(TR_METROID_THERMAL_VISOR_FIX_DESCRIPTION));
+  m_metroid_d3d_thermal_palette_fix->SetDescription(
+      tr(TR_METROID_D3D_THERMAL_PALETTE_FIX_DESCRIPTION));
   m_lock_head_pose->SetDescription(tr(TR_LOCK_HEAD_POSE_DESCRIPTION));
   m_vr_gamma->SetDescription(tr(TR_VR_GAMMA_DESCRIPTION));
   m_auto_layer_spread->SetDescription(tr(TR_AUTO_LAYER_SPREAD_DESCRIPTION));
@@ -810,4 +823,6 @@ void VRPane::ResetGeneralSettings()
                            Config::GFX_VR_ELEMENT_DEPTH.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_METROID_THERMAL_VISOR_FIX,
                            Config::GFX_VR_METROID_THERMAL_VISOR_FIX.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_METROID_D3D_THERMAL_PALETTE_FIX,
+                           Config::GFX_VR_METROID_D3D_THERMAL_PALETTE_FIX.GetDefaultValue());
 }

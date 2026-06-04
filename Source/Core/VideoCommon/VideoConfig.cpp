@@ -225,6 +225,8 @@ void VideoConfig::Refresh()
   vr_remove_bars = Config::Get(Config::GFX_VR_REMOVE_BARS);
   vr_ortho_scissor_fix = Config::Get(Config::GFX_VR_ORTHO_SCISSOR_FIX);
   vr_metroid_thermal_visor_fix = Config::Get(Config::GFX_VR_METROID_THERMAL_VISOR_FIX);
+  vr_metroid_d3d_thermal_palette_fix =
+      Config::Get(Config::GFX_VR_METROID_D3D_THERMAL_PALETTE_FIX);
   vr_lock_head_pose = Config::Get(Config::GFX_VR_LOCK_HEAD_POSE);
   vr_ar_mode = Config::Get(Config::GFX_VR_AR_MODE);
   vr_ar_mode_debug = Config::Get(Config::GFX_VR_AR_MODE_DEBUG);

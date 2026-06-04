@@ -174,6 +174,8 @@ void TextureCacheBase::OnConfigChanged(const VideoConfig& config)
       config.bArbitraryMipmapDetection != m_backup_config.arbitrary_mipmap_detection ||
       config.bGraphicMods != m_backup_config.graphics_mods ||
       config.vr_metroid_thermal_visor_fix != m_backup_config.metroid_thermal_visor_fix ||
+      config.vr_metroid_d3d_thermal_palette_fix !=
+          m_backup_config.metroid_d3d_thermal_palette_fix ||
       change_count != m_backup_config.graphics_mod_change_count)
   {
     Invalidate();
@@ -267,6 +269,7 @@ void TextureCacheBase::SetBackupConfig(const VideoConfig& config)
   m_backup_config.arbitrary_mipmap_detection = config.bArbitraryMipmapDetection;
   m_backup_config.graphics_mods = config.bGraphicMods;
   m_backup_config.metroid_thermal_visor_fix = config.vr_metroid_thermal_visor_fix;
+  m_backup_config.metroid_d3d_thermal_palette_fix = config.vr_metroid_d3d_thermal_palette_fix;
   m_backup_config.graphics_mod_change_count =
       config.graphics_mod_config ? config.graphics_mod_config->GetChangeCount() : 0;
 }
@@ -286,10 +289,14 @@ RcTcacheEntry TextureCacheBase::ApplyPaletteToEntry(RcTcacheEntry& entry, const 
 {
   DEBUG_ASSERT(g_backend_info.bSupportsPaletteConversion);
 
+  const bool backend_fix_enabled =
+      (g_backend_info.api_type == APIType::Vulkan &&
+       g_ActiveConfig.vr_metroid_thermal_visor_fix) ||
+      (g_backend_info.api_type == APIType::D3D &&
+       g_ActiveConfig.vr_metroid_d3d_thermal_palette_fix);
   bool use_layered_pipeline =
-      g_ActiveConfig.vr_metroid_thermal_visor_fix &&
-      g_backend_info.api_type == APIType::Vulkan &&
-      g_ActiveConfig.stereo_mode == StereoMode::OpenXR && IsMetroidPrime1GC() &&
+      backend_fix_enabled && g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
+      IsMetroidPrime1GC() &&
       IsMetroidPrime1ThermalStereoSourceCandidate(entry->native_width, entry->native_height,
                                                   entry->GetNumLayers(), false,
                                                   entry->is_xfb_copy);

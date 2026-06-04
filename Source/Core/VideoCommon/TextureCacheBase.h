@@ -446,6 +446,7 @@ private:
     bool arbitrary_mipmap_detection;
     bool graphics_mods;
     bool metroid_thermal_visor_fix;
+    bool metroid_d3d_thermal_palette_fix;
     u32 graphics_mod_change_count;
   };
   BackupConfig m_backup_config = {};
