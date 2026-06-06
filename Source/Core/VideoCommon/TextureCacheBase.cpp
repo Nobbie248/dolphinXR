@@ -51,6 +51,7 @@
 #include "VideoCommon/ShaderCache.h"
 #include "VideoCommon/ShaderHunter.h"
 #include "VideoCommon/Statistics.h"
+#include "VideoCommon/TextureElementManager.h"
 #include "VideoCommon/TMEM.h"
 #include "VideoCommon/TextureConversionShader.h"
 #include "VideoCommon/TextureConverterShaderGen.h"
@@ -2479,13 +2480,19 @@ void TextureCacheBase::CopyRenderTargetToTexture(
       // 2. Shader-based: clears when a ClearEFB shader override was drawn since the last copy.
       //    The ClearEFB flag is set by VertexManagerBase::Flush when a shader with ClearEFB handling
       //    is drawn, and consumed (reset) here when the next EFB copy occurs.
+      // 3. Texture-based: same, but armed by a Texture Element Override with Clear EFB.
+      // Evaluate both shader and texture clears (don't short-circuit) so each consumes its own
+      // pending flag on every copy.
       const int clear_min = g_ActiveConfig.vr_clear_efb_min_width;
       const bool size_clear = !is_xfb_copy && clear_min > 0 &&
                               static_cast<int>(width) >= clear_min;
       const bool shader_clear = !is_xfb_copy &&
                                 ShaderHunter::GetInstance().ShouldClearEFBCopy(
                                     static_cast<int>(width));
-      if ((size_clear || shader_clear) &&
+      const bool texture_clear = !is_xfb_copy &&
+                                 TextureElementManager::GetInstance().ShouldClearEFBCopy(
+                                     static_cast<int>(width));
+      if ((size_clear || shader_clear || texture_clear) &&
           g_ActiveConfig.stereo_mode == StereoMode::OpenXR)
       {
         g_gfx->SetAndClearFramebuffer(entry->framebuffer.get(),

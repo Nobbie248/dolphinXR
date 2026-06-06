@@ -24,6 +24,7 @@
 #include "DolphinQt/Config/PatchesWidget.h"
 #include "DolphinQt/Config/HideObjectWidget.h"
 #include "DolphinQt/Config/ShaderOverrideWidget.h"
+#include "DolphinQt/Config/TextureElementOverrideWidget.h"
 #include "DolphinQt/Config/VerifyWidget.h"
 #include "DolphinQt/QtUtils/WrapInScrollArea.h"
 
@@ -81,6 +82,10 @@ PropertiesDialog::PropertiesDialog(QWidget* parent, const UICommon::GameFile& ga
   auto* const element_group_overrides =
       new ElementsGroupOverrideWidget(game.GetGameID(), revision);
   AddPane(element_group_overrides, tr("Elements Group Overrides"));
+
+  auto* const texture_element_overrides =
+      new TextureElementOverrideWidget(game.GetGameID(), revision);
+  AddPane(texture_element_overrides, tr("Texture Element Overrides"));
 
   auto* const hide_objects = new HideObjectWidget(game.GetGameID(), revision);
   AddPane(hide_objects, tr("Hide Objects"));

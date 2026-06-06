@@ -208,6 +208,10 @@ add_executable(dolphin-emu
   Config/ShaderOverrideAddEditDialog.h
   Config/ShaderOverrideWidget.cpp
   Config/ShaderOverrideWidget.h
+  Config/TextureElementOverrideAddEditDialog.cpp
+  Config/TextureElementOverrideAddEditDialog.h
+  Config/TextureElementOverrideWidget.cpp
+  Config/TextureElementOverrideWidget.h
   Config/PropertiesDialog.cpp
   Config/PropertiesDialog.h
   Config/SettingsWindow.cpp

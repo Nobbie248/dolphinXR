@@ -49,6 +49,7 @@
 #include "VideoCommon/CullingCodeFinder.h"
 #include "VideoCommon/HideObjectEngine.h"
 #include "VideoCommon/ShaderHunter.h"
+#include "VideoCommon/TextureElementManager.h"
 #include "VideoCommon/XFStateManager.h"
 
 #include "Common/Hash.h"
@@ -841,8 +842,10 @@ void VertexManagerBase::Flush()
         // Also check persistent overrides (always active, even when hunting is disabled).
         bool hunter_skip = false;
         bool elements_skip = false;
+        bool texmgr_skip = false;
         auto& hunter = ShaderHunter::GetInstance();
         auto& elements = ElementsGroupManager::GetInstance();
+        auto& texmgr = TextureElementManager::GetInstance();
         const bool hunter_enabled = hunter.IsEnabled();
         const bool hunter_debug_logging = hunter.IsDebugLogging();
         const bool hunter_has_overrides = hunter.HasOverrides();
@@ -854,7 +857,11 @@ void VertexManagerBase::Flush()
         const bool hunter_needs_families = hunter.NeedsShaderFamilySignatures();
         const bool hunter_needs_textures = hunter.NeedsTextureHashes();
         const bool hunter_needs_counters = hunter.NeedsOverrideDrawCounters();
-        if (hunter_enabled || hunter_has_overrides || hunter_debug_logging || elements_runtime_active)
+        const bool texmgr_has_overrides = texmgr.HasOverrides();
+        const bool texmgr_hunter_active = texmgr.IsHunterActive();
+        const bool texmgr_active = texmgr_has_overrides || texmgr_hunter_active;
+        if (hunter_enabled || hunter_has_overrides || hunter_debug_logging ||
+            elements_runtime_active || texmgr_active)
         {
           const auto& vs = m_current_pipeline_config.vs_uid;
           const auto& ps = m_current_pipeline_config.ps_uid;
@@ -869,8 +876,9 @@ void VertexManagerBase::Flush()
           std::array<u64, 8> tex_hashes{};
           std::array<std::string, 8> tex_names{};
           const bool needs_texture_hashes =
-              hunter_enabled || hunter_needs_textures || elements_runtime_active;
-          const bool needs_texture_names = hunter_enabled || elements_popup_open;
+              hunter_enabled || hunter_needs_textures || elements_runtime_active || texmgr_active;
+          const bool needs_texture_names =
+              hunter_enabled || elements_popup_open || texmgr_hunter_active;
           if (needs_texture_hashes || needs_texture_names)
           {
             for (u32 i = 0; i < 8; i++)
@@ -884,6 +892,9 @@ void VertexManagerBase::Flush()
 
           if (hunter_enabled || hunter_needs_textures)
             hunter.SetCurrentDrawTextures(tex_hashes, tex_names);
+
+          if (texmgr_hunter_active)
+            texmgr.CaptureDrawTextures(tex_hashes, tex_names);
 
           u64 vs_family = 0;
           u64 ps_family = 0;
@@ -991,8 +1002,12 @@ void VertexManagerBase::Flush()
           if (!hunter_skip && !elements_skip && hunter_has_overrides)
             hunter_skip = hunter.ShouldSkipByOverride(vs_hash, ps_hash, gs_hash);
 
+          // Texture Element Override skip: match purely on bound texture hash (fallback).
+          if (!hunter_skip && !elements_skip && texmgr_has_overrides)
+            texmgr_skip = texmgr.ShouldSkipByTexture(tex_hashes);
+
           // Check for screen/fullscreen handling overrides (VR stereo mode override)
-          if (!hunter_skip && !elements_skip)
+          if (!hunter_skip && !elements_skip && !texmgr_skip)
           {
             auto handling = ShaderHunter::HandlingType::Skip;
             int manual_layer = -1;
@@ -1027,6 +1042,13 @@ void VertexManagerBase::Flush()
               {
                 units_per_meter = hunter.GetOverrideUnitsPerMeter(vs_hash, ps_hash, gs_hash);
               }
+            }
+            // Texture Element Override (fallback): match purely on bound texture hash, applied
+            // only when neither Elements nor Shader overrides produced a handling for this draw.
+            if (handling == ShaderHunter::HandlingType::Skip && texmgr_has_overrides)
+            {
+              handling = texmgr.GetHandlingForTextures(tex_hashes, &manual_layer, &element_depth,
+                                                       &units_per_meter);
             }
             if (handling == ShaderHunter::HandlingType::Skip && metroid_profile_active)
               handling = GetMetroidLayerBehavior(metroid_layer).handling;
@@ -1080,6 +1102,8 @@ void VertexManagerBase::Flush()
           // This lets a shader be e.g. Skip+ClearEFB or Screen+ClearEFB.
           if (hunter_has_overrides)
             hunter.CheckClearEFBForDraw(vs_hash, ps_hash, gs_hash);
+          if (texmgr_has_overrides)
+            texmgr.CheckClearEFBForDraw(tex_hashes);
 
           // VR Draw Debug Logging: log every draw call's projection, viewport, scissor, and
           // shader hashes so we can identify how specific visual elements (e.g. cinematic bars)
@@ -1163,7 +1187,7 @@ void VertexManagerBase::Flush()
           }
         }
 
-        if (!hunter_skip && !elements_skip)
+        if (!hunter_skip && !elements_skip && !texmgr_skip)
         {
           if (shader_hunter_force_pink && !m_pink_pixel_shader)
           {
@@ -1557,11 +1581,13 @@ void VertexManagerBase::OnEndFrame()
   {
     hunter.LoadOverridesIfNeeded(game_id);
     ElementsGroupManager::GetInstance().LoadOverridesIfNeeded(game_id);
+    TextureElementManager::GetInstance().LoadOverridesIfNeeded(game_id);
     HideObjectEngine::Engine::GetInstance().LoadCodesIfNeeded(game_id);
   }
   hunter.OnFrameEnd();
   CullingCodeFinder::GetInstance().OnFrameEnd();
   ElementsGroupManager::GetInstance().OnFrameEnd();
+  TextureElementManager::GetInstance().OnFrameEnd();
   HideObjectEngine::Engine::GetInstance().OnFrameEnd();
   GetMetroidElementClassifier().ResetFrame();
   auto& system = Core::System::GetInstance();

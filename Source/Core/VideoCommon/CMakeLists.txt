@@ -184,6 +184,8 @@ add_library(videocommon
   CullingCodeFinder.h
   ShaderHunter.cpp
   ShaderHunter.h
+  TextureElementManager.cpp
+  TextureElementManager.h
   Spirv.cpp
   Spirv.h
   Statistics.cpp
