@@ -110,6 +110,7 @@ private:
   QComboBox* m_virtual_screen_mode = nullptr;
   QComboBox* m_dont_clear_screen_mode = nullptr;
   QComboBox* m_lock_head_pose_mode = nullptr;
+  QComboBox* m_detect_skybox_mode = nullptr;
   QComboBox* m_opcode_replay_mode = nullptr;
   QComboBox* m_replay_refresh_rate_mode = nullptr;
   QComboBox* m_forced_vbi_frequency_mode = nullptr;

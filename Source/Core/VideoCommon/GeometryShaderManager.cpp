@@ -280,6 +280,25 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
 
             // Perspective flag consumed in the OpenXR GS path.
             constants.stereoparams[3] = 1.0f;
+
+            // Skybox heuristic (Hydra "Detect Skybox"): an object drawn at the camera origin
+            // (translation 0,0,0) with a non-identity matrix is treated as a skybox.  Render it
+            // with the eye position locked at 0,0,0 (rotation only, no IPD/positional offset) so
+            // it sits at infinity instead of appearing too close.  cstereo.z is the per-draw
+            // world-position weight consumed in the GS perspective path: 1.0 = normal (apply eye
+            // position), 0.0 = skybox (rotation only).  This must be set for EVERY perspective VR
+            // draw, otherwise normal geometry would lose its per-eye offset and stereo would break.
+            bool is_skybox = false;
+            if (g_ActiveConfig.vr_detect_skybox)
+            {
+              const auto& pnm = vertex_shader_manager.constants.posnormalmatrix;
+              if (pnm[0][3] == 0.0f && pnm[1][3] == 0.0f && pnm[2][3] == 0.0f &&
+                  pnm[0][0] != 1.0f)
+              {
+                is_skybox = true;
+              }
+            }
+            constants.stereoparams[2] = is_skybox ? 0.0f : 1.0f;
           }
           else if (g_ActiveConfig.vr_virtual_screen)
           {

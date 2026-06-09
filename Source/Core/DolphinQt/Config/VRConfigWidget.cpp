@@ -181,12 +181,14 @@ void VRConfigWidget::CreateWidgets()
   m_virtual_screen_mode = new QComboBox;
   m_dont_clear_screen_mode = new QComboBox;
   m_lock_head_pose_mode = new QComboBox;
+  m_detect_skybox_mode = new QComboBox;
   m_opcode_replay_mode = new QComboBox;
   m_replay_refresh_rate_mode = new QComboBox;
   m_forced_vbi_frequency_mode = new QComboBox;
   PopulateBoolModeCombo(m_virtual_screen_mode);
   PopulateBoolModeCombo(m_dont_clear_screen_mode);
   PopulateBoolModeCombo(m_lock_head_pose_mode);
+  PopulateBoolModeCombo(m_detect_skybox_mode);
   PopulateReplayModeCombo(m_opcode_replay_mode);
   PopulateReplayRefreshRateModeCombo(m_replay_refresh_rate_mode);
   PopulateForcedVBIFrequencyModeCombo(m_forced_vbi_frequency_mode);
@@ -200,6 +202,7 @@ void VRConfigWidget::CreateWidgets()
   form->addRow(tr("Virtual Screen"), m_virtual_screen_mode);
   form->addRow(tr("Don't Clear Screen"), m_dont_clear_screen_mode);
   form->addRow(tr("Lock Head Pose per Frame"), m_lock_head_pose_mode);
+  form->addRow(tr("Detect Skybox"), m_detect_skybox_mode);
   form->addRow(tr("Opcode Replay Input"), m_opcode_replay_mode);
   form->addRow(tr("Replay Refresh Rate"), m_replay_refresh_rate_mode);
   form->addRow(tr("Forced VBI Frequency in VR"), m_forced_vbi_frequency_mode);
@@ -284,6 +287,8 @@ void VRConfigWidget::CreateWidgets()
   connect(m_dont_clear_screen_mode, &QComboBox::currentIndexChanged, this,
           [this](int) { SaveToFile(); });
   connect(m_lock_head_pose_mode, &QComboBox::currentIndexChanged, this,
+          [this](int) { SaveToFile(); });
+  connect(m_detect_skybox_mode, &QComboBox::currentIndexChanged, this,
           [this](int) { SaveToFile(); });
   auto update_replay_refresh_rate_enabled = [this] {
     m_replay_refresh_rate_mode->setEnabled(GetReplayMode(m_opcode_replay_mode) != ReplayMode::Off);
@@ -428,6 +433,7 @@ void VRConfigWidget::LoadFromFile()
   SetBoolMode(m_virtual_screen_mode, ParseBoolMode(values, "VirtualScreen"));
   SetBoolMode(m_dont_clear_screen_mode, ParseBoolMode(values, "DontClearScreen"));
   SetBoolMode(m_lock_head_pose_mode, ParseBoolMode(values, "LockHeadPosePerFrame"));
+  SetBoolMode(m_detect_skybox_mode, ParseBoolMode(values, "DetectSkybox"));
   SetReplayMode(m_opcode_replay_mode, ParseReplayMode(values, "OpcodeReplay"));
   SetReplayRefreshRateMode(m_replay_refresh_rate_mode, ParseReplayRefreshRateMode(values));
   m_replay_refresh_rate_mode->setEnabled(GetReplayMode(m_opcode_replay_mode) != ReplayMode::Off);
@@ -481,6 +487,7 @@ void VRConfigWidget::SaveToFile()
   append_bool("VirtualScreen", GetBoolMode(m_virtual_screen_mode));
   append_bool("DontClearScreen", GetBoolMode(m_dont_clear_screen_mode));
   append_bool("LockHeadPosePerFrame", GetBoolMode(m_lock_head_pose_mode));
+  append_bool("DetectSkybox", GetBoolMode(m_detect_skybox_mode));
   switch (GetReplayMode(m_opcode_replay_mode))
   {
   case ReplayMode::Off:

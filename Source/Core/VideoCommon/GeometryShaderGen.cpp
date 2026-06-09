@@ -48,7 +48,7 @@ GeometryShaderUid GetGeometryShaderUid(PrimitiveType primitive_type)
   GeometryShaderUid out;
 
   geometry_shader_uid_data* const uid_data = out.GetUidData();
-  uid_data->code_version = 16;
+  uid_data->code_version = 17;
   uid_data->primitive_type = static_cast<u32>(primitive_type);
   uid_data->numTexGens = xfmem.numTexGen.numTexGens;
 
@@ -265,18 +265,18 @@ ShaderCode GenerateGeometryShaderCode(APIType api_type, const ShaderHostConfig& 
         out.Write("\t\t{{\n");
         out.Write("\t\t\tfloat4 eye_proj_x = " I_LEGACY_EYE_PROJ_X "[eye];\n");
         out.Write("\t\t\tfloat4 eye_proj_y = " I_LEGACY_EYE_PROJ_Y "[eye];\n");
-        out.Write(
-            "\t\t\tf.pos.x = eye_proj_x.z * f.pos.x + eye_proj_x.x - eye_proj_x.y * f.pos.w;\n");
-        out.Write(
-            "\t\t\tf.pos.y = eye_proj_y.z * f.pos.y + eye_proj_y.x - eye_proj_y.y * f.pos.w;\n");
+        // eye_proj_*.x is the per-eye position-derived camera shift; * cstereo.z removes it for
+        // skybox draws (cstereo.z == 0) so the skybox renders rotation-only, locked at infinity.
+        out.Write("\t\t\tf.pos.x = eye_proj_x.z * f.pos.x + eye_proj_x.x * " I_STEREOPARAMS
+                  ".z - eye_proj_x.y * f.pos.w;\n");
+        out.Write("\t\t\tf.pos.y = eye_proj_y.z * f.pos.y + eye_proj_y.x * " I_STEREOPARAMS
+                  ".z - eye_proj_y.y * f.pos.w;\n");
         if (!host_config.fast_depth_calc)
         {
-          out.Write(
-              "\t\t\tf.clipPos.x = eye_proj_x.z * f.clipPos.x + eye_proj_x.x - eye_proj_x.y * "
-              "f.clipPos.w;\n");
-          out.Write(
-              "\t\t\tf.clipPos.y = eye_proj_y.z * f.clipPos.y + eye_proj_y.x - eye_proj_y.y * "
-              "f.clipPos.w;\n");
+          out.Write("\t\t\tf.clipPos.x = eye_proj_x.z * f.clipPos.x + eye_proj_x.x * " I_STEREOPARAMS
+                    ".z - eye_proj_x.y * f.clipPos.w;\n");
+          out.Write("\t\t\tf.clipPos.y = eye_proj_y.z * f.clipPos.y + eye_proj_y.x * " I_STEREOPARAMS
+                    ".z - eye_proj_y.y * f.clipPos.w;\n");
         }
         out.Write("\t\t}}\n");
         out.Write("\t\telse\n");
@@ -292,6 +292,11 @@ ShaderCode GenerateGeometryShaderCode(APIType api_type, const ShaderHostConfig& 
       // triangle winding to match the game's adjusted cull mode.
       out.Write("\t\tfloat4 vp = f.viewPos;\n");
       out.Write("\t\tvp.x *= " I_STEREOPARAMS ".x;\n");
+      // cstereo.z is the world-position weight: 1.0 = normal, 0.0 = skybox.  The per-eye
+      // position offset (IPD + head translation) is baked into the .w component of the
+      // projection rows, applied only because vp.w == 1.  Zeroing vp.w for a skybox draw drops
+      // that offset from x, y AND depth at once, leaving rotation intact (eyes locked at 0,0,0).
+      out.Write("\t\tvp.w *= " I_STEREOPARAMS ".z;\n");
       out.Write("\t\tfloat z_eye = dot(zrow, vp);\n");
       out.Write("\t\tfloat clip_x = dot(row0, vp);\n");
       out.Write("\t\tfloat clip_y = dot(row1, vp);\n");
