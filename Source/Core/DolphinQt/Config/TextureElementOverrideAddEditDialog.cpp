@@ -324,6 +324,14 @@ void TextureElementOverrideAddEditDialog::ShowTextureBrowser()
   browser_config.apply_selected_hashes = [this](const std::vector<u64>& hashes) {
     SetTextureHashFields(hashes);
   };
+  // Live preview: as textures are checked, skip/pink-highlight their draws in-game.
+  browser_config.live_selection_changed = [](const std::vector<u64>& hashes) {
+    TextureElementManager::GetInstance().SetPreviewTextures(hashes);
+  };
+  // Preview mode (Skip/Pink) toggle shown in the browser window.
+  browser_config.preview_mode_changed = [](bool pink) {
+    TextureElementManager::GetInstance().SetPreviewPink(pink);
+  };
 
   // Enable global texture capture while the browser is open; restore on close.
   TextureElementManager::GetInstance().SetHunterActive(true);

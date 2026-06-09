@@ -565,9 +565,11 @@ void TextureElementManager::SetHunterActive(bool active)
   m_hunter_active.store(active, std::memory_order_relaxed);
   if (!active)
   {
+    m_has_preview.store(false, std::memory_order_relaxed);
     std::lock_guard lock(m_mutex);
     m_textures_collecting.clear();
     m_textures_display.clear();
+    m_preview_textures.clear();
   }
 }
 
@@ -609,4 +611,40 @@ std::vector<TextureElementManager::TextureUsage> TextureElementManager::GetCurre
   std::sort(result.begin(), result.end(),
             [](const TextureUsage& a, const TextureUsage& b) { return a.hash < b.hash; });
   return result;
+}
+
+void TextureElementManager::SetPreviewTextures(const std::vector<u64>& hashes)
+{
+  std::lock_guard lock(m_mutex);
+  m_preview_textures.clear();
+  for (u64 hash : hashes)
+  {
+    if (hash != 0)
+      m_preview_textures.insert(hash);
+  }
+  m_has_preview.store(!m_preview_textures.empty(), std::memory_order_relaxed);
+}
+
+void TextureElementManager::SetPreviewPink(bool pink)
+{
+  m_preview_pink.store(pink, std::memory_order_relaxed);
+}
+
+bool TextureElementManager::IsPreviewPink() const
+{
+  return m_preview_pink.load(std::memory_order_relaxed);
+}
+
+bool TextureElementManager::HasPreviewMatch(const std::array<u64, 8>& bound) const
+{
+  if (!m_has_preview.load(std::memory_order_relaxed))
+    return false;
+
+  std::lock_guard lock(m_mutex);
+  for (u64 hash : bound)
+  {
+    if (hash != 0 && m_preview_textures.count(hash) > 0)
+      return true;
+  }
+  return false;
 }

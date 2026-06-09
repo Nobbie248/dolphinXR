@@ -7,12 +7,10 @@
 #include <string>
 #include <vector>
 
-#include <QPointer>
 #include <QWidget>
 
 #include "VideoCommon/TextureElementManager.h"
 
-class QDialog;
 class QListWidget;
 class QListWidgetItem;
 class QPushButton;
@@ -37,26 +35,21 @@ private:
 
   void OnItemChanged(QListWidgetItem* item);
   void OnSelectionChanged();
-  void OnTextureHunterClicked();
   void OnAddClicked();
   void OnEditClicked();
   void OnRemoveClicked();
   void OnRefreshClicked();
   void OnReloadClicked();
 
-  std::string MakeUniqueName(const std::string& base) const;
-
   std::string m_game_id;
   std::optional<u16> m_revision;
 
   QListWidget* m_code_list;
-  QPushButton* m_texture_hunter;
   QPushButton* m_code_add;
   QPushButton* m_code_edit;
   QPushButton* m_code_remove;
   QPushButton* m_code_refresh;
   QPushButton* m_code_reload;
-  QPointer<QDialog> m_texture_hunter_dialog;
 
   std::vector<TextureElementManager::TextureElementOverride> m_overrides;
 };

@@ -1006,6 +1006,16 @@ void VertexManagerBase::Flush()
           if (!hunter_skip && !elements_skip && texmgr_has_overrides)
             texmgr_skip = texmgr.ShouldSkipByTexture(tex_hashes);
 
+          // Live preview while the Texture Hunter browser is open: skip or pink-highlight draws
+          // binding a checked texture (Skip/Pink chosen in the browser's Preview mode toggle).
+          if (texmgr_hunter_active && texmgr.HasPreviewMatch(tex_hashes))
+          {
+            if (texmgr.IsPreviewPink())
+              shader_hunter_force_pink = true;
+            else
+              texmgr_skip = true;
+          }
+
           // Check for screen/fullscreen handling overrides (VR stereo mode override)
           if (!hunter_skip && !elements_skip && !texmgr_skip)
           {

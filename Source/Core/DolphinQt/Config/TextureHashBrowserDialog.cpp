@@ -12,6 +12,7 @@
 #include <QBrush>
 #include <QCheckBox>
 #include <QColor>
+#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QDirIterator>
@@ -123,6 +124,22 @@ QDialog* ShowTextureHashBrowserDialog(QWidget* parent, const TextureHashBrowserC
   continuous_scan_check->setToolTip(
       QObject::tr("Continuously refresh while this window is open.\n"
                    "Textures seen during scan stay visible in gray."));
+
+  // Optional Preview-mode selector (Skip/Pink): live-previews checked textures in-game.
+  QComboBox* preview_mode_combo = nullptr;
+  if (config.preview_mode_changed)
+  {
+    preview_mode_combo = new QComboBox;
+    preview_mode_combo->addItem(QObject::tr("Preview: Skip"), false);
+    preview_mode_combo->addItem(QObject::tr("Preview: Pink"), true);
+    preview_mode_combo->setToolTip(
+        QObject::tr("How checked textures are previewed in-game while this window is open.\n"
+                    "Skip = hide the draws; Pink = highlight them in magenta."));
+    QObject::connect(preview_mode_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), dlg,
+                     [preview_mode_combo, config](int) {
+                       config.preview_mode_changed(preview_mode_combo->currentData().toBool());
+                     });
+  }
 
   auto* scan_timer = new QTimer(dlg);
   scan_timer->setInterval(250);
@@ -323,10 +340,16 @@ QDialog* ShowTextureHashBrowserDialog(QWidget* parent, const TextureHashBrowserC
   layout->addWidget(tree);
   auto* bottom_layout = new QHBoxLayout;
   bottom_layout->addWidget(continuous_scan_check);
+  if (preview_mode_combo)
+    bottom_layout->addWidget(preview_mode_combo);
   bottom_layout->addStretch();
   bottom_layout->addWidget(buttons);
   layout->addLayout(bottom_layout);
   dlg->setLayout(layout);
+
+  // Sync the initial preview mode (the combo defaults to Skip).
+  if (preview_mode_combo)
+    config.preview_mode_changed(preview_mode_combo->currentData().toBool());
 
   populate();
   QTimer::singleShot(200, dlg, populate);

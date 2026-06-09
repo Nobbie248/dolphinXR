@@ -30,6 +30,9 @@ struct TextureHashBrowserConfig
   std::function<std::vector<TextureHashBrowserEntry>()> fetch_current_entries;
   std::function<void(const std::vector<u64>&)> apply_selected_hashes;
   std::function<void(const std::vector<u64>&)> live_selection_changed;
+  // Optional: when set, the dialog shows a Skip/Pink "Preview" mode selector and calls this with
+  // false=Skip / true=Pink whenever it changes (and once on open).
+  std::function<void(bool)> preview_mode_changed;
 };
 
 QDialog* ShowTextureHashBrowserDialog(QWidget* parent, const TextureHashBrowserConfig& config);

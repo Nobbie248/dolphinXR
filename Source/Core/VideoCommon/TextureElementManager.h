@@ -87,6 +87,17 @@ public:
   void OnFrameEnd();
   std::vector<TextureUsage> GetCurrentTextures() const;
 
+  // --- Live preview (Texture Hunter browser open) ---
+  // Draws binding a preview texture are skipped or pink-highlighted in-game without being saved,
+  // mirroring the Shader Override tool's texture preview. The set is cleared when the hunter is
+  // deactivated.
+  void SetPreviewTextures(const std::vector<u64>& hashes);
+  // Preview mode: false = Skip (hide the draw), true = Pink (magenta highlight).
+  void SetPreviewPink(bool pink);
+  bool IsPreviewPink() const;
+  // Video thread: true if any bound texture is in the live preview set.
+  bool HasPreviewMatch(const std::array<u64, 8>& bound) const;
+
 private:
   TextureElementManager() = default;
 
@@ -117,4 +128,9 @@ private:
   std::atomic_bool m_hunter_active = false;
   std::unordered_map<u64, std::string> m_textures_collecting;
   std::unordered_map<u64, std::string> m_textures_display;
+
+  // Live preview: textures checked in the browser (mutex-guarded; gated by m_has_preview).
+  std::atomic_bool m_has_preview = false;
+  std::atomic_bool m_preview_pink = false;  // false = Skip, true = Pink highlight
+  std::unordered_set<u64> m_preview_textures;
 };

@@ -14,10 +14,7 @@
 #include <QStringList>
 #include <QVBoxLayout>
 
-#include <fmt/format.h>
-
 #include "DolphinQt/Config/TextureElementOverrideAddEditDialog.h"
-#include "DolphinQt/Config/TextureHashBrowserDialog.h"
 #include "DolphinQt/QtUtils/NonDefaultQPushButton.h"
 #include "VideoCommon/TextureElementManager.h"
 
@@ -47,8 +44,7 @@ void TextureElementOverrideWidget::CreateWidgets()
          "Fullscreen = no VR. Applied as a fallback after Shader and Elements Group overrides."));
   info_label->setWordWrap(true);
 
-  m_texture_hunter = new NonDefaultQPushButton(tr("Texture Hunter"));
-  m_code_add = new NonDefaultQPushButton(tr("&Add Texture"));
+  m_code_add = new NonDefaultQPushButton(tr("&Add Texture Hash"));
   m_code_edit = new NonDefaultQPushButton(tr("&Edit Texture"));
   m_code_edit->setEnabled(false);
   m_code_remove = new NonDefaultQPushButton(tr("&Remove Texture"));
@@ -57,7 +53,6 @@ void TextureElementOverrideWidget::CreateWidgets()
   m_code_reload = new NonDefaultQPushButton(tr("Reload &Override"));
 
   auto* button_layout = new QHBoxLayout;
-  button_layout->addWidget(m_texture_hunter);
   button_layout->addWidget(m_code_add);
   button_layout->addWidget(m_code_edit);
   button_layout->addWidget(m_code_remove);
@@ -77,8 +72,6 @@ void TextureElementOverrideWidget::ConnectWidgets()
           &TextureElementOverrideWidget::OnItemChanged);
   connect(m_code_list, &QListWidget::itemSelectionChanged, this,
           &TextureElementOverrideWidget::OnSelectionChanged);
-  connect(m_texture_hunter, &QPushButton::clicked, this,
-          &TextureElementOverrideWidget::OnTextureHunterClicked);
   connect(m_code_add, &QPushButton::clicked, this, &TextureElementOverrideWidget::OnAddClicked);
   connect(m_code_edit, &QPushButton::clicked, this, &TextureElementOverrideWidget::OnEditClicked);
   connect(m_code_remove, &QPushButton::clicked, this,
@@ -179,23 +172,6 @@ void TextureElementOverrideWidget::UpdateList()
   }
 }
 
-std::string TextureElementOverrideWidget::MakeUniqueName(const std::string& base) const
-{
-  const auto name_taken = [this](const std::string& name) {
-    return std::any_of(m_overrides.begin(), m_overrides.end(),
-                       [&name](const TextureElementOverride& ovr) { return ovr.name == name; });
-  };
-
-  if (!name_taken(base))
-    return base;
-  for (int i = 2;; i++)
-  {
-    const std::string candidate = fmt::format("{} {}", base, i);
-    if (!name_taken(candidate))
-      return candidate;
-  }
-}
-
 void TextureElementOverrideWidget::OnItemChanged(QListWidgetItem* item)
 {
   const int idx = item->data(Qt::UserRole).toInt();
@@ -212,53 +188,6 @@ void TextureElementOverrideWidget::OnSelectionChanged()
   const bool has_selection = !m_code_list->selectedItems().empty();
   m_code_remove->setEnabled(has_selection);
   m_code_edit->setEnabled(has_selection);
-}
-
-void TextureElementOverrideWidget::OnTextureHunterClicked()
-{
-  if (m_texture_hunter_dialog)
-  {
-    m_texture_hunter_dialog->show();
-    m_texture_hunter_dialog->raise();
-    m_texture_hunter_dialog->activateWindow();
-    return;
-  }
-
-  TextureHashBrowserConfig browser_config;
-  browser_config.title = tr("Texture Hunter");
-  browser_config.empty_info_text =
-      tr("No textures captured yet.\n"
-         "Start a game in VR so its textures can be enumerated.");
-  browser_config.current_label = tr("currently loaded");
-  browser_config.fetch_current_entries = []() {
-    std::vector<TextureHashBrowserEntry> entries;
-    for (const auto& tex : TextureElementManager::GetInstance().GetCurrentTextures())
-      entries.push_back(TextureHashBrowserEntry{.hash = tex.hash, .name = tex.name});
-    return entries;
-  };
-  // Apply checked textures by creating a new Screen override (editable afterwards).
-  browser_config.apply_selected_hashes = [this](const std::vector<u64>& hashes) {
-    if (hashes.empty())
-      return;
-    TextureElementOverride ovr;
-    ovr.name = MakeUniqueName(tr("Texture Override").toStdString());
-    ovr.handling = HandlingType::Screen;
-    ovr.texture_hashes = hashes;
-    std::sort(ovr.texture_hashes.begin(), ovr.texture_hashes.end());
-    ovr.texture_hashes.erase(std::unique(ovr.texture_hashes.begin(), ovr.texture_hashes.end()),
-                             ovr.texture_hashes.end());
-    ovr.enabled = true;
-    m_overrides.push_back(std::move(ovr));
-    SaveOverrides();
-    UpdateList();
-    ReloadRuntime();
-  };
-
-  // Enable global texture capture while the browser is open; restore on close.
-  TextureElementManager::GetInstance().SetHunterActive(true);
-  m_texture_hunter_dialog = ShowTextureHashBrowserDialog(this, browser_config);
-  connect(m_texture_hunter_dialog, &QObject::destroyed, this,
-          [] { TextureElementManager::GetInstance().SetHunterActive(false); });
 }
 
 void TextureElementOverrideWidget::OnAddClicked()
