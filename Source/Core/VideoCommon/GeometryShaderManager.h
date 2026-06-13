@@ -65,6 +65,10 @@ public:
   // reference (see SetConstants).
   bool vr_metroid_hud_self_center = false;
 
+  // Set by VertexManagerBase for stable Metroid perspective-HUD body layers.  Transient combat
+  // reticle/menu pieces can move during free-aim and must not become the shared depth anchor.
+  bool vr_metroid_hud_anchor_candidate = false;
+
 private:
   void SetVSExpand(VSExpand expand);
 
@@ -79,10 +83,14 @@ private:
   float m_cached_units_per_meter = 0.0f;
   bool m_vr_pose_needs_refresh = true;
 
-  // Shared per-frame reference depth for the headlocked perspective HUD (-3) path.  Captured on the
-  // first such draw each frame and reused for all of them so they share ONE coherent transform and
-  // keep their relative scene depth.  Per-draw centring instead collapsed every origin to
-  // scale.z - distance and inverted it (because scale.z ~ size_ref/(-refZ)).
+  // Shared reference depth for the headlocked perspective HUD (-3) path.  Stable body layers choose
+  // the next frame's anchor; all coherent draws in a frame reuse one anchor so they share ONE
+  // coherent transform and keep their relative scene depth.  Per-draw centring instead collapsed
+  // every origin to scale.z - distance and inverted it (because scale.z ~ size_ref/(-refZ)).
   float m_vr_hud_shared_reference_z = 0.0f;
   bool m_vr_hud_shared_reference_valid = false;
+  float m_vr_hud_stable_reference_z = 0.0f;
+  bool m_vr_hud_stable_reference_valid = false;
+  float m_vr_hud_frame_anchor_candidate_z = 0.0f;
+  bool m_vr_hud_frame_anchor_candidate_valid = false;
 };

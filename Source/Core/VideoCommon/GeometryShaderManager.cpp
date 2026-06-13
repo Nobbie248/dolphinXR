@@ -162,6 +162,9 @@ PerspectiveHudTransform CalculatePerspectiveHudTransform(const Projection::Raw& 
 void GeometryShaderManager::Init()
 {
   constants = {};
+  m_vr_hud_shared_reference_valid = false;
+  m_vr_hud_stable_reference_valid = false;
+  m_vr_hud_frame_anchor_candidate_valid = false;
 
   // Init any initial constants which aren't zero when bpmem is zero.
   SetViewportChanged();
@@ -227,6 +230,8 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
         const float headlocked_projection_offset_y = vr_headlocked_projection_offset_y;
         const bool metroid_hud_self_center = vr_metroid_hud_self_center;
         vr_metroid_hud_self_center = false;  // consume
+        const bool metroid_hud_anchor_candidate = vr_metroid_hud_anchor_candidate;
+        vr_metroid_hud_anchor_candidate = false;  // consume
         vr_headlocked_projection_scale_x = 1.0f;
         vr_headlocked_projection_scale_y = 1.0f;
         vr_headlocked_projection_offset_x = 0.0f;
@@ -412,16 +417,37 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
           // logs show them under METROID_SCAN_TEXT — so the depth-outlier check below is what
           // actually catches them.  The flag is kept as a cheap explicit opt-out.)
           const bool self_center_layer = metroid_hud_self_center;
-          // Capture ONE shared reference depth on the first COHERENT -3 draw of the frame and reuse it
-          // for all of them, so every Prime perspective-HUD model shares a single headlocked transform
-          // and keeps its relative scene depth (the grappling hook behind Samus's arm, stacked beam
-          // boxes).  Per-draw centring instead collapsed every origin to scale.z - distance and,
-          // because scale.z ~ size_ref/(-refZ), inverted it (farther in scene -> closer in VR).
-          if (!m_vr_hud_shared_reference_valid && !self_center_layer &&
-              std::isfinite(reference_view_z) && reference_view_z < 0.0f)
+          const bool valid_reference =
+              std::isfinite(reference_view_z) && reference_view_z < 0.0f;
+          if (metroid_hud_anchor_candidate && !self_center_layer && valid_reference)
           {
-            m_vr_hud_shared_reference_z = reference_view_z;
-            m_vr_hud_shared_reference_valid = true;
+            // Pick the farthest stable HUD-body origin seen this frame as the anchor for the next
+            // frame. Free-aim adds/moves nearer reticle pieces, but those are not anchor candidates
+            // and cannot pull the whole 3D HUD plane toward the camera.
+            if (!m_vr_hud_frame_anchor_candidate_valid ||
+                reference_view_z < m_vr_hud_frame_anchor_candidate_z)
+            {
+              m_vr_hud_frame_anchor_candidate_z = reference_view_z;
+              m_vr_hud_frame_anchor_candidate_valid = true;
+            }
+          }
+          // Reuse ONE shared reference for all coherent -3 draws in this frame, so every Prime
+          // perspective-HUD model shares a single headlocked transform and keeps its relative scene
+          // depth (the grappling hook behind Samus's arm, stacked beam boxes). The reference comes
+          // from the previous frame's stable HUD body anchor when available. First-frame fallback uses
+          // the first coherent draw only until a stable anchor is promoted at the frame boundary.
+          if (!m_vr_hud_shared_reference_valid && !self_center_layer)
+          {
+            if (m_vr_hud_stable_reference_valid)
+            {
+              m_vr_hud_shared_reference_z = m_vr_hud_stable_reference_z;
+              m_vr_hud_shared_reference_valid = true;
+            }
+            else if (valid_reference)
+            {
+              m_vr_hud_shared_reference_z = reference_view_z;
+              m_vr_hud_shared_reference_valid = true;
+            }
           }
           const float shared_reference_z =
               m_vr_hud_shared_reference_valid ? m_vr_hud_shared_reference_z : reference_view_z;
@@ -538,7 +564,13 @@ void GeometryShaderManager::SetProjectionChanged()
 void GeometryShaderManager::InvalidateVRHeadPose()
 {
   m_vr_pose_needs_refresh = true;
-  // Re-capture the perspective-HUD reference depth on the first -3 draw of the next frame.
+  if (m_vr_hud_frame_anchor_candidate_valid)
+  {
+    m_vr_hud_stable_reference_z = m_vr_hud_frame_anchor_candidate_z;
+    m_vr_hud_stable_reference_valid = true;
+    m_vr_hud_frame_anchor_candidate_valid = false;
+  }
+  // Reuse the promoted stable perspective-HUD reference on the next frame.
   m_vr_hud_shared_reference_valid = false;
 }
 

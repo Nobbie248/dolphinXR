@@ -284,6 +284,24 @@ MetroidHydraHudSettings GetMetroidHydraHudSettings(MetroidElementProfile profile
   }
 }
 
+bool IsMetroidPerspectiveHudAnchorLayer(MetroidElementLayer layer)
+{
+  switch (layer)
+  {
+  case MetroidElementLayer::HUD:
+  case MetroidElementLayer::UnknownHUD:
+  case MetroidElementLayer::MapOrHint:
+  case MetroidElementLayer::Map:
+  case MetroidElementLayer::XRayHUD:
+  case MetroidElementLayer::DarkVisorHUD:
+  case MetroidElementLayer::Helmet:
+    return true;
+
+  default:
+    return false;
+  }
+}
+
 MetroidLayerBehavior GetMetroidLayerBehavior(MetroidElementLayer layer)
 {
   switch (layer)
@@ -1195,9 +1213,9 @@ void VertexManagerBase::Flush()
             }
             else if (handling == ShaderHunter::HandlingType::HeadLocked)
             {
-              geometry_shader_manager.vr_stereo_override =
-                  (metroid_hydra_hud.perspective_hud && metroid_metrics.perspective) ? -3.0f :
-                                                                                       -2.0f;
+              const bool perspective_metroid_hud =
+                  metroid_hydra_hud.perspective_hud && metroid_metrics.perspective;
+              geometry_shader_manager.vr_stereo_override = perspective_metroid_hud ? -3.0f : -2.0f;
               if (metroid_hydra_hud.enabled)
               {
                 // Radar/minimap layers self-centre on their own origin depth in the -3 path
@@ -1205,6 +1223,8 @@ void VertexManagerBase::Flush()
                 const std::string_view layer_name = MetroidElementLayerToININame(metroid_layer);
                 geometry_shader_manager.vr_metroid_hud_self_center =
                     layer_name.find("RADAR") != std::string_view::npos;
+                geometry_shader_manager.vr_metroid_hud_anchor_candidate =
+                    perspective_metroid_hud && IsMetroidPerspectiveHudAnchorLayer(metroid_layer);
               }
               if (manual_layer >= 0)
                 geometry_shader_manager.vr_ortho_layer_override = manual_layer;
