@@ -417,15 +417,28 @@ std::string GenerateEFBPokeVertexShader()
   return code.GetBuffer();
 }
 
-std::string GenerateFormatConversionShader(EFBReinterpretType convtype, u32 samples)
+std::string GenerateFormatConversionShader(EFBReinterpretType convtype, u32 samples,
+                                           bool multiview)
 {
   ShaderCode code;
+  // Under VK_KHR_multiview there is no layer-expanding GS; the view index selects the
+  // source layer instead of the interpolated v_tex0.z.
+  if (multiview)
+    code.Write("#extension GL_EXT_multiview : require\n");
   EmitSamplerDeclarations(code, 0, 1, samples > 1);
   EmitPixelMainDeclaration(code, 1, 0, "float4",
 
                            "");
-  code.Write("{{\n"
-             "  int layer = int(v_tex0.z);\n");
+  if (multiview)
+  {
+    code.Write("{{\n"
+               "  int layer = int(gl_ViewIndex);\n");
+  }
+  else
+  {
+    code.Write("{{\n"
+               "  int layer = int(v_tex0.z);\n");
+  }
   code.Write("  int3 coords = int3(int2(gl_FragCoord.xy), layer);\n");
 
   if (samples == 1)

@@ -3,6 +3,7 @@
 
 #include "VideoBackends/Vulkan/CommandBufferManager.h"
 
+#include <algorithm>
 #include <atomic>
 #include <array>
 #include <cstdint>
@@ -11,6 +12,7 @@
 #include "Common/Assert.h"
 #include "Common/Logging/Log.h"
 #include "Common/MsgHandler.h"
+#include "Common/Timer.h"
 
 #include "VideoBackends/Vulkan/VulkanContext.h"
 #include "VideoCommon/Constants.h"
@@ -350,6 +352,7 @@ void CommandBufferManager::WaitForFenceCounter(u64 fence_counter)
 
 void CommandBufferManager::WaitForCommandBufferCompletion(u32 index)
 {
+  const u64 perf_start_us = Common::Timer::NowUs();
   CmdBufferResources& resources = m_command_buffers[index];
 
   // Ensure this command buffer has been submitted.
@@ -387,6 +390,8 @@ void CommandBufferManager::WaitForCommandBufferCompletion(u32 index)
   }
 
   m_completed_fence_counter = now_completed_counter;
+  g_vulkan_context->GetPerfCounters().fence_wait_us.fetch_add(
+      Common::Timer::NowUs() - perf_start_us, std::memory_order_relaxed);
 }
 
 void CommandBufferManager::SubmitCommandBuffer(bool submit_on_worker_thread,
@@ -468,6 +473,42 @@ void CommandBufferManager::SubmitCommandBuffer(bool submit_on_worker_thread,
       WaitForCommandBufferCompletion(m_current_cmd_buffer);
   }
 
+  // VR perf diagnostics: once per ~5 s of presented frames, dump where the GPU thread's
+  // CPU time went (this runs on the GPU thread only — the worker thread uses the inner
+  // SubmitCommandBuffer overload directly).
+  if (has_present)
+  {
+    static u64 s_perf_window_start_us = 0;
+    static u32 s_perf_window_frames = 0;
+    s_perf_window_frames++;
+    const u64 now_us = Common::Timer::NowUs();
+    if (s_perf_window_start_us == 0)
+      s_perf_window_start_us = now_us;
+    const u64 elapsed_us = now_us - s_perf_window_start_us;
+    if (elapsed_us >= 5'000'000)
+    {
+      auto& perf = g_vulkan_context->GetPerfCounters();
+      const double frames = static_cast<double>(std::max<u32>(s_perf_window_frames, 1));
+      WARN_LOG_FMT(VIDEO,
+                   "VKPERF: frames={} wall={:.2f}ms/f submit={:.2f}ms/f (n={:.1f}/f) "
+                   "fence_wait={:.2f}ms/f xr_swapchain={:.2f}ms/f uniforms={:.2f}ms/f "
+                   "vtx_commit={:.2f}ms/f draw_bind={:.2f}ms/f draws={:.0f}/f "
+                   "pipelines_created={}",
+                   s_perf_window_frames, elapsed_us / 1000.0 / frames,
+                   perf.submit_us.exchange(0, std::memory_order_relaxed) / 1000.0 / frames,
+                   perf.submit_count.exchange(0, std::memory_order_relaxed) / frames,
+                   perf.fence_wait_us.exchange(0, std::memory_order_relaxed) / 1000.0 / frames,
+                   perf.xr_swapchain_us.exchange(0, std::memory_order_relaxed) / 1000.0 / frames,
+                   perf.uniform_us.exchange(0, std::memory_order_relaxed) / 1000.0 / frames,
+                   perf.vertex_commit_us.exchange(0, std::memory_order_relaxed) / 1000.0 / frames,
+                   perf.draw_us.exchange(0, std::memory_order_relaxed) / 1000.0 / frames,
+                   perf.draw_count.exchange(0, std::memory_order_relaxed) / frames,
+                   perf.pipelines_created.exchange(0, std::memory_order_relaxed));
+      s_perf_window_frames = 0;
+      s_perf_window_start_us = now_us;
+    }
+  }
+
   if (advance_to_next_frame)
   {
     m_current_frame = (m_current_frame + 1) % NUM_FRAMES_IN_FLIGHT;
@@ -518,6 +559,7 @@ void CommandBufferManager::SubmitCommandBuffer(u32 command_buffer_index,
                                                VkSwapchainKHR present_swap_chain,
                                                u32 present_image_index)
 {
+  const u64 perf_start_us = Common::Timer::NowUs();
   CmdBufferResources& resources = m_command_buffers[command_buffer_index];
 
   // This may be executed on the worker thread, so don't modify any state of the manager class.
@@ -598,6 +640,10 @@ void CommandBufferManager::SubmitCommandBuffer(u32 command_buffer_index,
       }
     }
   }
+
+  auto& perf = g_vulkan_context->GetPerfCounters();
+  perf.submit_us.fetch_add(Common::Timer::NowUs() - perf_start_us, std::memory_order_relaxed);
+  perf.submit_count.fetch_add(1, std::memory_order_relaxed);
 }
 
 void CommandBufferManager::BeginCommandBuffer()

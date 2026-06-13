@@ -129,6 +129,20 @@ protected:
   bool CompilePixelShader();
   bool CompilePipeline();
 
+  // Pipelines for one output (framebuffer) format. Cached per format because the VR
+  // present path alternates between the mirror window and the OpenXR eye buffers every
+  // frame; destroying and recompiling pipelines mid-frame is both slow and unsafe on
+  // Vulkan (the current command buffer may still reference the old pipeline).
+  struct FormatPipelines
+  {
+    std::unique_ptr<AbstractPipeline> default_pipeline;
+    std::unique_ptr<AbstractPipeline> pipeline;
+    std::unique_ptr<AbstractPipeline> default_multiview_pipeline;
+    std::unique_ptr<AbstractPipeline> multiview_pipeline;
+  };
+  void SetActivePipelines(const FormatPipelines& pipelines);
+  void ClearPipelineCache();
+
   size_t CalculateUniformsSize(bool user_post_process) const;
   void FillUniformBuffer(const MathUtil::Rectangle<int>& src, const AbstractTexture* src_tex,
                          int src_layer, const MathUtil::Rectangle<int>& dst,
@@ -142,9 +156,7 @@ protected:
   PostProcessingConfiguration::ConfigMap m_default_options;
   std::unique_ptr<AbstractShader> m_default_vertex_shader;
   std::unique_ptr<AbstractShader> m_default_pixel_shader;
-  std::unique_ptr<AbstractPipeline> m_default_pipeline;
   std::unique_ptr<AbstractShader> m_default_multiview_vertex_shader;
-  std::unique_ptr<AbstractPipeline> m_default_multiview_pipeline;
   std::unique_ptr<AbstractFramebuffer> m_intermediary_frame_buffer;
   std::unique_ptr<AbstractTexture> m_intermediary_color_texture;
   std::vector<u8> m_default_uniform_staging_buffer;
@@ -152,10 +164,16 @@ protected:
   PostProcessingConfiguration m_config;
   std::unique_ptr<AbstractShader> m_vertex_shader;
   std::unique_ptr<AbstractShader> m_pixel_shader;
-  std::unique_ptr<AbstractPipeline> m_pipeline;
   std::unique_ptr<AbstractShader> m_multiview_vertex_shader;
-  std::unique_ptr<AbstractPipeline> m_multiview_pipeline;
   std::vector<u8> m_uniform_staging_buffer;
+
+  // Owning per-format pipeline cache; the m_*pipeline members below are non-owning
+  // pointers into the entry for m_framebuffer_format.
+  std::map<AbstractTextureFormat, FormatPipelines> m_pipelines_per_format;
+  const AbstractPipeline* m_default_pipeline = nullptr;
+  const AbstractPipeline* m_pipeline = nullptr;
+  const AbstractPipeline* m_default_multiview_pipeline = nullptr;
+  const AbstractPipeline* m_multiview_pipeline = nullptr;
 
   AbstractTextureFormat m_framebuffer_format = AbstractTextureFormat::Undefined;
 };

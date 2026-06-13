@@ -20,6 +20,7 @@
 
 #include "Common/Assert.h"
 #include "Common/Logging/Log.h"
+#include "Common/ScopeGuard.h"
 #include "Common/Timer.h"
 
 #include "VideoBackends/Vulkan/CommandBufferManager.h"
@@ -1067,6 +1068,11 @@ AbstractFramebuffer* VulkanOpenXR::AcquireEyeFramebuffer(uint32_t eye_index)
 {
   ASSERT(eye_index < 2);
   static unsigned int s_openxr_vk_acquire_log_count = 0;
+  const uint64_t perf_start_us = Common::Timer::NowUs();
+  Common::ScopeGuard perf_guard([perf_start_us] {
+    g_vulkan_context->GetPerfCounters().xr_swapchain_us.fetch_add(
+        Common::Timer::NowUs() - perf_start_us, std::memory_order_relaxed);
+  });
   auto& sc = m_eye_swapchains[eye_index];
   m_frame_uses_layered_swapchain = false;
 
@@ -1206,21 +1212,33 @@ void VulkanOpenXR::ReleaseEyeTexture(uint32_t eye_index)
 #else
   // PC OpenXR runtimes are sensitive to holding runtime-owned Vulkan swapchain images
   // across Dolphin's later frame-submit work. Preserve the original PC path: submit the
-  // blit for this eye, then release the image back to the runtime. Virtual Desktop on
-  // Quest is stricter about runtime-owned Vulkan images being released before the GPU
-  // has finished writing them, so wait for completion on the Quest/full-projection path.
+  // blit for this eye, then release the image back to the runtime.
+  //
+  // The spec only requires the image writes to be *submitted* before
+  // xrReleaseSwapchainImage; GPU-side ordering is the runtime's job. Virtual Desktop
+  // does that with a timeline semaphore it creates on our device at session creation —
+  // which silently did nothing until the timelineSemaphore feature was enabled at
+  // device creation, so this path used to drain the GPU per eye as a workaround
+  // (serializing CPU/GPU/compositor every frame). Keep the drain only as a fallback for
+  // VD/Quest-class runtimes when the feature could not be enabled — it is a property of
+  // the runtime's strictness, not of which projection path is active (SteamVR never
+  // needed it).
   StateTracker::GetInstance()->EndRenderPass();
   const bool wait_for_completion =
-      VR::g_openxr && !VR::g_openxr->ShouldUseVulkanLegacyProjectionFallback();
+      !g_vulkan_context->SupportsTimelineSemaphores() && VR::g_openxr &&
+      VR::g_openxr->IsQuestOrVirtualDesktopRuntime();
   g_command_buffer_mgr->SubmitCommandBuffer(false, wait_for_completion);
   StateTracker::GetInstance()->InvalidateCachedState();
 
   XrSwapchainImageReleaseInfo release_info{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
   XrResult result = XR_SUCCESS;
+  const uint64_t perf_release_start_us = Common::Timer::NowUs();
   {
     auto queue_lock = AcquireGraphicsQueueLock();
     result = xrReleaseSwapchainImage(m_eye_swapchains[eye_index].swapchain, &release_info);
   }
+  g_vulkan_context->GetPerfCounters().xr_swapchain_us.fetch_add(
+      Common::Timer::NowUs() - perf_release_start_us, std::memory_order_relaxed);
   if (XR_FAILED(result))
   {
     WARN_LOG_FMT(VIDEO, "OpenXR: xrReleaseSwapchainImage failed for eye {} ({}).", eye_index,
@@ -1239,9 +1257,12 @@ void VulkanOpenXR::ReleaseLayeredTexture()
 #if defined(ANDROID)
   StateTracker::GetInstance()->EndRenderPass();
 #else
+  // Same contract as ReleaseEyeTexture: submit before release; only drain the GPU as a
+  // fallback for VD/Quest-class runtimes when timeline semaphores could not be enabled.
   StateTracker::GetInstance()->EndRenderPass();
   const bool wait_for_completion =
-      VR::g_openxr && !VR::g_openxr->ShouldUseVulkanLegacyProjectionFallback();
+      !g_vulkan_context->SupportsTimelineSemaphores() && VR::g_openxr &&
+      VR::g_openxr->IsQuestOrVirtualDesktopRuntime();
   g_command_buffer_mgr->SubmitCommandBuffer(false, wait_for_completion);
   StateTracker::GetInstance()->InvalidateCachedState();
 
@@ -1339,24 +1360,21 @@ bool VulkanOpenXR::SubmitFrame()
       INFO_LOG_FMT(VIDEO,
                    "OpenXR Vulkan: queued async final XR submit #{} "
                    "(layered_acquired={} eye0_acquired={} eye1_acquired={} "
-                   "submit_layered={} layered_swapchain_enabled={} legacy_fallback={}).",
+                   "submit_layered={} layered_swapchain_enabled={}).",
                    pending_frame.debug_frame_id, pending_frame.layered_acquired,
                    pending_frame.eye_acquired[0], pending_frame.eye_acquired[1], submit_layered,
-                   m_use_layered_swapchain,
-                   VR::g_openxr && VR::g_openxr->ShouldUseVulkanLegacyProjectionFallback());
+                   m_use_layered_swapchain);
 #if defined(ANDROID)
       __android_log_print(
           ANDROID_LOG_INFO, "DolphinXR",
           "OpenXR Vulkan: queued async final XR submit #%llu "
           "(layered_acquired=%d eye0_acquired=%d eye1_acquired=%d submit_layered=%d "
-          "layered_swapchain_enabled=%d legacy_fallback=%d)",
+          "layered_swapchain_enabled=%d)",
           static_cast<unsigned long long>(pending_frame.debug_frame_id),
           static_cast<int>(pending_frame.layered_acquired),
           static_cast<int>(pending_frame.eye_acquired[0]),
           static_cast<int>(pending_frame.eye_acquired[1]), static_cast<int>(submit_layered),
-          static_cast<int>(m_use_layered_swapchain),
-          static_cast<int>(VR::g_openxr &&
-                           VR::g_openxr->ShouldUseVulkanLegacyProjectionFallback()));
+          static_cast<int>(m_use_layered_swapchain));
 #endif
       s_openxr_vk_submit_frame_log_count++;
     }

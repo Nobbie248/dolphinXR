@@ -1114,8 +1114,12 @@ CreateFramebufferInternal(VKTexture* color_attachment, VKTexture* depth_attachme
   // multiview render pass with view mask 0b11 so the draw is replicated to both
   // eyes in one pass via gl_ViewIndex. Vulkan requires framebuffer.layers = 1 in
   // that case — the layer count comes from the view mask, not the framebuffer.
+  // Match on the EFB depth texture: both the EFB framebuffer and the EFB convert
+  // framebuffer share it, and ReinterpretPixelData() swaps the two after each format
+  // conversion. They must agree on multiview-ness or GX pipelines (built for the
+  // multiview render pass) become incompatible with the framebuffer after a swap.
   const bool is_current_efb =
-      g_framebuffer_manager && color_attachment == g_framebuffer_manager->GetEFBColorTexture() &&
+      g_framebuffer_manager && color_attachment != nullptr &&
       depth_attachment == g_framebuffer_manager->GetEFBDepthTexture();
   const bool can_use_multiview =
       layers == 2 && samples == 1 && g_vulkan_context->SupportsMultiview();

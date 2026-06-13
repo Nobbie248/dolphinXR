@@ -417,22 +417,28 @@ bool FramebufferManager::CompileConversionPipelines()
   for (u32 i = 0; i < NUM_EFB_REINTERPRET_TYPES; i++)
   {
     EFBReinterpretType convtype = static_cast<EFBReinterpretType>(i);
+    // The conversion draw targets the EFB convert framebuffer, which shares the EFB's
+    // multiview-ness (they get swapped after each conversion). Under multiview the
+    // pixel shader selects the source layer via gl_ViewIndex and no gl_Layer GS is used.
+    const bool efb_multiview = GetEFBFramebufferState().multiview != 0;
     std::unique_ptr<AbstractShader> pixel_shader = g_gfx->CreateShaderFromSource(
         ShaderStage::Pixel,
-        FramebufferShaderGen::GenerateFormatConversionShader(convtype, GetEFBSamples()), nullptr,
-        fmt::format("Framebuffer conversion pixel shader {}", convtype));
+        FramebufferShaderGen::GenerateFormatConversionShader(convtype, GetEFBSamples(),
+                                                             efb_multiview),
+        nullptr, fmt::format("Framebuffer conversion pixel shader {}", convtype));
     if (!pixel_shader)
       return false;
 
     AbstractPipelineConfig config = {};
     config.vertex_shader = g_shader_cache->GetScreenQuadVertexShader();
-    config.geometry_shader = IsEFBStereo() ? g_shader_cache->GetTexcoordGeometryShader() : nullptr;
+    config.geometry_shader = (IsEFBStereo() && !efb_multiview) ?
+                                 g_shader_cache->GetTexcoordGeometryShader() :
+                                 nullptr;
     config.pixel_shader = pixel_shader.get();
     config.rasterization_state = RenderState::GetNoCullRasterizationState(PrimitiveType::Triangles);
     config.depth_state = RenderState::GetNoDepthTestingDepthState();
     config.blending_state = RenderState::GetNoBlendingBlendState();
     config.framebuffer_state = GetEFBFramebufferState();
-    config.framebuffer_state.multiview = 0;
     config.usage = AbstractPipelineUsage::Utility;
     m_format_conversion_pipelines[i] = g_gfx->CreatePipeline(config);
     if (!m_format_conversion_pipelines[i])
@@ -901,12 +907,16 @@ bool FramebufferManager::CompileClearPipelines()
   AbstractPipelineConfig config;
   config.vertex_format = nullptr;
   config.vertex_shader = vertex_shader.get();
-  config.geometry_shader = IsEFBStereo() ? g_shader_cache->GetColorGeometryShader() : nullptr;
+  config.framebuffer_state = GetEFBFramebufferState();
+  // A multiview render pass already broadcasts the draw to both views; a gl_Layer-writing
+  // GS is illegal there (and unnecessary — the clear writes the same values to both eyes).
+  config.geometry_shader = (IsEFBStereo() && !config.framebuffer_state.multiview) ?
+                               g_shader_cache->GetColorGeometryShader() :
+                               nullptr;
   config.pixel_shader = g_shader_cache->GetColorPixelShader();
   config.rasterization_state = RenderState::GetNoCullRasterizationState(PrimitiveType::Triangles);
   config.depth_state = RenderState::GetAlwaysWriteDepthState();
   config.blending_state = RenderState::GetNoBlendingBlendState();
-  config.framebuffer_state = GetEFBFramebufferState();
   config.usage = AbstractPipelineUsage::Utility;
 
   for (u32 color_enable = 0; color_enable < 2; color_enable++)
@@ -1076,13 +1086,16 @@ bool FramebufferManager::CompilePokePipelines()
   AbstractPipelineConfig config = {};
   config.vertex_format = m_poke_vertex_format.get();
   config.vertex_shader = poke_vertex_shader.get();
-  config.geometry_shader = IsEFBStereo() ? g_shader_cache->GetColorGeometryShader() : nullptr;
+  config.framebuffer_state = GetEFBFramebufferState();
+  // As with the clear pipelines: no gl_Layer GS inside a multiview render pass.
+  config.geometry_shader = (IsEFBStereo() && !config.framebuffer_state.multiview) ?
+                               g_shader_cache->GetColorGeometryShader() :
+                               nullptr;
   config.pixel_shader = g_shader_cache->GetColorPixelShader();
   config.rasterization_state = RenderState::GetNoCullRasterizationState(
       g_backend_info.bSupportsLargePoints ? PrimitiveType::Points : PrimitiveType::Triangles);
   config.depth_state = RenderState::GetNoDepthTestingDepthState();
   config.blending_state = RenderState::GetNoBlendingBlendState();
-  config.framebuffer_state = GetEFBFramebufferState();
   config.usage = AbstractPipelineUsage::Utility;
   m_color_poke_pipeline = g_gfx->CreatePipeline(config);
   if (!m_color_poke_pipeline)

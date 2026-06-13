@@ -9,6 +9,7 @@
 #include "Common/CommonTypes.h"
 #include "Common/Logging/Log.h"
 #include "Common/MsgHandler.h"
+#include "Common/Timer.h"
 
 #include "Core/System.h"
 
@@ -186,6 +187,7 @@ void VertexManager::ResetBuffer(u32 vertex_stride)
 void VertexManager::CommitBuffer(u32 num_vertices, u32 vertex_stride, u32 num_indices,
                                  u32* out_base_vertex, u32* out_base_index)
 {
+  const u64 perf_start_us = Common::Timer::NowUs();
   const u32 vertex_data_size = num_vertices * vertex_stride;
   const u32 index_data_size = num_indices * sizeof(u16);
 
@@ -203,13 +205,18 @@ void VertexManager::CommitBuffer(u32 num_vertices, u32 vertex_stride, u32 num_in
                                                VERTEX_STREAM_BUFFER_SIZE);
   StateTracker::GetInstance()->SetIndexBuffer(m_index_stream_buffer->GetBuffer(), 0,
                                               VK_INDEX_TYPE_UINT16);
+  g_vulkan_context->GetPerfCounters().vertex_commit_us.fetch_add(
+      Common::Timer::NowUs() - perf_start_us, std::memory_order_relaxed);
 }
 
 void VertexManager::UploadUniforms()
 {
+  const u64 perf_start_us = Common::Timer::NowUs();
   UpdateVertexShaderConstants();
   UpdateGeometryShaderConstants();
   UpdatePixelShaderConstants();
+  g_vulkan_context->GetPerfCounters().uniform_us.fetch_add(
+      Common::Timer::NowUs() - perf_start_us, std::memory_order_relaxed);
 }
 
 void VertexManager::UpdateVertexShaderConstants()

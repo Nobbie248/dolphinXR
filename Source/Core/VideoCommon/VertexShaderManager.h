@@ -25,8 +25,7 @@ public:
   void DoState(PointerWrap& p);
 
   // constant management
-  void SetProjectionMatrix(XFStateManager& xf_state_manager, bool apply_openxr_legacy_view = true,
-                           bool force = false);
+  void SetProjectionMatrix(XFStateManager& xf_state_manager);
   void SetConstants(const std::vector<std::string>& textures, XFStateManager& xf_state_manager);
 
   // data: 3 floats representing the X, Y and Z vertex model coordinates and the posmatrix index.
@@ -85,6 +84,5 @@ private:
   // track changes
   bool m_projection_graphics_mod_change = false;
 
-  Common::Matrix44 LoadProjectionMatrix(bool apply_openxr_legacy_view = true);
-  bool m_apply_openxr_legacy_view = true;
+  Common::Matrix44 LoadProjectionMatrix();
 };

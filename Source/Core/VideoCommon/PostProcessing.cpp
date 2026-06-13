@@ -428,15 +428,29 @@ bool PostProcessing::Initialize(AbstractTextureFormat format)
   return true;
 }
 
+void PostProcessing::SetActivePipelines(const FormatPipelines& pipelines)
+{
+  m_default_pipeline = pipelines.default_pipeline.get();
+  m_pipeline = pipelines.pipeline.get();
+  m_default_multiview_pipeline = pipelines.default_multiview_pipeline.get();
+  m_multiview_pipeline = pipelines.multiview_pipeline.get();
+}
+
+void PostProcessing::ClearPipelineCache()
+{
+  m_default_pipeline = nullptr;
+  m_pipeline = nullptr;
+  m_default_multiview_pipeline = nullptr;
+  m_multiview_pipeline = nullptr;
+  m_pipelines_per_format.clear();
+}
+
 void PostProcessing::RecompileShader()
 {
   // Note: for simplicity we already recompile all the shaders
   // and pipelines even if there might not be need to.
 
-  m_default_pipeline.reset();
-  m_pipeline.reset();
-  m_default_multiview_pipeline.reset();
-  m_multiview_pipeline.reset();
+  ClearPipelineCache();
   m_default_pixel_shader.reset();
   m_pixel_shader.reset();
   m_default_vertex_shader.reset();
@@ -453,10 +467,7 @@ void PostProcessing::RecompileShader()
 
 void PostProcessing::RecompilePipeline()
 {
-  m_default_pipeline.reset();
-  m_pipeline.reset();
-  m_default_multiview_pipeline.reset();
-  m_multiview_pipeline.reset();
+  ClearPipelineCache();
   CompilePipeline();
 }
 
@@ -489,7 +500,15 @@ void PostProcessing::BlitFromTexture(const MathUtil::Rectangle<int>& dst,
   if (g_gfx->GetCurrentFramebuffer()->GetColorFormat() != m_framebuffer_format)
   {
     m_framebuffer_format = g_gfx->GetCurrentFramebuffer()->GetColorFormat();
-    RecompilePipeline();
+    // The VR present path alternates between the mirror window and the OpenXR eye
+    // buffers every frame, so reuse the cached pipelines for this format if we have
+    // them. Compiling here would destroy pipelines the current command buffer still
+    // references (use-after-free on Vulkan) and cost two pipeline builds per frame.
+    const auto iter = m_pipelines_per_format.find(m_framebuffer_format);
+    if (iter != m_pipelines_per_format.end())
+      SetActivePipelines(iter->second);
+    else
+      CompilePipeline();
   }
 
   // By default all source layers will be copied into the respective target layers
@@ -509,7 +528,7 @@ void PostProcessing::BlitFromTexture(const MathUtil::Rectangle<int>& dst,
       g_ActiveConfig.output_resampling_mode > OutputResamplingMode::Default;
   const bool needs_intermediary_buffer = NeedsIntermediaryBuffer();
   const bool needs_default_pipeline = needs_color_correction || needs_resampling;
-  const AbstractPipeline* final_pipeline = m_pipeline.get();
+  const AbstractPipeline* final_pipeline = m_pipeline;
   std::vector<u8>* uniform_staging_buffer = &m_default_uniform_staging_buffer;
   bool default_uniform_staging_buffer = true;
   const MathUtil::Rectangle<int> present_rect = g_presenter->GetTargetRectangle();
@@ -561,7 +580,7 @@ void PostProcessing::BlitFromTexture(const MathUtil::Rectangle<int>& dst,
 
     g_gfx->SetViewportAndScissor(g_gfx->ConvertFramebufferRectangle(
         m_intermediary_color_texture->GetRect(), m_intermediary_frame_buffer.get()));
-    g_gfx->SetPipeline(m_default_pipeline.get());
+    g_gfx->SetPipeline(m_default_pipeline);
     g_gfx->Draw(0, 3);
 
     g_gfx->SetFramebuffer(previous_framebuffer);
@@ -584,7 +603,7 @@ void PostProcessing::BlitFromTexture(const MathUtil::Rectangle<int>& dst,
     // doing two passes, with the second one doing nothing useful.
     if (m_default_pipeline && needs_default_pipeline)
     {
-      final_pipeline = m_default_pipeline.get();
+      final_pipeline = m_default_pipeline;
     }
     else
     {
@@ -633,7 +652,13 @@ bool PostProcessing::BlitFromTextureLayeredMultiview(const MathUtil::Rectangle<i
   if (current_framebuffer->GetColorFormat() != m_framebuffer_format)
   {
     m_framebuffer_format = current_framebuffer->GetColorFormat();
-    RecompilePipeline();
+    // Same as BlitFromTexture: reuse cached pipelines for this format instead of
+    // destroying pipelines the current command buffer may still reference.
+    const auto iter = m_pipelines_per_format.find(m_framebuffer_format);
+    if (iter != m_pipelines_per_format.end())
+      SetActivePipelines(iter->second);
+    else
+      CompilePipeline();
   }
 
   g_gfx->SetSamplerState(0, RenderState::GetLinearSamplerState());
@@ -645,8 +670,8 @@ bool PostProcessing::BlitFromTextureLayeredMultiview(const MathUtil::Rectangle<i
   const bool needs_resampling =
       g_ActiveConfig.output_resampling_mode > OutputResamplingMode::Default;
   const bool needs_default_pipeline = needs_color_correction || needs_resampling;
-  const AbstractPipeline* pipeline = needs_default_pipeline ? m_default_multiview_pipeline.get() :
-                                                              m_multiview_pipeline.get();
+  const AbstractPipeline* pipeline = needs_default_pipeline ? m_default_multiview_pipeline :
+                                                              m_multiview_pipeline;
   std::vector<u8>* uniform_staging_buffer =
       needs_default_pipeline ? &m_default_uniform_staging_buffer : &m_uniform_staging_buffer;
   const bool user_post_process = !needs_default_pipeline;
@@ -1152,6 +1177,8 @@ bool PostProcessing::CompilePipeline()
   // If this is true, the "m_default_pipeline" won't be the only one that runs
   const bool needs_intermediary_buffer = NeedsIntermediaryBuffer();
 
+  FormatPipelines& format_pipelines = m_pipelines_per_format[m_framebuffer_format];
+
   AbstractPipelineConfig config = {};
   config.vertex_shader = m_default_vertex_shader.get();
   // This geometry shader will take care of reading both layer 0 and 1 on the source texture,
@@ -1168,7 +1195,7 @@ bool PostProcessing::CompilePipeline()
   config.usage = AbstractPipelineUsage::Utility;
   // We continue even if it failed, it will be skipped later on
   if (config.pixel_shader)
-    m_default_pipeline = g_gfx->CreatePipeline(config);
+    format_pipelines.default_pipeline = g_gfx->CreatePipeline(config);
 
   config.vertex_shader = m_vertex_shader.get();
   config.geometry_shader = UseGeometryShaderForPostProcess(false) ?
@@ -1176,9 +1203,12 @@ bool PostProcessing::CompilePipeline()
                                nullptr;
   config.pixel_shader = m_pixel_shader.get();
   config.framebuffer_state = RenderState::GetColorFramebufferState(m_framebuffer_format);
-  m_pipeline = g_gfx->CreatePipeline(config);
-  if (!m_pipeline)
+  format_pipelines.pipeline = g_gfx->CreatePipeline(config);
+  if (!format_pipelines.pipeline)
+  {
+    SetActivePipelines(format_pipelines);
     return false;
+  }
 
   if (g_backend_info.api_type == APIType::Vulkan && g_backend_info.bSupportsMultiview &&
       !needs_intermediary_buffer && m_default_multiview_vertex_shader &&
@@ -1198,15 +1228,16 @@ bool PostProcessing::CompilePipeline()
     multiview_config.usage = AbstractPipelineUsage::Utility;
 
     if (multiview_config.pixel_shader)
-      m_default_multiview_pipeline = g_gfx->CreatePipeline(multiview_config);
+      format_pipelines.default_multiview_pipeline = g_gfx->CreatePipeline(multiview_config);
 
     multiview_config.vertex_shader = m_multiview_vertex_shader.get();
     multiview_config.pixel_shader = m_pixel_shader.get();
-    m_multiview_pipeline = g_gfx->CreatePipeline(multiview_config);
-    if (!m_multiview_pipeline)
+    format_pipelines.multiview_pipeline = g_gfx->CreatePipeline(multiview_config);
+    if (!format_pipelines.multiview_pipeline)
       WARN_LOG_FMT(VIDEO, "Failed to create multiview post-processing pipeline");
   }
 
+  SetActivePipelines(format_pipelines);
   return true;
 }
 }  // namespace VideoCommon

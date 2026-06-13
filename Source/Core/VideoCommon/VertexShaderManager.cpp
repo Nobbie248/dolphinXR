@@ -34,7 +34,6 @@ void VertexShaderManager::Init()
 {
   // Initialize state tracking variables
   m_projection_graphics_mod_change = false;
-  m_apply_openxr_legacy_view = true;
 
   constants = {};
 
@@ -43,7 +42,7 @@ void VertexShaderManager::Init()
   dirty = true;
 }
 
-Common::Matrix44 VertexShaderManager::LoadProjectionMatrix(bool apply_openxr_legacy_view)
+Common::Matrix44 VertexShaderManager::LoadProjectionMatrix()
 {
   const auto& rawProjection = xfmem.projection.rawProjection;
 
@@ -118,31 +117,6 @@ Common::Matrix44 VertexShaderManager::LoadProjectionMatrix(bool apply_openxr_leg
 
   if (xfmem.projection.type == ProjectionType::Perspective)
   {
-#ifdef ENABLE_VR
-#if !defined(ANDROID)
-    if (apply_openxr_legacy_view && g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
-        g_backend_info.api_type == APIType::Vulkan && VR::g_openxr &&
-        VR::g_openxr->IsSessionRunning() &&
-        VR::g_openxr->ShouldUseVulkanLegacyProjectionFallback())
-    {
-      Common::Matrix44 openxr_view;
-      if (VR::g_openxr->GetLegacyViewMatrix(g_ActiveConfig.vr_units_per_meter, &openxr_view))
-      {
-        if (rawProjection[0] < 0.0f)
-        {
-          // Mirror-mode games flip the final Vulkan OpenXR output X in the GS compatibility
-          // path. Mirror the upstream head-tracked view around X as well so yaw/roll motion
-          // stays aligned with the mirrored scene.
-          Common::Matrix44 mirror_x = Common::Matrix44::Identity();
-          mirror_x.data[0] = -1.0f;
-          openxr_view = mirror_x * openxr_view * mirror_x;
-        }
-        corrected_matrix *= openxr_view;
-      }
-    }
-#endif
-#endif
-
     if (g_freelook_camera.IsActive())
       corrected_matrix *= g_freelook_camera.GetView();
   }
@@ -152,15 +126,12 @@ Common::Matrix44 VertexShaderManager::LoadProjectionMatrix(bool apply_openxr_leg
   return corrected_matrix;
 }
 
-void VertexShaderManager::SetProjectionMatrix(XFStateManager& xf_state_manager,
-                                              bool apply_openxr_legacy_view, bool force)
+void VertexShaderManager::SetProjectionMatrix(XFStateManager& xf_state_manager)
 {
-  m_apply_openxr_legacy_view = apply_openxr_legacy_view;
-  if (force || xf_state_manager.DidProjectionChange() || g_freelook_camera.GetController()->IsDirty())
+  if (xf_state_manager.DidProjectionChange() || g_freelook_camera.GetController()->IsDirty())
   {
-    if (!force)
-      xf_state_manager.ResetProjection();
-    auto corrected_matrix = LoadProjectionMatrix(apply_openxr_legacy_view);
+    xf_state_manager.ResetProjection();
+    auto corrected_matrix = LoadProjectionMatrix();
     memcpy(constants.projection.data(), corrected_matrix.data.data(), 4 * sizeof(float4));
     dirty = true;
   }
@@ -455,7 +426,7 @@ void VertexShaderManager::SetConstants(const std::vector<std::string>& textures,
     xf_state_manager.ResetProjection();
     m_projection_graphics_mod_change = !projection_actions.empty();
 
-    auto corrected_matrix = LoadProjectionMatrix(m_apply_openxr_legacy_view);
+    auto corrected_matrix = LoadProjectionMatrix();
 
     GraphicsModActionData::Projection projection{&corrected_matrix};
     for (const auto& action : projection_actions)

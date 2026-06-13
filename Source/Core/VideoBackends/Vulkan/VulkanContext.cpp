@@ -81,11 +81,19 @@ VulkanContext::PhysicalDeviceInfo::PhysicalDeviceInfo(VkPhysicalDevice device)
 
     VkPhysicalDeviceFeatures2 features2 = {};
     VkPhysicalDeviceMultiviewFeatures features_multiview = {};
+    VkPhysicalDeviceTimelineSemaphoreFeatures features_timeline_semaphore = {};
     features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
     features_multiview.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES;
     InsertIntoChain(&features2, &features_multiview);
+    if (apiVersion >= VK_API_VERSION_1_2)
+    {
+      features_timeline_semaphore.sType =
+          VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES;
+      InsertIntoChain(&features2, &features_timeline_semaphore);
+    }
     vkGetPhysicalDeviceFeatures2(device, &features2);
     multiview = features_multiview.multiview != VK_FALSE && maxMultiviewViewCount >= 2;
+    timelineSemaphore = features_timeline_semaphore.timelineSemaphore != VK_FALSE;
   }
 
   memcpy(deviceName, properties.deviceName, sizeof(deviceName));
@@ -850,18 +858,38 @@ bool VulkanContext::CreateDevice(VkSurfaceKHR surface, bool enable_validation_la
   // back to the legacy pEnabledFeatures pointer.
   VkPhysicalDeviceFeatures2 features2 = {};
   VkPhysicalDeviceMultiviewFeatures multiview_features = {};
+  VkPhysicalDeviceTimelineSemaphoreFeatures timeline_semaphore_features = {};
   const bool use_multiview =
       m_device_info.apiVersion >= VK_API_VERSION_1_1 && m_device_info.multiview;
-  if (use_multiview)
+  // OpenXR runtimes (e.g. Virtual Desktop) that list VK_KHR_timeline_semaphore as a
+  // required device extension create timeline semaphores on this device; the extension
+  // alone is not enough — the timelineSemaphore feature must also be enabled, or every
+  // runtime wait/signal on the semaphore is undefined behavior (device-lost in practice).
+  const bool use_timeline_semaphore =
+      m_device_info.timelineSemaphore &&
+      Common::Contains(m_device_extensions, VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME);
+  if (use_multiview || use_timeline_semaphore)
   {
     features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
     features2.features = device_features;
-    multiview_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES;
-    multiview_features.multiview = VK_TRUE;
-    InsertIntoChain(&features2, &multiview_features);
+    if (use_multiview)
+    {
+      multiview_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES;
+      multiview_features.multiview = VK_TRUE;
+      InsertIntoChain(&features2, &multiview_features);
+      m_multiview_enabled = true;
+    }
+    if (use_timeline_semaphore)
+    {
+      timeline_semaphore_features.sType =
+          VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES;
+      timeline_semaphore_features.timelineSemaphore = VK_TRUE;
+      InsertIntoChain(&features2, &timeline_semaphore_features);
+      m_timeline_semaphore_enabled = true;
+      INFO_LOG_FMT(VIDEO, "Vulkan: Enabling timelineSemaphore feature for the OpenXR runtime.");
+    }
     device_info.pNext = &features2;
     device_info.pEnabledFeatures = nullptr;
-    m_multiview_enabled = true;
   }
   else
   {

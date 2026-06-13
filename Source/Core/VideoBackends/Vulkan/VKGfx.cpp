@@ -10,6 +10,7 @@
 #include "Common/CommonTypes.h"
 #include "Common/Logging/Log.h"
 #include "Common/MsgHandler.h"
+#include "Common/Timer.h"
 
 #include "VideoBackends/Vulkan/CommandBufferManager.h"
 #include "VideoBackends/Vulkan/ObjectCache.h"
@@ -19,6 +20,7 @@
 #include "VideoBackends/Vulkan/VKSwapChain.h"
 #include "VideoBackends/Vulkan/VKTexture.h"
 #include "VideoBackends/Vulkan/VKVertexFormat.h"
+#include "VideoBackends/Vulkan/VulkanContext.h"
 
 #include "VideoCommon/DriverDetails.h"
 #include "VideoCommon/FramebufferManager.h"
@@ -82,6 +84,7 @@ std::unique_ptr<AbstractPipeline> VKGfx::CreatePipeline(const AbstractPipelineCo
                                                         const void* cache_data,
                                                         size_t cache_data_length)
 {
+  g_vulkan_context->GetPerfCounters().pipelines_created.fetch_add(1, std::memory_order_relaxed);
   return VKPipeline::Create(config);
 }
 
@@ -611,19 +614,27 @@ void VKGfx::SetViewport(float x, float y, float width, float height, float near_
 
 void VKGfx::Draw(u32 base_vertex, u32 num_vertices)
 {
+  const u64 perf_start_us = Common::Timer::NowUs();
   if (!StateTracker::GetInstance()->Bind())
     return;
 
   vkCmdDraw(g_command_buffer_mgr->GetCurrentCommandBuffer(), num_vertices, 1, base_vertex, 0);
+  auto& perf = g_vulkan_context->GetPerfCounters();
+  perf.draw_us.fetch_add(Common::Timer::NowUs() - perf_start_us, std::memory_order_relaxed);
+  perf.draw_count.fetch_add(1, std::memory_order_relaxed);
 }
 
 void VKGfx::DrawIndexed(u32 base_index, u32 num_indices, u32 base_vertex)
 {
+  const u64 perf_start_us = Common::Timer::NowUs();
   if (!StateTracker::GetInstance()->Bind())
     return;
 
   vkCmdDrawIndexed(g_command_buffer_mgr->GetCurrentCommandBuffer(), num_indices, 1, base_index,
                    base_vertex, 0);
+  auto& perf = g_vulkan_context->GetPerfCounters();
+  perf.draw_us.fetch_add(Common::Timer::NowUs() - perf_start_us, std::memory_order_relaxed);
+  perf.draw_count.fetch_add(1, std::memory_order_relaxed);
 }
 
 void VKGfx::DispatchComputeShader(const AbstractShader* shader, u32 groupsize_x, u32 groupsize_y,

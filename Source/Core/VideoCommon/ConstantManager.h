@@ -124,13 +124,6 @@ struct alignas(16) GeometryShaderConstants
   // Row 0 computes x_clip = dot(row, viewPos); row 1 computes y_clip.
   // Head rotation and eye position are baked into these rows.
   std::array<float4, 4> eye_projection{};
-  // Legacy OpenXR projected-space adjustment for Vulkan fallback.
-  // X and Y are stored separately as {camera_shift, off_axis, scale, 0} per eye.
-  std::array<float4, 2> legacy_eye_projection_x{};
-  std::array<float4, 2> legacy_eye_projection_y{};
-  // Center-eye game projection rows used to recover the original perspective NDC for
-  // Vulkan screen/head-locked overrides before applying their VR placement path.
-  std::array<float4, 2> legacy_center_projection{};
   // Per-eye z-axis row for depth/w recomputation (cvr_eye_z in shaders).
   // z_eye = dot(eye_z_row[eye], viewPos) gives the eye-space depth with
   // head rotation and eye position baked in.

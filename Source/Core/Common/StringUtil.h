@@ -300,12 +300,15 @@ inline bool IsXDigit(char c)
 
 inline char ToLower(char ch)
 {
-  return std::tolower(ch, std::locale::classic());
+  // Plain ASCII mapping — identical to std::tolower(ch, std::locale::classic()) for char,
+  // but without MSVC's per-call locale lock + facet lookup (profiled hot when callers run
+  // per draw on the video thread).
+  return (ch >= 'A' && ch <= 'Z') ? static_cast<char>(ch + ('a' - 'A')) : ch;
 }
 
 inline char ToUpper(char ch)
 {
-  return std::toupper(ch, std::locale::classic());
+  return (ch >= 'a' && ch <= 'z') ? static_cast<char>(ch - ('a' - 'A')) : ch;
 }
 
 // Thousand separator. Turns 12345678 into 12,345,678

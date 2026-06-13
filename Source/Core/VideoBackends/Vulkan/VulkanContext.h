@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <optional>
 #include <string>
@@ -55,6 +56,7 @@ public:
     bool textureCompressionBC;
     bool shaderSubgroupOperations = false;
     bool multiview = false;
+    bool timelineSemaphore = false;
     u32 maxMultiviewViewCount = 0;
     u32 maxMultiviewInstanceIndex = 0;
   };
@@ -119,6 +121,25 @@ public:
   bool SupportsShaderSubgroupOperations() const { return m_device_info.shaderSubgroupOperations; }
   bool SupportsMultiview() const { return m_multiview_enabled; }
   u32 GetMaxMultiviewViewCount() const { return m_device_info.maxMultiviewViewCount; }
+  // True when the timelineSemaphore feature was enabled at device creation (done when the
+  // OpenXR runtime lists VK_KHR_timeline_semaphore as a required device extension).
+  bool SupportsTimelineSemaphores() const { return m_timeline_semaphore_enabled; }
+
+  // Lightweight CPU-side perf counters for diagnosing VR frame cost. Accumulated by the
+  // backend, dumped and reset periodically by CommandBufferManager on present.
+  struct PerfCounters
+  {
+    std::atomic<u64> submit_us{0};
+    std::atomic<u64> fence_wait_us{0};
+    std::atomic<u64> xr_swapchain_us{0};
+    std::atomic<u64> uniform_us{0};
+    std::atomic<u64> vertex_commit_us{0};
+    std::atomic<u64> draw_us{0};
+    std::atomic<u32> draw_count{0};
+    std::atomic<u32> submit_count{0};
+    std::atomic<u32> pipelines_created{0};
+  };
+  PerfCounters& GetPerfCounters() { return m_perf_counters; }
 
   // Helpers for getting constants
   VkDeviceSize GetUniformBufferAlignment() const
@@ -172,6 +193,8 @@ private:
   std::vector<std::string> m_extra_device_extensions;
 
   bool m_multiview_enabled = false;
+  bool m_timeline_semaphore_enabled = false;
+  PerfCounters m_perf_counters;
 };
 
 extern std::unique_ptr<VulkanContext> g_vulkan_context;

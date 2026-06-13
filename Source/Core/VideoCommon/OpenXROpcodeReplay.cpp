@@ -3,6 +3,7 @@
 #include "VideoCommon/OpenXROpcodeReplay.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <limits>
 #include <mutex>
@@ -32,6 +33,13 @@ struct ReplayClearState
 struct ReplayState
 {
   std::mutex mutex;
+  // Per-stream mutexes for the capture byte streams: each stream has exactly one producer
+  // (preprocess = CPU thread, main = video thread), so giving each its own lock keeps the
+  // two decoder passes from serializing against each other (or against the scheduling
+  // mutex) during capture frames. Lock order: mutex -> capture_preprocess_mutex ->
+  // capture_main_mutex.
+  std::mutex capture_preprocess_mutex;
+  std::mutex capture_main_mutex;
   std::vector<u8> capture_preprocess;
   std::vector<u8> capture_main;
   std::vector<u8> replay_preprocess;
@@ -46,7 +54,10 @@ struct ReplayState
   bool capture_enabled = false;
   bool replaying = false;
   bool replay_frame_active = false;
-  bool replay_log_frame_active = false;
+  // Atomic: read per GX command by the opcode decoder (IsReplayLogFrameActive) — taking the
+  // mutex there dominated the video thread. Writers still hold the mutex for the rest of the
+  // state; CaptureCommand re-checks the flag under the mutex, so a stale lock-free read is safe.
+  std::atomic<bool> replay_log_frame_active{false};
   bool capture_window_armed = false;
   bool pending_immediate_swap = false;
   bool pending_immediate_swap_is_frame_boundary = false;
@@ -110,8 +121,13 @@ bool IsConfiguredUnlocked()
 
 void ClearUnlocked(ReplayState& state)
 {
-  state.capture_preprocess.clear();
-  state.capture_main.clear();
+  // Stop appenders before clearing the capture streams (see CaptureCommand).
+  state.replay_log_frame_active = false;
+  {
+    std::scoped_lock stream_locks(state.capture_preprocess_mutex, state.capture_main_mutex);
+    state.capture_preprocess.clear();
+    state.capture_main.clear();
+  }
   state.replay_preprocess.clear();
   state.replay_main.clear();
   state.capture_frame_index = INVALID_FRAME_INDEX;
@@ -184,8 +200,8 @@ bool IsReplayFrameActive()
 
 bool IsReplayLogFrameActive()
 {
-  std::scoped_lock lock(s_state.mutex);
-  return s_state.replay_log_frame_active;
+  // Lock-free: called per GX command from the opcode decoder (see ReplayState).
+  return s_state.replay_log_frame_active.load(std::memory_order_relaxed);
 }
 
 bool IsCaptureArmed()
@@ -209,10 +225,27 @@ void EnableCaptureForNextFrame(double display_period_ms)
           CalculateReplayCountForFrameUnlocked(display_period_ms, s_state.next_frame_index) :
           0;
   const bool set_active = scheduled_replay_count > 0;
-  if (set_active)
+
+  // Stop appenders, then reset the streams under their mutexes before (re-)arming.
+  s_state.replay_log_frame_active = false;
   {
+    std::scoped_lock stream_locks(s_state.capture_preprocess_mutex, s_state.capture_main_mutex);
     s_state.capture_preprocess.clear();
     s_state.capture_main.clear();
+    if (set_active)
+    {
+      // One-time growth insurance: keep the append path memcpy-bound from the first
+      // capture frame (capacity persists across clear()).
+      constexpr size_t initial_capacity = 1024 * 1024;
+      if (s_state.capture_preprocess.capacity() < initial_capacity)
+        s_state.capture_preprocess.reserve(initial_capacity);
+      if (s_state.capture_main.capacity() < initial_capacity)
+        s_state.capture_main.reserve(initial_capacity);
+    }
+  }
+
+  if (set_active)
+  {
     s_state.capture_frame_index = s_state.next_frame_index;
     s_state.scheduled_replay_frame_index = s_state.next_frame_index;
     s_state.scheduled_replay_count = scheduled_replay_count;
@@ -221,9 +254,6 @@ void EnableCaptureForNextFrame(double display_period_ms)
   }
   else
   {
-    s_state.capture_preprocess.clear();
-    s_state.capture_main.clear();
-    s_state.replay_log_frame_active = false;
     s_state.capture_window_armed = false;
     s_state.capture_frame_index = INVALID_FRAME_INDEX;
     s_state.scheduled_replay_frame_index = INVALID_FRAME_INDEX;
@@ -236,23 +266,17 @@ void CaptureCommand(bool is_preprocess, const u8* data, u32 size)
   if (data == nullptr || size == 0)
     return;
 
-  std::scoped_lock lock(s_state.mutex);
-  s_state.capture_enabled = IsConfiguredUnlocked();
-  if (!s_state.capture_enabled || s_state.replaying || !s_state.replay_log_frame_active)
-  {
-    static int skipped = 0;
-    if (++skipped % 10000 == 1)
-    {
-      WARN_LOG_FMT(VIDEO,
-                   "OpcodeReplay CaptureCommand skipped (count={}) capture_enabled={} "
-                   "replaying={} log_active={}",
-                   skipped, s_state.capture_enabled, s_state.replaying,
-                   s_state.replay_log_frame_active);
-    }
-    return;
-  }
-
+  // Hot path: one call per GX command (from both decoder passes) during capture frames.
+  // Take only this stream's mutex — the other pass and the scheduling mutex are untouched.
+  // Config/replaying state is enforced by the arm/disarm code: replay_log_frame_active is
+  // only true inside a valid capture window, and the frame-boundary code clears it before
+  // taking the stream mutexes, so re-checking it here under the stream mutex is sufficient.
+  auto& stream_mutex =
+      is_preprocess ? s_state.capture_preprocess_mutex : s_state.capture_main_mutex;
   auto& stream = is_preprocess ? s_state.capture_preprocess : s_state.capture_main;
+  std::scoped_lock lock(stream_mutex);
+  if (!s_state.replay_log_frame_active.load(std::memory_order_acquire))
+    return;
   stream.insert(stream.end(), data, data + size);
 }
 
@@ -279,6 +303,11 @@ void NotifyFrameBoundary()
     return;
   }
 
+  // Close the capture window before touching the streams: appenders re-check the flag
+  // under their stream mutex, so once we hold both stream mutexes no new bytes can land.
+  s_state.replay_log_frame_active = false;
+  std::scoped_lock stream_locks(s_state.capture_preprocess_mutex, s_state.capture_main_mutex);
+
   if (s_state.capture_frame_index != s_state.scheduled_replay_frame_index ||
       s_state.capture_frame_index != s_state.next_frame_index)
   {
@@ -293,7 +322,6 @@ void NotifyFrameBoundary()
     s_state.replay_main.clear();
     s_state.replay_frame_index = INVALID_FRAME_INDEX;
     s_state.replay_count = 0;
-    s_state.replay_log_frame_active = false;
     s_state.capture_window_armed = false;
     s_state.capture_frame_index = INVALID_FRAME_INDEX;
     s_state.scheduled_replay_frame_index = INVALID_FRAME_INDEX;
@@ -313,8 +341,8 @@ void NotifyFrameBoundary()
       WARN_LOG_FMT(VIDEO,
                    "OpcodeReplay NotifyFrameBoundary: EMPTY capture (count={}) "
                    "replay_log_frame_active={} capture_enabled={} capture_idx={}",
-                   empty_count, s_state.replay_log_frame_active, s_state.capture_enabled,
-                   s_state.capture_frame_index);
+                   empty_count, s_state.replay_log_frame_active.load(std::memory_order_relaxed),
+                   s_state.capture_enabled, s_state.capture_frame_index);
     }
     s_state.replay_preprocess.clear();
     s_state.replay_main.clear();
