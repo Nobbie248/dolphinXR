@@ -222,7 +222,14 @@ MetroidHydraHudSettings GetMetroidHydraHudSettings(MetroidElementProfile profile
             .height = 0.79f};
 
   case MetroidElementLayer::XRayHUD:
-    return {.enabled = true, .scale = 30.0f, .width = 0.79f, .height = 0.79f};
+    // The classifier uses XRayHUD for the compact visor/reticle HUD projection in both X-Ray and
+    // Thermal visor modes.  Those draws still contain 3D CMDL reticle pieces (beam/visor boxes),
+    // so keep them on the Hydra perspective-HUD path instead of flattening them as a 2D overlay.
+    return {.enabled = true,
+            .perspective_hud = true,
+            .scale = 30.0f,
+            .width = 0.79f,
+            .height = 0.79f};
 
   case MetroidElementLayer::DarkVisorHUD:
     return {.enabled = true,
