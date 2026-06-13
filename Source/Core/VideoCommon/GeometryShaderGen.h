@@ -20,7 +20,8 @@ struct geometry_shader_uid_data
   bool IsPassthrough() const;
 
   // Bump when GS code generation logic changes to invalidate stale shader cache entries.
-  u32 code_version : 5;
+  // 6 bits (max 63) — widened from 5 once the VR HUD iteration pushed it past 31.
+  u32 code_version : 6;
   u32 numTexGens : 4;
   u32 primitive_type : 2;
 };

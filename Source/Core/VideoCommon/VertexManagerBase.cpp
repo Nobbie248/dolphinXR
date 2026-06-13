@@ -67,6 +67,17 @@ struct MetroidLayerBehavior
   ShaderHunter::HandlingType handling = ShaderHunter::HandlingType::Skip;
 };
 
+struct MetroidHydraHudSettings
+{
+  bool enabled = false;
+  bool perspective_hud = false;
+  float scale = 1.0f;
+  float width = 1.0f;
+  float height = 1.0f;
+  float up = 0.0f;
+  float right = 0.0f;
+};
+
 ShaderHunter::RuntimeElementSignature BuildRuntimeElementSignature(const XFMemory& xf_memory,
                                                                    const BPMemory& bp_memory,
                                                                    int ortho_layer)
@@ -180,6 +191,90 @@ bool IsMetroidPrime2Profile(MetroidElementProfile profile)
 {
   return profile == MetroidElementProfile::Prime2GC ||
          profile == MetroidElementProfile::Prime2Wii;
+}
+
+bool IsMetroidPrime1Profile(MetroidElementProfile profile)
+{
+  return profile == MetroidElementProfile::Prime1GC ||
+         profile == MetroidElementProfile::Prime1Wii;
+}
+
+MetroidHydraHudSettings GetMetroidHydraHudSettings(MetroidElementProfile profile,
+                                                   MetroidElementLayer layer)
+{
+  if (!IsMetroidPrime1Profile(profile))
+    return {};
+
+  const std::string game_id = SConfig::GetInstance().GetGameID();
+  if (!(game_id.starts_with("GM8") || game_id.starts_with("D93") || game_id.starts_with("R3I")))
+    return {};
+
+  switch (layer)
+  {
+  case MetroidElementLayer::HUD:
+  case MetroidElementLayer::UnknownHUD:
+  case MetroidElementLayer::MapOrHint:
+  case MetroidElementLayer::Map:
+    return {.enabled = true,
+            .perspective_hud = true,
+            .scale = 30.0f,
+            .width = 0.79f,
+            .height = 0.79f};
+
+  case MetroidElementLayer::XRayHUD:
+    return {.enabled = true, .scale = 30.0f, .width = 0.79f, .height = 0.79f};
+
+  case MetroidElementLayer::DarkVisorHUD:
+    return {.enabled = true,
+            .perspective_hud = true,
+            .scale = 5.0f,
+            .width = 0.79f,
+            .height = 0.79f};
+
+  case MetroidElementLayer::VisorRadarHint:
+    return {.enabled = true,
+            .perspective_hud = true,
+            .scale = 32.0f,
+            .width = 0.79f,
+            .height = 0.79f};
+
+  case MetroidElementLayer::RadarDot:
+    return {.enabled = true,
+            .perspective_hud = true,
+            .scale = 36.0f,
+            .width = 0.79f,
+            .height = 0.79f};
+
+  case MetroidElementLayer::Visor:
+    return {.enabled = true, .perspective_hud = true, .scale = 90.0f};
+
+  case MetroidElementLayer::Helmet:
+    return {.enabled = true,
+            .perspective_hud = true,
+            .scale = 100.0f,
+            .width = 1.7f,
+            .height = 1.7f};
+
+  case MetroidElementLayer::ScanText:
+    return {.enabled = true,
+            .perspective_hud = true,
+            .scale = 32.0f,
+            .width = 0.8f,
+            .height = 0.8f};
+
+  case MetroidElementLayer::ScanHologram:
+    return {.enabled = true,
+            .perspective_hud = true,
+            .scale = 40.0f,
+            .width = 1.2f,
+            .height = 1.2f};
+
+  case MetroidElementLayer::ScanReticle:
+    return {.enabled = true, .width = 1.0f, .height = 1.0f, .up = 0.14f, .right = 0.01f};
+
+  default:
+    return {};
+  }
 }
 
 MetroidLayerBehavior GetMetroidLayerBehavior(MetroidElementLayer layer)
@@ -1023,6 +1118,9 @@ void VertexManagerBase::Flush()
             int manual_layer = -1;
             float element_depth = -1.0f;
             float units_per_meter = -1.0f;
+            const MetroidHydraHudSettings metroid_hydra_hud =
+                metroid_profile_active ? GetMetroidHydraHudSettings(metroid_profile, metroid_layer) :
+                                         MetroidHydraHudSettings{};
 
             if (elements_has_overrides)
               handling = elements.GetOverrideHandling(*element_draw);
@@ -1090,11 +1188,36 @@ void VertexManagerBase::Flush()
             }
             else if (handling == ShaderHunter::HandlingType::HeadLocked)
             {
-              geometry_shader_manager.vr_stereo_override = -2.0f;
+              geometry_shader_manager.vr_stereo_override =
+                  (metroid_hydra_hud.perspective_hud && metroid_metrics.perspective) ? -3.0f :
+                                                                                       -2.0f;
+              if (metroid_hydra_hud.enabled)
+              {
+                // Radar/minimap layers self-centre on their own origin depth in the -3 path
+                // (consumed and reset by GeometryShaderManager::SetConstants).
+                const std::string_view layer_name = MetroidElementLayerToININame(metroid_layer);
+                geometry_shader_manager.vr_metroid_hud_self_center =
+                    layer_name.find("RADAR") != std::string_view::npos;
+              }
               if (manual_layer >= 0)
                 geometry_shader_manager.vr_ortho_layer_override = manual_layer;
               if (element_depth >= 0.0f)
                 geometry_shader_manager.vr_element_depth_override = element_depth;
+              if (metroid_hydra_hud.enabled)
+              {
+                if (metroid_hydra_hud.scale > 0.0f)
+                {
+                  geometry_shader_manager.vr_units_per_meter_override =
+                      g_ActiveConfig.vr_units_per_meter * metroid_hydra_hud.scale;
+                }
+                geometry_shader_manager.vr_headlocked_projection_scale_x =
+                    metroid_hydra_hud.width;
+                geometry_shader_manager.vr_headlocked_projection_scale_y =
+                    metroid_hydra_hud.height;
+                geometry_shader_manager.vr_headlocked_projection_offset_x =
+                    metroid_hydra_hud.right;
+                geometry_shader_manager.vr_headlocked_projection_offset_y = metroid_hydra_hud.up;
+              }
             }
             else if (handling == ShaderHunter::HandlingType::UnitsPerMeter)
             {
@@ -1666,18 +1789,6 @@ void VertexManagerBase::RenderDrawCall(
     std::span<u8> custom_pixel_shader_uniforms, PrimitiveType primitive_type,
     const AbstractPipeline* current_pipeline)
 {
-  auto& system = Core::System::GetInstance();
-  auto& vertex_shader_manager = system.GetVertexShaderManager();
-  auto& xf_state_manager = system.GetXFStateManager();
-
-  if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR && g_backend_info.api_type == APIType::Vulkan)
-  {
-    const float vr_override = geometry_shader_manager.vr_stereo_override;
-    const bool force_screen_or_headlocked = !std::isnan(vr_override) && vr_override < -0.5f;
-    vertex_shader_manager.SetProjectionMatrix(xf_state_manager,
-                                              !force_screen_or_headlocked, true);
-  }
-
   // Now we can upload uniforms, as nothing else will override them.
   geometry_shader_manager.SetConstants(primitive_type);
   pixel_shader_manager.SetConstants();

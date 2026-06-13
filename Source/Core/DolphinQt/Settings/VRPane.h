@@ -80,6 +80,8 @@ private:
   QLabel* m_layer_offset_value = nullptr;
   ConfigFloatSlider* m_element_depth = nullptr;
   QLabel* m_element_depth_value = nullptr;
+  ConfigFloatSlider* m_hud_thickness = nullptr;
+  QLabel* m_hud_thickness_value = nullptr;
   QPushButton* m_reset_general_settings = nullptr;
   ConfigBool* m_load_custom_shaders = nullptr;
   ConfigBool* m_enable_openxr_config_scene = nullptr;

@@ -240,6 +240,9 @@ void VideoConfig::Refresh()
   vr_element_depth = std::clamp(Config::Get(Config::GFX_VR_ELEMENT_DEPTH),
                                 Config::GFX_VR_ELEMENT_DEPTH_MIN,
                                 Config::GFX_VR_ELEMENT_DEPTH_MAX);
+  vr_hud_thickness = std::clamp(Config::Get(Config::GFX_VR_HUD_THICKNESS),
+                                Config::GFX_VR_HUD_THICKNESS_MIN,
+                                Config::GFX_VR_HUD_THICKNESS_MAX);
   vr_clear_efb_min_width = std::clamp(Config::Get(Config::GFX_VR_CLEAR_EFB_COPIES),
                                       Config::GFX_VR_CLEAR_EFB_MIN,
                                       Config::GFX_VR_CLEAR_EFB_MAX);

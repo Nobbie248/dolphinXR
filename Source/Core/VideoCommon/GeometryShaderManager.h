@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <string>
 
 #include "Common/CommonTypes.h"
 #include "VideoCommon/ConstantManager.h"
@@ -36,7 +37,8 @@ public:
   bool dirty = false;
 
   // Per-draw VR stereo mode override (set before RenderDrawCall, consumed in SetConstants).
-  // NaN = no override; -1.0 = force screen; 0.0 = force fullscreen; 1.0 = force perspective.
+  // NaN = no override; -3.0 = force headlocked perspective HUD; -2.0 = force headlocked screen;
+  // -1.0 = force screen; 0.0 = force fullscreen; 1.0 = force perspective.
   float vr_stereo_override = std::numeric_limits<float>::quiet_NaN();
 
   // Per-frame counter for ortho/screen draws — used to spread depth and avoid Z-fighting.
@@ -52,6 +54,17 @@ public:
   // Per-draw UPM override from shader overrides (-1 = use global setting).
   float vr_units_per_meter_override = -1.0f;
 
+  // Per-draw headlocked projection tuning for Hydra-style HUD layers.
+  float vr_headlocked_projection_scale_x = 1.0f;
+  float vr_headlocked_projection_scale_y = 1.0f;
+  float vr_headlocked_projection_offset_x = 0.0f;
+  float vr_headlocked_projection_offset_y = 0.0f;
+
+  // Set by VertexManagerBase for the current -3 (perspective HUD) draw: true for radar/minimap
+  // layers that must self-centre on their own origin depth instead of the shared per-frame
+  // reference (see SetConstants).
+  bool vr_metroid_hud_self_center = false;
+
 private:
   void SetVSExpand(VSExpand expand);
 
@@ -63,5 +76,13 @@ private:
   std::array<std::array<float, 4>, 4> m_cached_eye_projection{};
   std::array<std::array<float, 4>, 2> m_cached_eye_z_row{};
   std::array<std::array<float, 4>, 4> m_cached_head_projection{};
+  float m_cached_units_per_meter = 0.0f;
   bool m_vr_pose_needs_refresh = true;
+
+  // Shared per-frame reference depth for the headlocked perspective HUD (-3) path.  Captured on the
+  // first such draw each frame and reused for all of them so they share ONE coherent transform and
+  // keep their relative scene depth.  Per-draw centring instead collapsed every origin to
+  // scale.z - distance and inverted it (because scale.z ~ size_ref/(-refZ)).
+  float m_vr_hud_shared_reference_z = 0.0f;
+  bool m_vr_hud_shared_reference_valid = false;
 };

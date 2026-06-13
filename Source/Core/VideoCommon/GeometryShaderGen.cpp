@@ -48,7 +48,7 @@ GeometryShaderUid GetGeometryShaderUid(PrimitiveType primitive_type)
   GeometryShaderUid out;
 
   geometry_shader_uid_data* const uid_data = out.GetUidData();
-  uid_data->code_version = 17;
+  uid_data->code_version = 34;
   uid_data->primitive_type = static_cast<u32>(primitive_type);
   uid_data->numTexGens = xfmem.numTexGen.numTexGens;
 
@@ -259,29 +259,6 @@ ShaderCode GenerateGeometryShaderCode(APIType api_type, const ShaderHostConfig& 
       //   f.pos.w = -z_eye,  f.pos.z = P[2][2]*z_eye + P[2][3]
       out.Write("\tif (" I_STEREOPARAMS ".w > 0.5f)\n");
       out.Write("\t{{\n");
-      if (api_type == APIType::Vulkan)
-      {
-        out.Write("\t\tif (" I_STEREOPARAMS ".y > 0.5f)\n");
-        out.Write("\t\t{{\n");
-        out.Write("\t\t\tfloat4 eye_proj_x = " I_LEGACY_EYE_PROJ_X "[eye];\n");
-        out.Write("\t\t\tfloat4 eye_proj_y = " I_LEGACY_EYE_PROJ_Y "[eye];\n");
-        // eye_proj_*.x is the per-eye position-derived camera shift; * cstereo.z removes it for
-        // skybox draws (cstereo.z == 0) so the skybox renders rotation-only, locked at infinity.
-        out.Write("\t\t\tf.pos.x = eye_proj_x.z * f.pos.x + eye_proj_x.x * " I_STEREOPARAMS
-                  ".z - eye_proj_x.y * f.pos.w;\n");
-        out.Write("\t\t\tf.pos.y = eye_proj_y.z * f.pos.y + eye_proj_y.x * " I_STEREOPARAMS
-                  ".z - eye_proj_y.y * f.pos.w;\n");
-        if (!host_config.fast_depth_calc)
-        {
-          out.Write("\t\t\tf.clipPos.x = eye_proj_x.z * f.clipPos.x + eye_proj_x.x * " I_STEREOPARAMS
-                    ".z - eye_proj_x.y * f.clipPos.w;\n");
-          out.Write("\t\t\tf.clipPos.y = eye_proj_y.z * f.clipPos.y + eye_proj_y.x * " I_STEREOPARAMS
-                    ".z - eye_proj_y.y * f.clipPos.w;\n");
-        }
-        out.Write("\t\t}}\n");
-        out.Write("\t\telse\n");
-        out.Write("\t\t{{\n");
-      }
       out.Write("\t\tfloat4 row0 = " I_EYE_PROJ "[eye * 2 + 0];\n");
       out.Write("\t\tfloat4 row1 = " I_EYE_PROJ "[eye * 2 + 1];\n");
       out.Write("\t\tfloat4 zrow = " I_VR_EYE_Z "[eye];\n");
@@ -318,8 +295,51 @@ ShaderCode GenerateGeometryShaderCode(APIType api_type, const ShaderHostConfig& 
         else
           out.Write("\t\tf.clipDist0 = f.pos.z + f.pos.w;\n\t\tf.clipDist1 = -f.pos.z;\n");
       }
-      if (api_type == APIType::Vulkan)
-        out.Write("\t\t}}\n");
+      out.Write("\t}}\n");
+
+      // Head-locked perspective HUD: preserve the game's original perspective GUI/model
+      // geometry, then place the transformed object in head-locked HMD space. This matches
+      // Hydra's special path for Metroid Prime beam/visor HUD models.
+      out.Write("\telse if (" I_STEREOPARAMS ".w < -2.5f)\n");
+      out.Write("\t{{\n");
+      // Capture the game's own NDC depth before replacing f.pos.  Re-attached to the new w below,
+      // it reproduces the EXACT flat-screen depth value after the hardware viewport applies the
+      // game's per-draw depth slice (xfmem viewport zRange/farZ).  Prime's HUD relies on this:
+      // e.g. the minimap (CAutoMapper) is depth-squashed by 0.001 and drawn with depth TEST but no
+      // write, counting on its viewport slice to pass against the world's depth.  A synthetic
+      // depth ignored the slice, so the minimap's test failed depending on the Distance slider and
+      // backend depth convention (invisible on D3D11, visible on Vulkan).
+      out.Write("\t\tfloat hud_game_w = (abs(f.pos.w) > 1.0e-6) ? f.pos.w : 1.0e-6;\n");
+      out.Write("\t\tfloat hud_game_ndc_z = clamp(f.pos.z / hud_game_w, -1.0, 1.0);\n");
+      out.Write("\t\tfloat4 hudPos = float4(\n");
+      out.Write("\t\t\tf.viewPos.x * " I_HEAD_PARAMS ".y + " I_VR_SCREEN ".x,\n");
+      out.Write("\t\t\tf.viewPos.y * " I_HEAD_PARAMS ".z + " I_VR_SCREEN ".y,\n");
+      out.Write("\t\t\tf.viewPos.z * " I_HEAD_PARAMS ".w + " I_VR_SCREEN ".z,\n");
+      out.Write("\t\t\t1.0);\n");
+      // Keep HUD geometry in front of a near plane (a fraction of the HUD distance) so depth-outlier
+      // pieces (e.g. the 3D radar/minimap blips) can't be pushed behind the camera at small HUD
+      // distances and vanish (where -hudPos.z would clamp to ~0 and project to infinity).
+      out.Write("\t\thudPos.z = min(hudPos.z, -0.1 * max(" I_VR_DEPTH ".w, 0.001));\n");
+      out.Write("\t\tfloat4 row0 = " I_HEAD_PROJ "[eye * 2 + 0];\n");
+      out.Write("\t\tfloat4 row1 = " I_HEAD_PROJ "[eye * 2 + 1];\n");
+      out.Write("\t\tf.pos.x = dot(row0, hudPos);\n");
+      out.Write("\t\tf.pos.y = dot(row1, hudPos);\n");
+      out.Write("\t\tf.pos.w = max(-hudPos.z, 0.001);\n");
+      // Re-attach the game's NDC depth (see capture above).  The stereo 3D look is unaffected —
+      // it comes from the per-vertex w parallax, not the depth buffer.  The VS already emitted z
+      // in the backend's clip convention, so no clip-control re-conversion here.
+      out.Write("\t\tf.pos.z = hud_game_ndc_z * f.pos.w;\n");
+      if (!host_config.fast_depth_calc)
+        out.Write("\t\tf.clipPos = f.pos;\n");
+      out.Write("\t\tf.pos.xy *= sign(" I_VR_PIXELCENTER ".xy * float2(1.0, -1.0));\n");
+      out.Write("\t\tf.pos.xy = f.pos.xy - f.pos.w * " I_VR_PIXELCENTER ".xy;\n");
+      if (host_config.backend_depth_clamp)
+      {
+        if (api_type == APIType::Vulkan)
+          out.Write("\t\tf.clipDist0 = 1.0;\n\t\tf.clipDist1 = 1.0;\n");
+        else
+          out.Write("\t\tf.clipDist0 = f.pos.z + f.pos.w;\n\t\tf.clipDist1 = -f.pos.z;\n");
+      }
       out.Write("\t}}\n");
 
       // Head-locked VR: 2D content on a virtual screen that follows head movements.
@@ -345,7 +365,8 @@ ShaderCode GenerateGeometryShaderCode(APIType api_type, const ShaderHostConfig& 
       out.Write("\t\tfloat4 screenPos = float4(\n");
       out.Write("\t\t\tndc_x * " I_VR_SCREEN ".x,\n");
       out.Write("\t\t\tndc_y * " I_VR_SCREEN ".y,\n");
-      out.Write("\t\t\t-" I_VR_SCREEN ".z,\n");
+      // Spread head-locked 2D content over real depth (cvr_depth.z = HUD thickness).
+      out.Write("\t\t\t-" I_VR_SCREEN ".z + ndc_z_clamped * " I_VR_DEPTH ".z,\n");
       out.Write("\t\t\t1.0);\n");
       out.Write("\t\tfloat curve = max(" I_HEAD_PARAMS ".x, 0.0);\n");
       out.Write("\t\tfloat horizontal = 0.5 * (ndc_x * ndc_x);\n");
@@ -404,7 +425,9 @@ ShaderCode GenerateGeometryShaderCode(APIType api_type, const ShaderHostConfig& 
       out.Write("\t\tfloat4 screenPos = float4(\n");
       out.Write("\t\t\tndc_x * " I_VR_SCREEN ".x,\n");
       out.Write("\t\t\tndc_y * " I_VR_SCREEN ".y,\n");
-      out.Write("\t\t\t-" I_VR_SCREEN ".z,\n");
+      // Spread 2D content over real depth (cvr_depth.z = HUD thickness) so elements at
+      // different ortho-Z get binocular parallax instead of all sitting on one flat plane.
+      out.Write("\t\t\t-" I_VR_SCREEN ".z + ndc_z_clamped * " I_VR_DEPTH ".z,\n");
       out.Write("\t\t\t1.0);\n");
       out.Write("\t\tfloat4 row0 = " I_EYE_PROJ "[eye * 2 + 0];\n");
       out.Write("\t\tfloat4 row1 = " I_EYE_PROJ "[eye * 2 + 1];\n");

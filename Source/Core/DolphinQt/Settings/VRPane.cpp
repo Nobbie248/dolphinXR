@@ -322,6 +322,23 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
     m_element_depth_value->setText(QString::asprintf("%.4f", m_element_depth->GetValue()));
   });
 
+  m_hud_thickness = new ConfigFloatSlider(Config::GFX_VR_HUD_THICKNESS_MIN,
+                                          Config::GFX_VR_HUD_THICKNESS_MAX,
+                                          Config::GFX_VR_HUD_THICKNESS,
+                                          Config::GFX_VR_HUD_THICKNESS_STEP);
+  m_hud_thickness_value = new QLabel();
+  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("HUD Thickness:"), m_hud_thickness), 7,
+                                   0);
+  virtual_screen_layout->addWidget(m_hud_thickness, 7, 1);
+  virtual_screen_layout->addWidget(m_hud_thickness_value, 7, 2);
+
+  auto update_hud_thickness_label = [this] {
+    const float val = m_hud_thickness->GetValue();
+    m_hud_thickness_value->setText(val <= 0.001f ? tr("Off") : QString::asprintf("%.2f m", val));
+  };
+  update_hud_thickness_label();
+  connect(m_hud_thickness, &ConfigFloatSlider::valueChanged, this, update_hud_thickness_label);
+
   general_layout->addWidget(openxr_group);
   general_layout->addWidget(camera_group);
   general_layout->addWidget(virtual_screen_group);
@@ -633,6 +650,13 @@ void VRPane::AddDescriptions()
       "<br><br>Higher values give more depth separation within each element, fixing Z-fighting "
       "that appears as flickering inside UI elements. Set to 0 to flatten elements completely."
       "<br><br>Default: 0.0010");
+  static constexpr char TR_HUD_THICKNESS_DESCRIPTION[] = QT_TR_NOOP(
+      "Gives 2D HUD/menu layers real 3D depth in VR by spreading their elements across this "
+      "much world-space thickness (in metres), instead of drawing them flat on a single plane."
+      "<br><br>Recreates the layered HUD effect from Dolphin VR Hydra (e.g. the Metroid Prime "
+      "visor). Only affects 2D layers whose elements are drawn at different depths; flat menus "
+      "and full-motion video are unaffected. Set to 0 (Off) for a completely flat HUD."
+      "<br><br><dolphin_emphasis>If unsure, leave this at 0 (off).</dolphin_emphasis>");
   static constexpr char TR_CLEAR_EFB_COPIES_DESCRIPTION[] = QT_TR_NOOP(
       "Clears EFB (Embedded Framebuffer) copy textures to transparent when the copy's native "
       "width is at or above this threshold. Set to 0 to disable."
@@ -768,6 +792,7 @@ void VRPane::AddDescriptions()
   m_auto_layer_spread->SetDescription(tr(TR_AUTO_LAYER_SPREAD_DESCRIPTION));
   m_layer_offset->SetDescription(tr(TR_LAYER_OFFSET_DESCRIPTION));
   m_element_depth->SetDescription(tr(TR_ELEMENT_DEPTH_DESCRIPTION));
+  m_hud_thickness->SetDescription(tr(TR_HUD_THICKNESS_DESCRIPTION));
   m_load_custom_shaders->SetDescription(tr(TR_LOAD_CUSTOM_SHADERS_DESCRIPTION));
   m_enable_openxr_config_scene->SetDescription(tr(TR_ENABLE_OPENXR_CONFIG_SCENE_DESCRIPTION));
   m_ar_mode->SetDescription(tr(TR_AR_MODE_DESCRIPTION));
@@ -833,6 +858,8 @@ void VRPane::ResetGeneralSettings()
                            Config::GFX_VR_LAYER_OFFSET.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_ELEMENT_DEPTH,
                            Config::GFX_VR_ELEMENT_DEPTH.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_HUD_THICKNESS,
+                           Config::GFX_VR_HUD_THICKNESS.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_METROID_THERMAL_VISOR_FIX,
                            Config::GFX_VR_METROID_THERMAL_VISOR_FIX.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_METROID_D3D_THERMAL_PALETTE_FIX,

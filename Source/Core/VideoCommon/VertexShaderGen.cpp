@@ -14,7 +14,7 @@
 #include "VideoCommon/VideoConfig.h"
 #include "VideoCommon/XFMemory.h"
 
-static constexpr u32 VERTEX_SHADER_CODE_VERSION = 1;
+static constexpr u32 VERTEX_SHADER_CODE_VERSION = 18;
 
 VertexShaderUid GetVertexShaderUid()
 {
@@ -798,27 +798,16 @@ ShaderCode GenerateVertexShaderCode(APIType api_type, const ShaderHostConfig& ho
     out.Write("\tbool right_eye = eye != 0u;\n");
 
     out.Write("\tif (" I_STEREOPARAMS ".w > 0.5f)\n\t{{\n");
-    if (api_type == APIType::Vulkan)
-    {
-      out.Write("\t\tif (" I_STEREOPARAMS ".y > 0.5f)\n");
-      out.Write("\t\t{{\n");
-      out.Write("\t\t\tfloat4 eye_proj_x = right_eye ? " I_LEGACY_EYE_PROJ_X
-                "[1] : " I_LEGACY_EYE_PROJ_X "[0];\n");
-      out.Write("\t\t\tfloat4 eye_proj_y = right_eye ? " I_LEGACY_EYE_PROJ_Y
-                "[1] : " I_LEGACY_EYE_PROJ_Y "[0];\n");
-      out.Write(
-          "\t\t\to.pos.x = eye_proj_x.z * o.pos.x + eye_proj_x.x - eye_proj_x.y * o.pos.w;\n");
-      out.Write(
-          "\t\t\to.pos.y = eye_proj_y.z * o.pos.y + eye_proj_y.x - eye_proj_y.y * o.pos.w;\n");
-      out.Write("\t\t}}\n");
-      out.Write("\t\telse\n");
-      out.Write("\t\t{{\n");
-    }
     out.Write("\t\tfloat4 row0 = right_eye ? " I_EYE_PROJ "[2] : " I_EYE_PROJ "[0];\n");
     out.Write("\t\tfloat4 row1 = right_eye ? " I_EYE_PROJ "[3] : " I_EYE_PROJ "[1];\n");
     out.Write("\t\tfloat4 zrow = right_eye ? " I_VR_EYE_Z "[1] : " I_VR_EYE_Z "[0];\n");
     out.Write("\t\tfloat4 vp = vertex_output.position;\n");
     out.Write("\t\tvp.x *= " I_STEREOPARAMS ".x;\n");
+    // Skybox (Detect Skybox): cstereo.z is the world-position weight (1 = normal, 0 = skybox).
+    // The per-eye position offset (IPD + head translation) is baked into the projection rows'
+    // .w component and applies only because vp.w == 1; zeroing it renders rotation-only so the
+    // skybox sits at infinity. Mirrors the GS perspective path.
+    out.Write("\t\tvp.w *= " I_STEREOPARAMS ".z;\n");
     out.Write("\t\tfloat z_eye = dot(zrow, vp);\n");
     out.Write("\t\tfloat clip_x = dot(row0, vp);\n");
     out.Write("\t\tfloat clip_y = dot(row1, vp);\n");
@@ -830,8 +819,42 @@ ShaderCode GenerateVertexShaderCode(APIType api_type, const ShaderHostConfig& ho
       out.Write("\t\to.pos.z = o.pos.z * 2.0 - o.pos.w;\n");
     out.Write("\t\to.pos.xy *= sign(" I_VR_PIXELCENTER ".xy * float2(1.0, -1.0));\n");
     out.Write("\t\to.pos.xy = o.pos.xy - o.pos.w * " I_VR_PIXELCENTER ".xy;\n");
-    if (api_type == APIType::Vulkan)
-      out.Write("\t\t}}\n");
+    out.Write("\t\tvr_pos_replaced = true;\n");
+    out.Write("\t}}\n");
+
+    // Head-locked perspective HUD: keep the game's original perspective GUI/model geometry,
+    // then place it in head-locked HMD space.
+    out.Write("\telse if (" I_STEREOPARAMS ".w < -2.5f)\n\t{{\n");
+    // Capture the game's NDC depth and re-attach it below — see GeometryShaderGen for the full
+    // rationale (Prime's minimap depth-tests against the world via its viewport depth slice).
+    // Unlike the GS path (which sees f.pos AFTER the VS's trailing depth-range remap), o.pos
+    // here is still in console convention (-1..0) — the trailing remap is suppressed for VR
+    // draws via vr_pos_replaced. Apply the same remap to the captured NDC ourselves
+    // (z' = w*cpc.w - z*cpc.z  =>  ndc' = cpc.w - ndc*cpc.z) so the re-attached depth matches
+    // what the game (and its viewport depth slices) expect in the backend convention.
+    out.Write("\t\tfloat hud_game_w = (abs(o.pos.w) > 1.0e-6) ? o.pos.w : 1.0e-6;\n");
+    out.Write("\t\tfloat hud_console_ndc_z = clamp(o.pos.z / hud_game_w, -1.0, 1.0);\n");
+    out.Write("\t\tfloat hud_game_ndc_z = clamp(" I_PIXELCENTERCORRECTION
+              ".w - hud_console_ndc_z * " I_PIXELCENTERCORRECTION ".z, -1.0, 1.0);\n");
+    out.Write("\t\tfloat4 hudPos = float4(\n");
+    out.Write("\t\t\tvertex_output.position.x * " I_HEAD_PARAMS ".y + " I_VR_SCREEN ".x,\n");
+    out.Write("\t\t\tvertex_output.position.y * " I_HEAD_PARAMS ".z + " I_VR_SCREEN ".y,\n");
+    out.Write("\t\t\tvertex_output.position.z * " I_HEAD_PARAMS ".w + " I_VR_SCREEN ".z,\n");
+    out.Write("\t\t\t1.0);\n");
+    // Near-plane clamp so depth-outlier HUD pieces (radar/minimap blips) don't vanish at small HUD
+    // distances — see GeometryShaderGen.
+    out.Write("\t\thudPos.z = min(hudPos.z, -0.1 * max(" I_VR_DEPTH ".w, 0.001));\n");
+    out.Write("\t\tfloat4 row0 = right_eye ? " I_HEAD_PROJ "[2] : " I_HEAD_PROJ "[0];\n");
+    out.Write("\t\tfloat4 row1 = right_eye ? " I_HEAD_PROJ "[3] : " I_HEAD_PROJ "[1];\n");
+    out.Write("\t\to.pos.x = dot(row0, hudPos);\n");
+    out.Write("\t\to.pos.y = dot(row1, hudPos);\n");
+    out.Write("\t\to.pos.w = max(-hudPos.z, 0.001);\n");
+    // Game NDC depth re-attached (hud_game_ndc_z is already remapped to the backend convention).
+    out.Write("\t\to.pos.z = hud_game_ndc_z * o.pos.w;\n");
+    if (!host_config.backend_clip_control)
+      out.Write("\t\to.pos.z = o.pos.z * 2.0 - o.pos.w;\n");
+    out.Write("\t\to.pos.xy *= sign(" I_VR_PIXELCENTER ".xy * float2(1.0, -1.0));\n");
+    out.Write("\t\to.pos.xy = o.pos.xy - o.pos.w * " I_VR_PIXELCENTER ".xy;\n");
     out.Write("\t\tvr_pos_replaced = true;\n");
     out.Write("\t}}\n");
 
@@ -855,7 +878,7 @@ ShaderCode GenerateVertexShaderCode(APIType api_type, const ShaderHostConfig& ho
     out.Write("\t\tfloat4 screenPos = float4(\n");
     out.Write("\t\t\tndc_x * " I_VR_SCREEN ".x,\n");
     out.Write("\t\t\tndc_y * " I_VR_SCREEN ".y,\n");
-    out.Write("\t\t\t-" I_VR_SCREEN ".z,\n");
+    out.Write("\t\t\t-" I_VR_SCREEN ".z + ndc_z_clamped * " I_VR_DEPTH ".z,\n");
     out.Write("\t\t\t1.0);\n");
     out.Write("\t\tfloat curve = max(" I_HEAD_PARAMS ".x, 0.0);\n");
     out.Write("\t\tfloat horizontal = 0.5 * (ndc_x * ndc_x);\n");
@@ -900,7 +923,7 @@ ShaderCode GenerateVertexShaderCode(APIType api_type, const ShaderHostConfig& ho
     out.Write("\t\tfloat4 screenPos = float4(\n");
     out.Write("\t\t\tndc_x * " I_VR_SCREEN ".x,\n");
     out.Write("\t\t\tndc_y * " I_VR_SCREEN ".y,\n");
-    out.Write("\t\t\t-" I_VR_SCREEN ".z,\n");
+    out.Write("\t\t\t-" I_VR_SCREEN ".z + ndc_z_clamped * " I_VR_DEPTH ".z,\n");
     out.Write("\t\t\t1.0);\n");
     out.Write("\t\tfloat4 row0 = right_eye ? " I_EYE_PROJ "[2] : " I_EYE_PROJ "[0];\n");
     out.Write("\t\tfloat4 row1 = right_eye ? " I_EYE_PROJ "[3] : " I_EYE_PROJ "[1];\n");

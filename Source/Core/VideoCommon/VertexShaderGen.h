@@ -61,7 +61,8 @@ struct vertex_shader_uid_data
   u32 dualTexTrans_enabled : 1;
   VSExpand vs_expand : 2;
   u32 position_has_3_elems : 1;
-  u32 code_version : 4;
+  // 6 bits (max 63) — widened from 4 once the VR HUD iteration pushed it past 15.
+  u32 code_version : 6;
 
   u16 texcoord_elem_count;      // 2 bits per texcoord input
   u16 texMtxInfo_n_projection;  // Stored separately to guarantee that the texMtxInfo struct is

@@ -7,9 +7,11 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <string>
 
 #include "Common/ChunkFile.h"
 #include "Common/CommonTypes.h"
+#include "Common/Logging/Log.h"
 #include "Core/System.h"
 #include "VideoCommon/BPMemory.h"
 #include "VideoCommon/FreeLookCamera.h"
@@ -27,6 +29,25 @@ static constexpr int LINE_PT_TEX_OFFSETS[8] = {0, 16, 8, 4, 2, 1, 1, 1};
 
 namespace
 {
+static constexpr float METROID_PERSPECTIVE_HUD_FORWARD_OFFSET = 1.0f;
+
+struct PerspectiveHudTransform
+{
+  std::array<float, 3> scale{};
+  std::array<float, 3> position{};
+  float zobj = 0.0f;
+  float distance = 0.0f;
+  float origin_z = 0.0f;
+  float ref_minus_one_z = 0.0f;
+  float ref_plus_one_z = 0.0f;
+  float hydra_like_position_z = 0.0f;
+  float hydra_like_origin_z = 0.0f;
+  float znear = 0.0f;
+  float zfar = 0.0f;
+  float hydra_default_zobj = 0.0f;
+  bool valid = false;
+};
+
 void ApplyRowTransform(std::array<std::array<float, 4>, 4>* rows, const Common::Matrix44& matrix)
 {
   for (auto& row : *rows)
@@ -57,6 +78,84 @@ void ApplyRowTransform(std::array<std::array<float, 4>, 2>* rows, const Common::
     row[3] = src[0] * matrix.data[3] + src[1] * matrix.data[7] + src[2] * matrix.data[11] +
              src[3] * matrix.data[15];
   }
+}
+
+bool IsFinite(float value)
+{
+  return std::isfinite(value);
+}
+
+PerspectiveHudTransform CalculatePerspectiveHudTransform(const Projection::Raw& projection,
+                                                         float units_per_meter,
+                                                         float reference_view_z)
+{
+  PerspectiveHudTransform result;
+
+  if (projection[0] == 0.0f || projection[2] == 0.0f || reference_view_z >= 0.0f)
+    return result;  // need a valid frustum and a HUD model in front of the camera
+
+  // Reference depth = the HUD model's ACTUAL view-space distance (|reference_view_z|), not the
+  // frustum mid-point.  Metroid's HUD perspective frustum is enormous (znear~1, zfar~4000+), so a
+  // frustum-interpolated reference put zobj in the thousands while the models actually sit only
+  // ~20 units away.  That made scale = size_reference/zobj ~100x too small, shrinking the HUD to a
+  // dot.  Using the real model depth makes the apparent size depend only on size_reference/distance
+  // (i.e. the Size/Distance sliders), independent of the model's view-space depth.
+  const float zobj = -reference_view_z;
+
+  if (!IsFinite(zobj) || zobj < 1.0e-4f)
+    return result;
+
+  result.zobj = zobj;
+  if (projection[4] != 0.0f && projection[4] != 1.0f)
+  {
+    result.zfar = projection[5] / projection[4];
+    result.znear = result.zfar * projection[4] / (projection[4] - 1.0f);
+    result.hydra_default_zobj = result.znear + (result.zfar - result.znear) * 0.5f;
+  }
+
+  const float left = (-(projection[1] + 1.0f) / projection[0]) * zobj;
+  const float right = left + (2.0f / projection[0]) * zobj;
+  const float bottom = (-(projection[3] + 1.0f) / projection[2]) * zobj;
+  const float top = bottom + (2.0f / projection[2]) * zobj;
+  const float width = right - left;
+  const float height = top - bottom;
+
+  if (width == 0.0f || height == 0.0f || !IsFinite(width) || !IsFinite(height))
+    return result;
+
+  result.distance = units_per_meter * g_ActiveConfig.vr_screen_distance;
+  const float size_reference = units_per_meter * g_ActiveConfig.vr_screen_size;
+  const float hud_width = std::abs((2.0f / projection[0]) * size_reference);
+  const float hud_height = std::abs((2.0f / projection[2]) * size_reference);
+
+  result.scale[0] = hud_width / width;
+  result.scale[1] = hud_height / height;
+  result.scale[2] = result.scale[0];
+  result.position[0] = result.scale[0] * (-(right + left) * 0.5f);
+  result.position[1] = result.scale[1] * (-(top + bottom) * 0.5f);
+  // Centre the HUD model near the screen-distance plane, independent of Size, while biasing the
+  // perspective HUD models slightly toward the viewer.  This preserves the original depth direction
+  // but keeps the Prime beam/visor boxes in front of the flat HUD reference, matching Hydra.
+  // reference_view_z is the model origin's view-space z (the position-matrix translation), so the
+  // un-biased model sits exactly `distance` in front regardless of scale; the per-vertex
+  // scale[2] * (viewPos.z - reference_view_z) deviation still supplies the relative model depth.
+  // This decouples the sliders (Distance = forward placement, Size = scale).  The earlier
+  // `scale[2] * zobj - distance` coupled them and assumed the model sat at view-z == -zobj;
+  // a plain -distance assumed view-z == 0.  Neither held, so the HUD floated too far away.
+  result.position[2] = result.scale[2] * (zobj + METROID_PERSPECTIVE_HUD_FORWARD_OFFSET) -
+                       result.distance;
+  result.origin_z = result.scale[2] * reference_view_z + result.position[2];
+  result.ref_minus_one_z = result.scale[2] * (reference_view_z - 1.0f) + result.position[2];
+  result.ref_plus_one_z = result.scale[2] * (reference_view_z + 1.0f) + result.position[2];
+  result.hydra_like_position_z = result.scale[2] * zobj - result.distance;
+  result.hydra_like_origin_z = result.scale[2] * reference_view_z + result.hydra_like_position_z;
+
+  result.valid = IsFinite(result.scale[0]) && IsFinite(result.scale[1]) &&
+                 IsFinite(result.scale[2]) && IsFinite(result.position[0]) &&
+                 IsFinite(result.position[1]) && IsFinite(result.position[2]) &&
+                 IsFinite(result.distance) && IsFinite(result.origin_z) &&
+                 IsFinite(result.ref_minus_one_z) && IsFinite(result.ref_plus_one_z);
+  return result;
 }
 }  // namespace
 
@@ -114,9 +213,6 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
         const bool perspective = xfmem.projection.type == ProjectionType::Perspective;
         constants.stereoparams = {0.0f, 0.0f, 0.0f, 0.0f};
         constants.eye_projection = {};
-        constants.legacy_eye_projection_x = {};
-        constants.legacy_eye_projection_y = {};
-        constants.legacy_center_projection = {};
         constants.eye_z_row = {};
         constants.depth_params = {};
         constants.vr_screen = {};
@@ -125,12 +221,23 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
         constants.pixel_center_correction = {};
         const float upm_override = vr_units_per_meter_override;
         vr_units_per_meter_override = -1.0f;  // consume
+        const float headlocked_projection_scale_x = vr_headlocked_projection_scale_x;
+        const float headlocked_projection_scale_y = vr_headlocked_projection_scale_y;
+        const float headlocked_projection_offset_x = vr_headlocked_projection_offset_x;
+        const float headlocked_projection_offset_y = vr_headlocked_projection_offset_y;
+        const bool metroid_hud_self_center = vr_metroid_hud_self_center;
+        vr_metroid_hud_self_center = false;  // consume
+        vr_headlocked_projection_scale_x = 1.0f;
+        vr_headlocked_projection_scale_y = 1.0f;
+        vr_headlocked_projection_offset_x = 0.0f;
+        vr_headlocked_projection_offset_y = 0.0f;
+        // Hoisted out of the session block so it is also available when finalizing the
+        // ortho/head-locked depth_params (HUD thickness) below.
+        const float upm = std::max(
+            upm_override > 0.0f ? upm_override : g_ActiveConfig.vr_units_per_meter, 0.0001f);
 
         if (VR::g_openxr && VR::g_openxr->IsSessionRunning())
         {
-          const float upm = std::max(upm_override > 0.0f ? upm_override :
-                                                          g_ActiveConfig.vr_units_per_meter,
-                                     0.0001f);
 
           // When vr_lock_head_pose is ON, only re-fetch the head pose from OpenXR when
           // we've been explicitly invalidated (at the XFB-copy frame boundary).  This
@@ -143,8 +250,10 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
           // render the replay with a different pose than the real frame it pairs
           // with, producing alternating-frame flicker on head rotation.
           const bool is_replay = VideoCommon::OpenXROpcodeReplay::IsReplaying();
-          const bool need_refresh =
-              !is_replay && (!g_ActiveConfig.vr_lock_head_pose || m_vr_pose_needs_refresh);
+          const bool upm_changed = std::abs(upm - m_cached_units_per_meter) > 0.0001f;
+          const bool need_refresh = !is_replay && (upm_changed ||
+                                                   !g_ActiveConfig.vr_lock_head_pose ||
+                                                   m_vr_pose_needs_refresh);
           if (need_refresh)
           {
             std::array<std::array<float, 4>, 4> eye_projection_rows{};
@@ -161,6 +270,7 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
 
             m_cached_eye_projection = eye_projection_rows;
             m_cached_eye_z_row = eye_z_rows;
+            m_cached_units_per_meter = upm;
 
             // Unrotated per-eye projection rows for head-locked content.
             std::array<std::array<float, 4>, 4> head_proj_rows{};
@@ -182,52 +292,22 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
           constants.eye_z_row[0] = m_cached_eye_z_row[0];
           constants.eye_z_row[1] = m_cached_eye_z_row[1];
 
-          // The Vulkan legacy projected-space fallback is only safe for runtimes/headsets that
-          // tolerate approximating the runtime frustum in projected space.
-#if !defined(ANDROID)
-          if (perspective && g_backend_info.api_type == APIType::Vulkan &&
-              VR::g_openxr->ShouldUseVulkanLegacyProjectionFallback())
-          {
-            const Common::Vec2 fov_multiplier = g_freelook_camera.IsActive() ?
-                                                    g_freelook_camera.GetFieldOfViewMultiplier() :
-                                                    Common::Vec2{1.0f, 1.0f};
-            const float game_projection_x_scale =
-                xfmem.projection.rawProjection[0] * g_ActiveConfig.fAspectRatioHackW *
-                fov_multiplier.x;
-            const float game_projection_x_offset =
-                xfmem.projection.rawProjection[1] * g_ActiveConfig.fAspectRatioHackW *
-                fov_multiplier.x;
-            const float game_projection_y_scale =
-                xfmem.projection.rawProjection[2] * g_ActiveConfig.fAspectRatioHackH *
-                fov_multiplier.y;
-            const float game_projection_y_offset =
-                xfmem.projection.rawProjection[3] * g_ActiveConfig.fAspectRatioHackH *
-                fov_multiplier.y;
-            constants.legacy_center_projection[0] = {game_projection_x_scale, 0.0f,
-                                                     game_projection_x_offset, 0.0f};
-            constants.legacy_center_projection[1] = {0.0f, game_projection_y_scale,
-                                                     game_projection_y_offset, 0.0f};
-            std::array<std::array<float, 4>, 2> legacy_eye_projection_x_rows{};
-            std::array<std::array<float, 4>, 2> legacy_eye_projection_y_rows{};
-            VR::g_openxr->GetLegacyProjectionAdjustments(
-                upm, game_projection_x_scale, game_projection_x_offset, game_projection_y_scale,
-                game_projection_y_offset, legacy_eye_projection_x_rows,
-                legacy_eye_projection_y_rows);
-            // The Vulkan projected-space fallback consumes eye indices opposite to the
-            // OpenXR per-eye rows used by the full path, so swap them here.
-            constants.legacy_eye_projection_x[0] = legacy_eye_projection_x_rows[1];
-            constants.legacy_eye_projection_x[1] = legacy_eye_projection_x_rows[0];
-            constants.legacy_eye_projection_y[0] = legacy_eye_projection_y_rows[1];
-            constants.legacy_eye_projection_y[1] = legacy_eye_projection_y_rows[0];
-            constants.stereoparams[1] = 1.0f;
-          }
-#endif
-
           // Unrotated per-eye projection rows for head-locked content (cached above).
           constants.head_projection[0] = m_cached_head_projection[0];
           constants.head_projection[1] = m_cached_head_projection[1];
           constants.head_projection[2] = m_cached_head_projection[2];
           constants.head_projection[3] = m_cached_head_projection[3];
+          for (u32 eye = 0; eye < 2; ++eye)
+          {
+            auto& row0 = constants.head_projection[eye * 2 + 0];
+            auto& row1 = constants.head_projection[eye * 2 + 1];
+            row0[0] *= headlocked_projection_scale_x;
+            row0[3] *= headlocked_projection_scale_x;
+            row0[2] -= headlocked_projection_offset_x;
+            row1[1] *= headlocked_projection_scale_y;
+            row1[3] *= headlocked_projection_scale_y;
+            row1[2] -= headlocked_projection_offset_y;
+          }
           constants.head_locked_params = {g_ActiveConfig.vr_head_locked_curvature, 0.0f, 0.0f,
                                           0.0f};
           constants.pixel_center_correction = vertex_shader_manager.constants.pixelcentercorrection;
@@ -315,9 +395,74 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
           vr_stereo_override = std::numeric_limits<float>::quiet_NaN();
         }
 
+        const bool perspective_hud =
+            perspective && VR::g_openxr && VR::g_openxr->IsSessionRunning() &&
+            constants.stereoparams[3] < -2.5f;
+        if (perspective_hud)
+        {
+          // Model origin's view-space z (position-matrix translation).
+          const float reference_view_z = vertex_shader_manager.constants.posnormalmatrix[2][3];
+          // The radar/minimap (METROID_VISOR_RADAR_HINT / METROID_RADAR_DOT) is a flat overlay whose
+          // blip geometry spans a large depth.  Under the SHARED scene transform that spread clips
+          // behind the camera and the whole minimap vanishes at low HUD distances.  Self-centre it on
+          // its own origin depth (its own, smaller scale — the pre-shared-reference behaviour) so it
+          // stays at `distance` and visible.  Coherent 3D content (Samus + hook, beam boxes) keeps the
+          // shared reference so its relative depth survives.
+          // (The radar/minimap draws are NOT classified as a RADAR layer in practice — combat-visor
+          // logs show them under METROID_SCAN_TEXT — so the depth-outlier check below is what
+          // actually catches them.  The flag is kept as a cheap explicit opt-out.)
+          const bool self_center_layer = metroid_hud_self_center;
+          // Capture ONE shared reference depth on the first COHERENT -3 draw of the frame and reuse it
+          // for all of them, so every Prime perspective-HUD model shares a single headlocked transform
+          // and keeps its relative scene depth (the grappling hook behind Samus's arm, stacked beam
+          // boxes).  Per-draw centring instead collapsed every origin to scale.z - distance and,
+          // because scale.z ~ size_ref/(-refZ), inverted it (farther in scene -> closer in VR).
+          if (!m_vr_hud_shared_reference_valid && !self_center_layer &&
+              std::isfinite(reference_view_z) && reference_view_z < 0.0f)
+          {
+            m_vr_hud_shared_reference_z = reference_view_z;
+            m_vr_hud_shared_reference_valid = true;
+          }
+          const float shared_reference_z =
+              m_vr_hud_shared_reference_valid ? m_vr_hud_shared_reference_z : reference_view_z;
+          // Depth-outlier draws self-centre on their own origin (their own, smaller/larger scale —
+          // the pre-shared-reference behaviour).  Under the SHARED transform, a draw sitting much
+          // closer to the camera than the reference (the minimap surface/blips at view-z ~-1..-5 vs
+          // the ~-20 HUD reference) slides behind the near plane whenever Distance < Size
+          // (pos.z = sizeRef - dist) and progressively vanishes.  Coherent draws (Samus + hook,
+          // beam boxes — all within ~0.7-1.2x of the reference) keep the shared scene so their
+          // relative depth survives.
+          bool depth_outlier = false;
+          if (std::isfinite(reference_view_z) && reference_view_z < 0.0f &&
+              shared_reference_z < 0.0f)
+          {
+            const float depth_ratio = reference_view_z / shared_reference_z;
+            depth_outlier = depth_ratio < 0.5f || depth_ratio > 2.0f;
+          }
+          const float ref_for_transform =
+              (self_center_layer || depth_outlier) ? reference_view_z : shared_reference_z;
+          const PerspectiveHudTransform transform = CalculatePerspectiveHudTransform(
+              xfmem.projection.rawProjection, upm, ref_for_transform);
+          if (transform.valid)
+          {
+            constants.vr_screen[0] = transform.position[0];
+            constants.vr_screen[1] = transform.position[1];
+            constants.vr_screen[2] = transform.position[2];
+            constants.head_locked_params[1] = transform.scale[0];
+            constants.head_locked_params[2] = transform.scale[1];
+            constants.head_locked_params[3] = transform.scale[2];
+            constants.depth_params[3] = transform.distance;
+          }
+          else
+          {
+            constants.stereoparams[3] = -2.0f;
+          }
+        }
+
         // For ortho/screen draws, pass depth params via depth_params
         // (depth_params is otherwise unused for non-perspective draws).
-        // .x = layer offset (between draw calls), .y = element depth (within draw call)
+        // .x = layer offset (between draw calls), .y = element depth (within draw call),
+        // .z = HUD thickness in game units (world-space depth spread across the layer's ortho-Z)
         if (constants.stereoparams[3] < -0.5f)
         {
           constants.depth_params[0] = g_ActiveConfig.vr_layer_offset;
@@ -326,6 +471,13 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
                                           ? vr_element_depth_override
                                           : g_ActiveConfig.vr_element_depth;
           vr_element_depth_override = -1.0f;  // consume
+          // Gives a 2D layer (HUD/menu) real 3D depth: ortho-Z elements spread across this
+          // many game units of world-space thickness (Hydra "HudThickness").  0 = flat.
+          constants.depth_params[2] = upm * g_ActiveConfig.vr_hud_thickness;
+          if (perspective_hud)
+            constants.depth_params[3] = constants.depth_params[3] > 0.0f ?
+                                            constants.depth_params[3] :
+                                            upm * g_ActiveConfig.vr_screen_distance;
         }
 
         dirty = true;
@@ -386,6 +538,8 @@ void GeometryShaderManager::SetProjectionChanged()
 void GeometryShaderManager::InvalidateVRHeadPose()
 {
   m_vr_pose_needs_refresh = true;
+  // Re-capture the perspective-HUD reference depth on the first -3 draw of the next frame.
+  m_vr_hud_shared_reference_valid = false;
 }
 
 void GeometryShaderManager::SetLinePtWidthChanged()
