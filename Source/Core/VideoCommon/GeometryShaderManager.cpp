@@ -163,8 +163,11 @@ void GeometryShaderManager::Init()
 {
   constants = {};
   m_vr_hud_shared_reference_valid = false;
+  m_vr_hud_shared_reference_context = 0;
   m_vr_hud_stable_reference_valid = false;
+  m_vr_hud_stable_reference_context = 0;
   m_vr_hud_frame_anchor_candidate_valid = false;
+  m_vr_hud_frame_anchor_candidate_context = 0;
 
   // Init any initial constants which aren't zero when bpmem is zero.
   SetViewportChanged();
@@ -232,6 +235,8 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
         vr_metroid_hud_self_center = false;  // consume
         const bool metroid_hud_anchor_candidate = vr_metroid_hud_anchor_candidate;
         vr_metroid_hud_anchor_candidate = false;  // consume
+        const int metroid_hud_reference_context = vr_metroid_hud_reference_context;
+        vr_metroid_hud_reference_context = 0;  // consume
         vr_headlocked_projection_scale_x = 1.0f;
         vr_headlocked_projection_scale_y = 1.0f;
         vr_headlocked_projection_offset_x = 0.0f;
@@ -425,10 +430,12 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
             // frame. Free-aim adds/moves nearer reticle pieces, but those are not anchor candidates
             // and cannot pull the whole 3D HUD plane toward the camera.
             if (!m_vr_hud_frame_anchor_candidate_valid ||
+                metroid_hud_reference_context != m_vr_hud_frame_anchor_candidate_context ||
                 reference_view_z < m_vr_hud_frame_anchor_candidate_z)
             {
               m_vr_hud_frame_anchor_candidate_z = reference_view_z;
               m_vr_hud_frame_anchor_candidate_valid = true;
+              m_vr_hud_frame_anchor_candidate_context = metroid_hud_reference_context;
             }
           }
           // Reuse ONE shared reference for all coherent -3 draws in this frame, so every Prime
@@ -436,17 +443,24 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
           // depth (the grappling hook behind Samus's arm, stacked beam boxes). The reference comes
           // from the previous frame's stable HUD body anchor when available. First-frame fallback uses
           // the first coherent draw only until a stable anchor is promoted at the frame boundary.
-          if (!m_vr_hud_shared_reference_valid && !self_center_layer)
+          const bool stable_reference_matches =
+              m_vr_hud_stable_reference_valid &&
+              m_vr_hud_stable_reference_context == metroid_hud_reference_context;
+          if ((!m_vr_hud_shared_reference_valid ||
+               m_vr_hud_shared_reference_context != metroid_hud_reference_context) &&
+              !self_center_layer)
           {
-            if (m_vr_hud_stable_reference_valid)
+            if (stable_reference_matches)
             {
               m_vr_hud_shared_reference_z = m_vr_hud_stable_reference_z;
               m_vr_hud_shared_reference_valid = true;
+              m_vr_hud_shared_reference_context = metroid_hud_reference_context;
             }
             else if (valid_reference)
             {
               m_vr_hud_shared_reference_z = reference_view_z;
               m_vr_hud_shared_reference_valid = true;
+              m_vr_hud_shared_reference_context = metroid_hud_reference_context;
             }
           }
           const float shared_reference_z =
@@ -566,8 +580,17 @@ void GeometryShaderManager::InvalidateVRHeadPose()
   m_vr_pose_needs_refresh = true;
   if (m_vr_hud_frame_anchor_candidate_valid)
   {
-    m_vr_hud_stable_reference_z = m_vr_hud_frame_anchor_candidate_z;
-    m_vr_hud_stable_reference_valid = true;
+    // Within one HUD context, keep the farthest stable body anchor so free-aim cannot pull the
+    // whole 3D HUD toward the camera.  Across contexts, such as combat HUD -> pause/map UI, replace
+    // the stable reference so menu models do not inherit the combat HUD depth.
+    if (!m_vr_hud_stable_reference_valid ||
+        m_vr_hud_frame_anchor_candidate_context != m_vr_hud_stable_reference_context ||
+        m_vr_hud_frame_anchor_candidate_z < m_vr_hud_stable_reference_z)
+    {
+      m_vr_hud_stable_reference_z = m_vr_hud_frame_anchor_candidate_z;
+      m_vr_hud_stable_reference_valid = true;
+      m_vr_hud_stable_reference_context = m_vr_hud_frame_anchor_candidate_context;
+    }
     m_vr_hud_frame_anchor_candidate_valid = false;
   }
   // Reuse the promoted stable perspective-HUD reference on the next frame.

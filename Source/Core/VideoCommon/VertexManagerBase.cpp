@@ -187,6 +187,10 @@ bool IsMetroidProfileActive()
          MetroidElementProfile::None;
 }
 
+constexpr int METROID_HUD_CONTEXT_DEFAULT = 0;
+constexpr int METROID_HUD_CONTEXT_COMBAT = 1;
+constexpr int METROID_HUD_CONTEXT_MENU = 2;
+
 bool IsMetroidPrime2Profile(MetroidElementProfile profile)
 {
   return profile == MetroidElementProfile::Prime2GC ||
@@ -300,6 +304,55 @@ bool IsMetroidPerspectiveHudAnchorLayer(MetroidElementLayer layer)
   default:
     return false;
   }
+}
+
+bool IsMetroidPrime1CombatContextLayer(MetroidElementLayer layer)
+{
+  switch (layer)
+  {
+  case MetroidElementLayer::Gun:
+  case MetroidElementLayer::World:
+  case MetroidElementLayer::Reticle:
+  case MetroidElementLayer::WiiReticle:
+  case MetroidElementLayer::XRayWorld:
+  case MetroidElementLayer::ThermalGunAndDoor:
+    return true;
+
+  default:
+    return false;
+  }
+}
+
+bool IsMetroidPrime1MenuContextLayer(MetroidElementLayer layer)
+{
+  switch (layer)
+  {
+  case MetroidElementLayer::Map0:
+  case MetroidElementLayer::Map1:
+  case MetroidElementLayer::Map2:
+  case MetroidElementLayer::Dialog:
+  case MetroidElementLayer::MapMap:
+  case MetroidElementLayer::MapLegend:
+  case MetroidElementLayer::InventorySamus:
+  case MetroidElementLayer::InventorySamusOutline:
+  case MetroidElementLayer::MapNorth:
+    return true;
+
+  default:
+    return false;
+  }
+}
+
+bool IsMetroidPrime1CombatHudAnchorCandidate(MetroidElementLayer layer, float reference_view_z,
+                                             int hud_context)
+{
+  // Normal combat visor draws its 3D HUD body as METROID_SCAN_TEXT instead of one of the
+  // explicit HUD anchor layers. Use only the stable body-depth range as a combat-only fallback;
+  // this excludes close reticle/minimap pieces (~-5.6), free-aim far draws (~-32), and menu/map
+  // ScanText draws that should be anchored by their own UI context.
+  return hud_context == METROID_HUD_CONTEXT_COMBAT && layer == MetroidElementLayer::ScanText &&
+         std::isfinite(reference_view_z) && reference_view_z >= -22.0f &&
+         reference_view_z <= -18.0f;
 }
 
 MetroidLayerBehavior GetMetroidLayerBehavior(MetroidElementLayer layer)
@@ -1078,6 +1131,20 @@ void VertexManagerBase::Flush()
               element_draw->profile_layer_name =
                   std::string(MetroidElementLayerToDisplayName(metroid_layer));
 
+              if (IsMetroidPrime1Profile(metroid_profile))
+              {
+                if (IsMetroidPrime1MenuContextLayer(metroid_layer))
+                {
+                  m_metroid_prime1_menu_context_seen = true;
+                  m_metroid_prime1_combat_context_seen = false;
+                }
+                else if (!m_metroid_prime1_menu_context_seen &&
+                         IsMetroidPrime1CombatContextLayer(metroid_layer))
+                {
+                  m_metroid_prime1_combat_context_seen = true;
+                }
+              }
+
               if (IsMetroidPrime2Profile(metroid_profile))
               {
                 for (const u32 i : used_textures)
@@ -1218,13 +1285,27 @@ void VertexManagerBase::Flush()
               geometry_shader_manager.vr_stereo_override = perspective_metroid_hud ? -3.0f : -2.0f;
               if (metroid_hydra_hud.enabled)
               {
+                const auto& pnm = vertex_shader_manager.constants.posnormalmatrix;
+                const float metroid_hud_ref_z = pnm[2][3];
+                int metroid_hud_context = METROID_HUD_CONTEXT_DEFAULT;
+                if (IsMetroidPrime1Profile(metroid_profile))
+                {
+                  if (m_metroid_prime1_menu_context_seen)
+                    metroid_hud_context = METROID_HUD_CONTEXT_MENU;
+                  else if (m_metroid_prime1_combat_context_seen)
+                    metroid_hud_context = METROID_HUD_CONTEXT_COMBAT;
+                }
                 // Radar/minimap layers self-centre on their own origin depth in the -3 path
                 // (consumed and reset by GeometryShaderManager::SetConstants).
                 const std::string_view layer_name = MetroidElementLayerToININame(metroid_layer);
                 geometry_shader_manager.vr_metroid_hud_self_center =
                     layer_name.find("RADAR") != std::string_view::npos;
                 geometry_shader_manager.vr_metroid_hud_anchor_candidate =
-                    perspective_metroid_hud && IsMetroidPerspectiveHudAnchorLayer(metroid_layer);
+                    perspective_metroid_hud &&
+                    (IsMetroidPerspectiveHudAnchorLayer(metroid_layer) ||
+                     IsMetroidPrime1CombatHudAnchorCandidate(metroid_layer, metroid_hud_ref_z,
+                                                             metroid_hud_context));
+                geometry_shader_manager.vr_metroid_hud_reference_context = metroid_hud_context;
               }
               if (manual_layer >= 0)
                 geometry_shader_manager.vr_ortho_layer_override = manual_layer;
@@ -1750,6 +1831,8 @@ void VertexManagerBase::OnEndFrame()
   TextureElementManager::GetInstance().OnFrameEnd();
   HideObjectEngine::Engine::GetInstance().OnFrameEnd();
   GetMetroidElementClassifier().ResetFrame();
+  m_metroid_prime1_combat_context_seen = false;
+  m_metroid_prime1_menu_context_seen = false;
   auto& system = Core::System::GetInstance();
   system.GetGeometryShaderManager().vr_ortho_draw_counter = 0;
   m_draw_counter = 0;

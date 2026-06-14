@@ -68,6 +68,7 @@ public:
   // Set by VertexManagerBase for stable Metroid perspective-HUD body layers.  Transient combat
   // reticle/menu pieces can move during free-aim and must not become the shared depth anchor.
   bool vr_metroid_hud_anchor_candidate = false;
+  int vr_metroid_hud_reference_context = 0;
 
 private:
   void SetVSExpand(VSExpand expand);
@@ -89,8 +90,11 @@ private:
   // every origin to scale.z - distance and inverted it (because scale.z ~ size_ref/(-refZ)).
   float m_vr_hud_shared_reference_z = 0.0f;
   bool m_vr_hud_shared_reference_valid = false;
+  int m_vr_hud_shared_reference_context = 0;
   float m_vr_hud_stable_reference_z = 0.0f;
   bool m_vr_hud_stable_reference_valid = false;
+  int m_vr_hud_stable_reference_context = 0;
   float m_vr_hud_frame_anchor_candidate_z = 0.0f;
   bool m_vr_hud_frame_anchor_candidate_valid = false;
+  int m_vr_hud_frame_anchor_candidate_context = 0;
 };
