@@ -355,6 +355,19 @@ bool IsMetroidPrime1CombatHudAnchorCandidate(MetroidElementLayer layer, float re
          reference_view_z <= -18.0f;
 }
 
+bool IsMetroidPrime1ScannerPreviewMask(const ShaderHunter::RuntimeElementSignature& signature)
+{
+  return signature.valid && !signature.perspective && signature.ortho_left_x100 == -32000 &&
+         signature.ortho_right_x100 == 32000 && signature.ortho_top_x100 == 22400 &&
+         signature.ortho_bottom_x100 == -22400 && signature.ortho_layer == 0 &&
+         signature.viewport_x == 662 && signature.viewport_y == 566 &&
+         signature.viewport_width == 320 && signature.viewport_height == 224 &&
+         signature.scissor_left == 342 && signature.scissor_top == 342 &&
+         signature.scissor_right == 981 && signature.scissor_bottom == 789 &&
+         signature.alpha_test_hex == 0x007f0000 && signature.ztest && signature.zupdate &&
+         signature.zfunc == 3 && signature.blend_color_update && signature.blend_alpha_update;
+}
+
 MetroidLayerBehavior GetMetroidLayerBehavior(MetroidElementLayer layer)
 {
   switch (layer)
@@ -1126,6 +1139,11 @@ void VertexManagerBase::Flush()
               metroid_metrics = BuildMetroidProjectionMetrics(xfmem, m_draw_counter);
               metroid_layer =
                   GetMetroidElementClassifier().Classify(metroid_profile, metroid_metrics);
+              if (IsMetroidPrime1Profile(metroid_profile) &&
+                  IsMetroidPrime1ScannerPreviewMask(draw_signature))
+              {
+                metroid_layer = MetroidElementLayer::ScanDarken;
+              }
               element_draw->profile_id = metroid_profile;
               element_draw->profile_layer = metroid_layer;
               element_draw->profile_layer_name =

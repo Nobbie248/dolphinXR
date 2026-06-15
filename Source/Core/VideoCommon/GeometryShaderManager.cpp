@@ -11,7 +11,6 @@
 
 #include "Common/ChunkFile.h"
 #include "Common/CommonTypes.h"
-#include "Common/Logging/Log.h"
 #include "Core/System.h"
 #include "VideoCommon/BPMemory.h"
 #include "VideoCommon/FreeLookCamera.h"
@@ -30,6 +29,9 @@ static constexpr int LINE_PT_TEX_OFFSETS[8] = {0, 16, 8, 4, 2, 1, 1, 1};
 namespace
 {
 static constexpr float METROID_PERSPECTIVE_HUD_FORWARD_OFFSET = 1.0f;
+static constexpr int METROID_HUD_REFERENCE_CONTEXT_COMBAT = 1;
+static constexpr float METROID_COMBAT_HUD_REFERENCE_FAR_Z = -28.5f;
+static constexpr float METROID_COMBAT_HUD_REFERENCE_NEAR_Z = -18.0f;
 
 struct PerspectiveHudTransform
 {
@@ -83,6 +85,18 @@ void ApplyRowTransform(std::array<std::array<float, 4>, 2>* rows, const Common::
 bool IsFinite(float value)
 {
   return std::isfinite(value);
+}
+
+bool IsMetroidHudStableReferenceAllowed(int context, float reference_view_z)
+{
+  if (context != METROID_HUD_REFERENCE_CONTEXT_COMBAT)
+    return true;
+
+  // Prime 1 combat HUD body anchors sit around -20 in normal combat and can move toward -27 for
+  // visor-specific HUD projections.  Grappling-hook arm/attachment draws are classified as HUD
+  // anchors too, but sit around -32 and must not replace the shared combat HUD body depth.
+  return reference_view_z >= METROID_COMBAT_HUD_REFERENCE_FAR_Z &&
+         reference_view_z <= METROID_COMBAT_HUD_REFERENCE_NEAR_Z;
 }
 
 PerspectiveHudTransform CalculatePerspectiveHudTransform(const Projection::Raw& projection,
@@ -429,9 +443,14 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
             // Pick the farthest stable HUD-body origin seen this frame as the anchor for the next
             // frame. Free-aim adds/moves nearer reticle pieces, but those are not anchor candidates
             // and cannot pull the whole 3D HUD plane toward the camera.
-            if (!m_vr_hud_frame_anchor_candidate_valid ||
-                metroid_hud_reference_context != m_vr_hud_frame_anchor_candidate_context ||
-                reference_view_z < m_vr_hud_frame_anchor_candidate_z)
+            const bool stable_reference_allowed = IsMetroidHudStableReferenceAllowed(
+                metroid_hud_reference_context, reference_view_z);
+            const bool replace_candidate =
+                stable_reference_allowed &&
+                (!m_vr_hud_frame_anchor_candidate_valid ||
+                 metroid_hud_reference_context != m_vr_hud_frame_anchor_candidate_context ||
+                 reference_view_z < m_vr_hud_frame_anchor_candidate_z);
+            if (replace_candidate)
             {
               m_vr_hud_frame_anchor_candidate_z = reference_view_z;
               m_vr_hud_frame_anchor_candidate_valid = true;
@@ -580,12 +599,17 @@ void GeometryShaderManager::InvalidateVRHeadPose()
   m_vr_pose_needs_refresh = true;
   if (m_vr_hud_frame_anchor_candidate_valid)
   {
-    // Within one HUD context, keep the farthest stable body anchor so free-aim cannot pull the
-    // whole 3D HUD toward the camera.  Across contexts, such as combat HUD -> pause/map UI, replace
-    // the stable reference so menu models do not inherit the combat HUD depth.
-    if (!m_vr_hud_stable_reference_valid ||
-        m_vr_hud_frame_anchor_candidate_context != m_vr_hud_stable_reference_context ||
-        m_vr_hud_frame_anchor_candidate_z < m_vr_hud_stable_reference_z)
+    const bool stable_reference_allowed = IsMetroidHudStableReferenceAllowed(
+        m_vr_hud_frame_anchor_candidate_context, m_vr_hud_frame_anchor_candidate_z);
+    const bool accept_candidate =
+        stable_reference_allowed &&
+        (!m_vr_hud_stable_reference_valid ||
+         m_vr_hud_frame_anchor_candidate_context != m_vr_hud_stable_reference_context ||
+         m_vr_hud_frame_anchor_candidate_z < m_vr_hud_stable_reference_z);
+    // Within one HUD context, keep the farthest allowed stable body anchor so free-aim cannot pull
+    // the whole 3D HUD toward the camera.  Across contexts, such as combat HUD -> pause/map UI,
+    // replace the stable reference so menu models do not inherit the combat HUD depth.
+    if (accept_candidate)
     {
       m_vr_hud_stable_reference_z = m_vr_hud_frame_anchor_candidate_z;
       m_vr_hud_stable_reference_valid = true;
