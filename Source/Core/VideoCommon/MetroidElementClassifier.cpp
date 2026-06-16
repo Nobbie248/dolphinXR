@@ -154,6 +154,13 @@ bool CompactHudProjection(const MetroidElementClassifier::RoundedMetrics& m)
   return Far4096(m) && m.h >= 7800 && m.h <= 8400 && m.v >= 5600 && m.v <= 6800;
 }
 
+bool Prime1XRayEffectProjection(const MetroidElementClassifier::RoundedMetrics& m)
+{
+  return m.l == 0 &&
+         ((Near(m.n, -100, 20) && Near(m.f, 100, 20)) ||
+          (Near(m.r, 6400, 80) && Near(m.t, 4400, 80) && m.b == 0));
+}
+
 bool IsWorldLayer(MetroidElementLayer layer)
 {
   switch (layer)
@@ -541,6 +548,17 @@ MetroidElementClassifier::ClassifyPrime1Perspective(bool wii, State& state,
 MetroidElementLayer MetroidElementClassifier::ClassifyPrime1Ortho(bool wii, State& state,
                                                                   const RoundedMetrics& m)
 {
+  if (state.xray_visor && Prime1XRayEffectProjection(m))
+  {
+    state.dark_visor = false;
+    state.scan_visor = false;
+    state.scan_visor_active = false;
+    state.morphball_active = false;
+    state.thermal_visor = false;
+    state.has_thermal_effect = false;
+    return MetroidElementLayer::XRayEffect;
+  }
+
   if (m.layer == 0)
   {
     state.xray_visor = false;
@@ -559,16 +577,6 @@ MetroidElementLayer MetroidElementClassifier::ClassifyPrime1Ortho(bool wii, Stat
     state.morphball_active = true;
     state.thermal_visor = false;
     return MetroidElementLayer::Shadow2D;
-  }
-  if (m.l == 0 && Near(m.n, -100, 20) && Near(m.f, 100, 20) && state.xray_visor)
-  {
-    state.dark_visor = false;
-    state.scan_visor = false;
-    state.scan_visor_active = false;
-    state.morphball_active = false;
-    state.thermal_visor = false;
-    state.has_thermal_effect = false;
-    return MetroidElementLayer::XRayEffect;
   }
   if (m.l == -32000 && Near(m.n, -409600, 1400) && state.xray_visor)
   {
