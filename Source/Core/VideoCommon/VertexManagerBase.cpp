@@ -380,8 +380,6 @@ MetroidLayerBehavior GetMetroidLayerBehavior(MetroidElementLayer layer)
   case MetroidElementLayer::ScanBox:
   case MetroidElementLayer::ScanCircle:
   case MetroidElementLayer::ScanReticle:
-  case MetroidElementLayer::ScanIcons:
-  case MetroidElementLayer::ScanCross:
     return {.skip = true};
 
   case MetroidElementLayer::Helmet:
