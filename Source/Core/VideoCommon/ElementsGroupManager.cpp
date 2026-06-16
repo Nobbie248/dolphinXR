@@ -1459,7 +1459,9 @@ ElementsGroupManager::PreviewAction ElementsGroupManager::RegisterDraw(const Dra
 {
   std::lock_guard lock(m_mutex);
 
-  if (m_popup_open_count > 0)
+  // Seed-candidate evaluation only runs while the window is open AND Group Hunt is enabled,
+  // so nothing is collected (and no per-draw overhead is paid) until the box is checked.
+  if (m_popup_open_count > 0 && m_hunt_enabled)
   {
     DrawRecord recorded = draw;
     recorded.draw_index = static_cast<int>(m_collecting_draws.size());
@@ -1489,6 +1491,26 @@ void ElementsGroupManager::OnFrameEnd()
 
   if (m_popup_open_count <= 0)
     return;
+
+  if (!m_hunt_enabled)
+  {
+    // Group Hunt is off: drop anything collected and clear the displayed seed/match lists so
+    // stale candidates don't linger after the box is unchecked. The selected seed signature and
+    // group mask are preserved so re-enabling resumes the hunt where it left off.
+    m_collecting_draws.clear();
+    m_display_draws.clear();
+    m_display_seed_candidates.clear();
+    m_collecting_matches.clear();
+    m_display_raw_matches.clear();
+    m_display_raw_match_signatures.clear();
+    m_display_matches.clear();
+    m_collecting_match_total = 0;
+    m_display_match_total = 0;
+    m_collecting_highlighted_draw.reset();
+    m_display_highlighted_draw.reset();
+    m_display_highlighted_match_raw_draw_count = 0;
+    return;
+  }
 
   m_display_draws = std::move(m_collecting_draws);
   m_collecting_draws.clear();

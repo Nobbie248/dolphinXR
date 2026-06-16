@@ -297,8 +297,9 @@ void ElementsHuntingDialog::CreateWidgets()
   auto* layout = new QVBoxLayout(this);
 
   auto* info = new QLabel(
-      tr("Select a runtime-signature seed candidate, then enable signature groups to cycle "
-         "matching elements across the current frame.\n"
+      tr("Check \"Enable Group Hunt\" to start collecting seed candidates from the current frame, "
+         "then select a runtime-signature seed candidate and enable signature groups to cycle "
+         "matching elements.\n"
          "Preview affects the whole current group until one or more matches are checked below. "
          "After that, preview and saved overrides affect only the checked matches.\n"
          "Seen matches stay in the list even when not drawn and are shown in grey."));
