@@ -105,6 +105,8 @@ bool ParseRuntimeElementSignatureField(ShaderHunter::RuntimeElementSignature* si
     signature->ortho_bottom_x100 = std::stoi(value);
   else if (key == "sig_use_projection")
     signature->use_projection = (value == "1" || value == "true");
+  else if (key == "sig_use_projection_type")
+    signature->use_projection_type = (value == "1" || value == "true");
   else if (key == "sig_use_layer")
     signature->use_layer = (value == "1" || value == "true");
   else if (key == "sig_use_viewport")
@@ -164,6 +166,7 @@ void SaveRuntimeElementSignature(std::ostringstream& out,
   out << prefix << "sig_ortho_top=" << sig.ortho_top_x100 << "\n";
   out << prefix << "sig_ortho_bottom=" << sig.ortho_bottom_x100 << "\n";
   out << prefix << "sig_use_projection=" << (sig.use_projection ? 1 : 0) << "\n";
+  out << prefix << "sig_use_projection_type=" << (sig.use_projection_type ? 1 : 0) << "\n";
   out << prefix << "sig_use_layer=" << (sig.use_layer ? 1 : 0) << "\n";
   out << prefix << "sig_use_viewport=" << (sig.use_viewport ? 1 : 0) << "\n";
   out << prefix << "sig_use_scissor=" << (sig.use_scissor ? 1 : 0) << "\n";
@@ -289,6 +292,7 @@ size_t ComputeRuntimeElementKey(const ShaderHunter::RuntimeElementSignature& sig
   HashCombineValue(seed, sig.valid);
   HashCombineValue(seed, sig.perspective);
   HashCombineValue(seed, sig.use_projection);
+  HashCombineValue(seed, sig.use_projection_type);
   HashCombineValue(seed, sig.use_layer);
   HashCombineValue(seed, sig.use_viewport);
   HashCombineValue(seed, sig.use_scissor);

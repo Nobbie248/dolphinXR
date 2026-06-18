@@ -283,6 +283,12 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
   m_runtime_element_summary_label = new QLabel;
   m_runtime_element_summary_label->setWordWrap(true);
   m_runtime_use_projection_check = new QCheckBox(tr("Projection"));
+  m_runtime_use_projection_check->setToolTip(
+      tr("Match the full projection: type plus FOV (perspective) or bounds (orthographic)."));
+  m_runtime_use_projection_type_check = new QCheckBox(tr("Projection Type"));
+  m_runtime_use_projection_type_check->setToolTip(
+      tr("Match only whether the draw is Perspective or Orthographic, ignoring the exact "
+         "FOV/bounds values. More robust when the detailed projection drifts."));
   m_runtime_use_layer_check = new QCheckBox(tr("Layer"));
   m_runtime_use_viewport_check = new QCheckBox(tr("Viewport"));
   m_runtime_use_scissor_check = new QCheckBox(tr("Scissor"));
@@ -334,6 +340,7 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
 
   auto* runtime_group_row = new QHBoxLayout;
   runtime_group_row->addWidget(m_runtime_use_projection_check);
+  runtime_group_row->addWidget(m_runtime_use_projection_type_check);
   runtime_group_row->addWidget(m_runtime_use_layer_check);
   runtime_group_row->addWidget(m_runtime_use_viewport_check);
   runtime_group_row->addWidget(m_runtime_use_scissor_check);
@@ -380,12 +387,13 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
   connect(m_selected_match_list, &QListWidget::itemSelectionChanged, this, [this]() {
     m_remove_selected_match_button->setEnabled(!m_selected_match_list->selectedItems().empty());
   });
-  for (QCheckBox* checkbox : {m_runtime_use_projection_check, m_runtime_use_layer_check,
-                              m_runtime_use_viewport_check, m_runtime_use_scissor_check,
-                              m_runtime_use_render_state_check})
+  for (QCheckBox* checkbox : {m_runtime_use_projection_check, m_runtime_use_projection_type_check,
+                              m_runtime_use_layer_check, m_runtime_use_viewport_check,
+                              m_runtime_use_scissor_check, m_runtime_use_render_state_check})
   {
     connect(checkbox, &QCheckBox::toggled, this, [this]() {
       m_runtime_element.use_projection = m_runtime_use_projection_check->isChecked();
+      m_runtime_element.use_projection_type = m_runtime_use_projection_type_check->isChecked();
       m_runtime_element.use_layer = m_runtime_use_layer_check->isChecked();
       m_runtime_element.use_viewport = m_runtime_use_viewport_check->isChecked();
       m_runtime_element.use_scissor = m_runtime_use_scissor_check->isChecked();
@@ -622,6 +630,8 @@ void ElementsGroupOverrideAddEditDialog::RefreshRuntimeElementSummary()
   QStringList groups;
   if (m_runtime_element.use_projection)
     groups << tr("Projection");
+  if (m_runtime_element.use_projection_type)
+    groups << tr("Projection Type");
   if (m_runtime_element.use_layer)
     groups << tr("Layer");
   if (m_runtime_element.use_viewport)
@@ -636,11 +646,13 @@ void ElementsGroupOverrideAddEditDialog::RefreshRuntimeElementSummary()
   m_runtime_element_summary_label->setText(summary);
 
   const QSignalBlocker projection_blocker(m_runtime_use_projection_check);
+  const QSignalBlocker projection_type_blocker(m_runtime_use_projection_type_check);
   const QSignalBlocker layer_blocker(m_runtime_use_layer_check);
   const QSignalBlocker viewport_blocker(m_runtime_use_viewport_check);
   const QSignalBlocker scissor_blocker(m_runtime_use_scissor_check);
   const QSignalBlocker render_blocker(m_runtime_use_render_state_check);
   m_runtime_use_projection_check->setChecked(m_runtime_element.use_projection);
+  m_runtime_use_projection_type_check->setChecked(m_runtime_element.use_projection_type);
   m_runtime_use_layer_check->setChecked(m_runtime_element.use_layer);
   m_runtime_use_viewport_check->setChecked(m_runtime_element.use_viewport);
   m_runtime_use_scissor_check->setChecked(m_runtime_element.use_scissor);
@@ -708,6 +720,7 @@ void ElementsGroupOverrideAddEditDialog::RefreshMatchKindUi()
   m_capture_seed_button->setVisible(!profile_layer);
   m_runtime_element_summary_label->setVisible(!profile_layer);
   m_runtime_use_projection_check->setVisible(!profile_layer);
+  m_runtime_use_projection_type_check->setVisible(!profile_layer);
   m_runtime_use_layer_check->setVisible(!profile_layer);
   m_runtime_use_viewport_check->setVisible(!profile_layer);
   m_runtime_use_scissor_check->setVisible(!profile_layer);
@@ -841,9 +854,9 @@ void ElementsGroupOverrideAddEditDialog::OnAccept()
     return;
   }
   if (result.match_kind == ElementsGroupManager::MatchKind::RuntimeSignature &&
-      !result.runtime_element.use_projection && !result.runtime_element.use_layer &&
-      !result.runtime_element.use_viewport && !result.runtime_element.use_scissor &&
-      !result.runtime_element.use_render_state)
+      !result.runtime_element.use_projection && !result.runtime_element.use_projection_type &&
+      !result.runtime_element.use_layer && !result.runtime_element.use_viewport &&
+      !result.runtime_element.use_scissor && !result.runtime_element.use_render_state)
   {
     QMessageBox::warning(this, tr("Elements Group Override"),
                          tr("Enable at least one runtime signature group."));

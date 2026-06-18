@@ -136,6 +136,8 @@ void ElementsGroupOverrideWidget::UpdateList()
     {
       if (entry.runtime_element.use_projection)
         label += QStringLiteral(" proj");
+      if (entry.runtime_element.use_projection_type)
+        label += QStringLiteral(" proj_type");
       if (entry.runtime_element.use_layer)
         label += QStringLiteral(" layer");
       if (entry.runtime_element.use_viewport)

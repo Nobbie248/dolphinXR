@@ -67,6 +67,7 @@ public:
     int ortho_top_x100 = 0;
     int ortho_bottom_x100 = 0;
     bool use_projection = false;
+    bool use_projection_type = false;  // Match perspective-vs-ortho only, ignoring FOV/bounds values.
     bool use_layer = false;
     bool use_viewport = false;
     bool use_scissor = false;

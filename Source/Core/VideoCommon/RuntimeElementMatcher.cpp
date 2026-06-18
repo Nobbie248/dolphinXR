@@ -8,8 +8,8 @@ namespace RuntimeElementMatcher
 bool HasActiveGroups(const ShaderHunter::RuntimeElementSignature& signature)
 {
   return signature.valid &&
-         (signature.use_projection || signature.use_layer || signature.use_viewport ||
-          signature.use_scissor || signature.use_render_state);
+         (signature.use_projection || signature.use_projection_type || signature.use_layer ||
+          signature.use_viewport || signature.use_scissor || signature.use_render_state);
 }
 
 bool Matches(const ShaderHunter::RuntimeElementSignature& pattern,
@@ -17,6 +17,15 @@ bool Matches(const ShaderHunter::RuntimeElementSignature& pattern,
 {
   if (!pattern.valid || !candidate.valid)
     return false;
+
+  // Coarse projection filter: match only the projection kind (perspective vs orthographic),
+  // ignoring the exact FOV/bounds values. Robust against value drift and the compact OpenXR
+  // projection scale, where exact comparison of the detailed values fails.
+  if (pattern.use_projection_type)
+  {
+    if (pattern.perspective != candidate.perspective)
+      return false;
+  }
 
   if (pattern.use_projection)
   {

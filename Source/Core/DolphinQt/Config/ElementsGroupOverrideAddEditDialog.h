@@ -83,6 +83,7 @@ private:
   QPushButton* m_capture_seed_button = nullptr;
   QLabel* m_runtime_element_summary_label = nullptr;
   QCheckBox* m_runtime_use_projection_check = nullptr;
+  QCheckBox* m_runtime_use_projection_type_check = nullptr;
   QCheckBox* m_runtime_use_layer_check = nullptr;
   QCheckBox* m_runtime_use_viewport_check = nullptr;
   QCheckBox* m_runtime_use_scissor_check = nullptr;
