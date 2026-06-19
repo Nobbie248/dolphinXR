@@ -19,6 +19,7 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QScrollBar>
 #include <QSignalBlocker>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -398,8 +399,11 @@ void ElementsHuntingDialog::CreateWidgets()
 void ElementsHuntingDialog::ConnectWidgets()
 {
   auto& manager = ElementsGroupManager::GetInstance();
-  connect(m_enable_check, &QCheckBox::toggled, this, [&manager](bool checked) {
+  connect(m_enable_check, &QCheckBox::toggled, this, [&manager, this](bool checked) {
     manager.SetHuntEnabled(checked);
+    // Refresh so candidates appear right after enabling (collection only runs while enabled) and so
+    // stale leftovers clear on disable, matching how the group/filter toggles behave.
+    RequestRefresh();
   });
   connect(m_option_combo, qOverload<int>(&QComboBox::currentIndexChanged), this,
           [&manager, this]() {
@@ -458,7 +462,7 @@ void ElementsHuntingDialog::UpdateDisplay()
 {
   auto& manager = ElementsGroupManager::GetInstance();
   const auto status = manager.GetStatus();
-  const bool refresh_lists = m_refresh_pending || (m_auto_refresh_check && m_auto_refresh_check->isChecked());
+  bool refresh_lists = m_refresh_pending || (m_auto_refresh_check && m_auto_refresh_check->isChecked());
 
   {
     const QSignalBlocker blocker(m_enable_check);
@@ -478,6 +482,10 @@ void ElementsHuntingDialog::UpdateDisplay()
   }
 
   const auto candidates = manager.GetSeedCandidates();
+  // Auto-heal: if the hunt is enabled and the backend has candidates but the list is still empty
+  // (e.g. the refresh tick fired before the first frame was collected), force a refresh.
+  if (!refresh_lists && status.hunt_enabled && m_seed_list->count() == 0 && !candidates.empty())
+    refresh_lists = true;
   if (refresh_lists)
   {
     {
@@ -508,6 +516,10 @@ void ElementsHuntingDialog::UpdateDisplay()
     const auto current_matches = manager.GetCurrentMatches();
     {
       const QSignalBlocker blocker(m_current_match_list);
+      // Preserve the scroll position across rebuilds. With fluctuating matches the count changes,
+      // forcing a clear()+re-add that otherwise snaps the view back to the top while the user is
+      // toggling checkboxes. Restored last so it overrides any auto-scroll from setCurrentRow.
+      const int match_scroll = m_current_match_list->verticalScrollBar()->value();
       if (m_current_match_list->count() != static_cast<int>(current_matches.size()))
       {
         m_current_match_list->clear();
@@ -540,6 +552,8 @@ void ElementsHuntingDialog::UpdateDisplay()
         m_current_match_list->setCurrentRow(status.selected_match);
       else
         m_current_match_list->clearSelection();
+
+      m_current_match_list->verticalScrollBar()->setValue(match_scroll);
     }
 
     m_refresh_pending = false;

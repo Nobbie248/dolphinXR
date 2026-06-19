@@ -7,6 +7,7 @@
 #include <cctype>
 #include <cmath>
 #include <fstream>
+#include <locale>
 #include <map>
 #include <set>
 #include <sstream>
@@ -82,27 +83,46 @@ bool ParseKeyValue(const std::string& line, std::string& key, std::string& value
   return true;
 }
 
+// Integers may have been written with locale digit-grouping separators by older builds (e.g.
+// "1,000,000"). Strip everything but digits and a leading sign so std::stoi reads the full value
+// instead of truncating at the first separator. Self-heals overrides saved before the locale fix.
+int ParseGroupedInt(const std::string& value)
+{
+  std::string digits;
+  digits.reserve(value.size());
+  for (const char c : value)
+  {
+    if (c == '-' && digits.empty())
+      digits.push_back(c);
+    else if (c >= '0' && c <= '9')
+      digits.push_back(c);
+  }
+  if (digits.empty() || digits == "-")
+    return 0;
+  return std::stoi(digits);
+}
+
 bool ParseRuntimeElementSignatureField(ShaderHunter::RuntimeElementSignature* signature,
                                        const std::string& key, const std::string& value)
 {
   if (key == "sig_perspective")
     signature->perspective = (value == "1" || value == "true");
   else if (key == "sig_persp_hfov")
-    signature->perspective_hfov_x100 = std::stoi(value);
+    signature->perspective_hfov_x100 = ParseGroupedInt(value);
   else if (key == "sig_persp_vfov")
-    signature->perspective_vfov_x100 = std::stoi(value);
+    signature->perspective_vfov_x100 = ParseGroupedInt(value);
   else if (key == "sig_persp_near")
-    signature->perspective_near_x1000 = std::stoi(value);
+    signature->perspective_near_x1000 = ParseGroupedInt(value);
   else if (key == "sig_persp_far")
-    signature->perspective_far_x100 = std::stoi(value);
+    signature->perspective_far_x100 = ParseGroupedInt(value);
   else if (key == "sig_ortho_left")
-    signature->ortho_left_x100 = std::stoi(value);
+    signature->ortho_left_x100 = ParseGroupedInt(value);
   else if (key == "sig_ortho_right")
-    signature->ortho_right_x100 = std::stoi(value);
+    signature->ortho_right_x100 = ParseGroupedInt(value);
   else if (key == "sig_ortho_top")
-    signature->ortho_top_x100 = std::stoi(value);
+    signature->ortho_top_x100 = ParseGroupedInt(value);
   else if (key == "sig_ortho_bottom")
-    signature->ortho_bottom_x100 = std::stoi(value);
+    signature->ortho_bottom_x100 = ParseGroupedInt(value);
   else if (key == "sig_use_projection")
     signature->use_projection = (value == "1" || value == "true");
   else if (key == "sig_use_projection_type")
@@ -116,23 +136,23 @@ bool ParseRuntimeElementSignatureField(ShaderHunter::RuntimeElementSignature* si
   else if (key == "sig_use_render_state")
     signature->use_render_state = (value == "1" || value == "true");
   else if (key == "sig_layer")
-    signature->ortho_layer = std::stoi(value);
+    signature->ortho_layer = ParseGroupedInt(value);
   else if (key == "sig_vp_x")
-    signature->viewport_x = std::stoi(value);
+    signature->viewport_x = ParseGroupedInt(value);
   else if (key == "sig_vp_y")
-    signature->viewport_y = std::stoi(value);
+    signature->viewport_y = ParseGroupedInt(value);
   else if (key == "sig_vp_w")
-    signature->viewport_width = std::stoi(value);
+    signature->viewport_width = ParseGroupedInt(value);
   else if (key == "sig_vp_h")
-    signature->viewport_height = std::stoi(value);
+    signature->viewport_height = ParseGroupedInt(value);
   else if (key == "sig_sc_l")
-    signature->scissor_left = std::stoi(value);
+    signature->scissor_left = ParseGroupedInt(value);
   else if (key == "sig_sc_t")
-    signature->scissor_top = std::stoi(value);
+    signature->scissor_top = ParseGroupedInt(value);
   else if (key == "sig_sc_r")
-    signature->scissor_right = std::stoi(value);
+    signature->scissor_right = ParseGroupedInt(value);
   else if (key == "sig_sc_b")
-    signature->scissor_bottom = std::stoi(value);
+    signature->scissor_bottom = ParseGroupedInt(value);
   else if (key == "sig_alpha")
     signature->alpha_test_hex = std::strtoul(value.c_str(), nullptr, 16);
   else if (key == "sig_ztest")
@@ -140,7 +160,7 @@ bool ParseRuntimeElementSignatureField(ShaderHunter::RuntimeElementSignature* si
   else if (key == "sig_zupdate")
     signature->zupdate = (value == "1" || value == "true");
   else if (key == "sig_zfunc")
-    signature->zfunc = std::stoi(value);
+    signature->zfunc = ParseGroupedInt(value);
   else if (key == "sig_blend_color")
     signature->blend_color_update = (value == "1" || value == "true");
   else if (key == "sig_blend_alpha")
@@ -471,7 +491,7 @@ bool ParseStableSubMatchField(ElementsGroupManager::StableSubMatchSignature* sig
       signature->texture_hashes.push_back(parsed);
   }
   else if (key == "slot")
-    signature->occurrence_slot = std::stoi(value);
+    signature->occurrence_slot = ParseGroupedInt(value);
   else
     return false;
 
@@ -749,7 +769,7 @@ LoadElementGroupOverridesFromINIFile(const std::string& path)
                              HandlingType::UnitsPerMeter :
                              HandlingType::Skip;
     else if (key == "layer")
-      current.layer = std::stoi(value);
+      current.layer = ParseGroupedInt(value);
     else if (key == "element_depth")
       current.element_depth = std::stof(value);
     else if (key == "units_per_meter" || key == "upm")
@@ -762,11 +782,11 @@ LoadElementGroupOverridesFromINIFile(const std::string& path)
       current.condition_inverted =
           (value == "deactivate" || value == "inactive" || value == "1" || value == "true");
     else if (key == "element_start")
-      current.element_start = std::stoi(value);
+      current.element_start = ParseGroupedInt(value);
     else if (key == "element_end")
-      current.element_end = std::stoi(value);
+      current.element_end = ParseGroupedInt(value);
     else if (key == "element_total")
-      current.element_reference_total = std::stoi(value);
+      current.element_reference_total = ParseGroupedInt(value);
     else if (key == "texture")
     {
       const auto parsed_hashes = ParseTextureHashList(value);
@@ -889,6 +909,11 @@ void ElementsGroupManager::SaveOverridesToINI(const std::string& game_id,
     base += "\n";
 
   std::ostringstream out;
+  // Dolphin sets the global locale to the user's system locale (UICommon::SetLocale), which can add
+  // digit-grouping separators (e.g. "1,000,000") to streamed integers. std::stoi then truncates at
+  // the separator on load, corrupting every value >= 1000. Force the classic locale, like the rest
+  // of Dolphin's serialization code does.
+  out.imbue(std::locale::classic());
   out << base;
   out << "[ElementsGroupOverride_Enable]\n";
   for (const auto& entry : overrides)
