@@ -787,6 +787,12 @@ LoadElementGroupOverridesFromINIFile(const std::string& path)
       current.element_end = ParseGroupedInt(value);
     else if (key == "element_total")
       current.element_reference_total = ParseGroupedInt(value);
+    else if (key == "clear_efb")
+      current.clear_efb = (value == "1" || value == "true");
+    else if (key == "clear_efb_min")
+      current.clear_efb_min_width = ParseGroupedInt(value);
+    else if (key == "clear_efb_max")
+      current.clear_efb_max_width = ParseGroupedInt(value);
     else if (key == "texture")
     {
       const auto parsed_hashes = ParseTextureHashList(value);
@@ -949,6 +955,14 @@ void ElementsGroupManager::SaveOverridesToINI(const std::string& game_id,
       out << "element_end=" << entry.element_end << "\n";
     if (entry.element_reference_total > 0)
       out << "element_total=" << entry.element_reference_total << "\n";
+    if (entry.clear_efb)
+    {
+      out << "clear_efb=1\n";
+      if (entry.clear_efb_min_width > 0)
+        out << "clear_efb_min=" << entry.clear_efb_min_width << "\n";
+      if (entry.clear_efb_max_width > 0)
+        out << "clear_efb_max=" << entry.clear_efb_max_width << "\n";
+    }
     if (!entry.comments.empty())
       out << "comments=" << entry.comments << "\n";
     if (!entry.credits.empty())
@@ -998,6 +1012,9 @@ void ElementsGroupManager::LoadOverrides(const std::string& game_id)
   m_current_draw_indices.clear();
   m_stable_submatch_occurrence_counters.clear();
   m_current_stable_submatch = {};
+  m_clear_next_efb = false;
+  m_pending_clear_min = 0;
+  m_pending_clear_max = 0;
   if (game_id.empty())
   {
     m_has_overrides.store(false);
@@ -1994,4 +2011,65 @@ float ElementsGroupManager::GetOverrideUnitsPerMeter(const DrawRecord& draw) con
       return entry.units_per_meter;
   }
   return -1.0f;
+}
+
+void ElementsGroupManager::CheckClearEFBForDraw(const DrawRecord& draw)
+{
+  std::lock_guard lock(m_mutex);
+  GetStableSubMatchSignatureLocked(draw);
+  for (const auto& entry : m_overrides)
+  {
+    if (!entry.clear_efb)
+      continue;
+    if (!DoesEntryMatch(entry, draw, true))
+      continue;
+
+    // Arm the next EFB copy. Matching is on the full element signature, so only this element arms
+    // the clear (unlike shader-hash matching, which fires for every draw of a shared shader).
+    m_clear_next_efb = true;
+    if (entry.clear_efb_min_width > 0 || entry.clear_efb_max_width > 0)
+    {
+      // If several clear_efb elements precede the copy, widen the bounds to their union.
+      if (m_pending_clear_min == 0 && m_pending_clear_max == 0)
+      {
+        m_pending_clear_min = entry.clear_efb_min_width;
+        m_pending_clear_max = entry.clear_efb_max_width;
+      }
+      else
+      {
+        m_pending_clear_min = std::min(m_pending_clear_min, entry.clear_efb_min_width);
+        m_pending_clear_max = (m_pending_clear_max == 0 || entry.clear_efb_max_width == 0) ?
+                                  0 :
+                                  std::max(m_pending_clear_max, entry.clear_efb_max_width);
+      }
+    }
+    else
+    {
+      // No bounds = any size.
+      m_pending_clear_min = 0;
+      m_pending_clear_max = 0;
+    }
+    return;
+  }
+}
+
+bool ElementsGroupManager::ShouldClearEFBCopy(int width)
+{
+  std::lock_guard lock(m_mutex);
+  if (!m_clear_next_efb)
+    return false;
+
+  m_clear_next_efb = false;
+  const int min_w = m_pending_clear_min;
+  const int max_w = m_pending_clear_max;
+  m_pending_clear_min = 0;
+  m_pending_clear_max = 0;
+
+  if (min_w == 0 && max_w == 0)
+    return true;
+  if (min_w > 0 && width < min_w)
+    return false;
+  if (max_w > 0 && width > max_w)
+    return false;
+  return true;
 }

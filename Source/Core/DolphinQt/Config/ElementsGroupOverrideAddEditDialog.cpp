@@ -294,6 +294,29 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
   m_runtime_use_scissor_check = new QCheckBox(tr("Scissor"));
   m_runtime_use_render_state_check = new QCheckBox(tr("Render State"));
 
+  m_clear_efb_check = new QCheckBox(tr("Clear EFB Copy"));
+  m_clear_efb_check->setToolTip(
+      tr("When this element is drawn, clear the next EFB-to-texture copy to transparent instead of\n"
+         "copying the framebuffer content. Use to remove an effect captured via EFB copy.\n"
+         "Independent of handling (can combine with Skip, Screen, etc.). Matching is on the full\n"
+         "element signature, so only this element arms the clear."));
+  m_clear_efb_min_label = new QLabel(tr("EFB Min Width:"));
+  m_clear_efb_min_spin = new QSpinBox;
+  m_clear_efb_min_spin->setRange(0, 640);
+  m_clear_efb_min_spin->setSingleStep(10);
+  m_clear_efb_min_spin->setSpecialValueText(tr("Any"));
+  m_clear_efb_min_spin->setValue(0);
+  m_clear_efb_min_spin->setToolTip(tr("Only clear EFB copies whose native width >= this value.\n"
+                                      "0 (Any) = no lower bound. Full EFB = 640 wide."));
+  m_clear_efb_max_label = new QLabel(tr("EFB Max Width:"));
+  m_clear_efb_max_spin = new QSpinBox;
+  m_clear_efb_max_spin->setRange(0, 640);
+  m_clear_efb_max_spin->setSingleStep(10);
+  m_clear_efb_max_spin->setSpecialValueText(tr("Any"));
+  m_clear_efb_max_spin->setValue(0);
+  m_clear_efb_max_spin->setToolTip(tr("Only clear EFB copies whose native width <= this value.\n"
+                                      "0 (Any) = no upper bound."));
+
   m_texture_mode_combo = new QComboBox;
   m_texture_mode_combo->addItem(tr("Include"), false);
   m_texture_mode_combo->addItem(tr("Exclude"), true);
@@ -337,6 +360,9 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
   form->addRow(tr("Texture Filters:"), m_texture_hash_scroll);
   form->addRow(tr("Selected Match Mode:"), m_selected_match_mode_combo);
   form->addRow(tr("Selected Matches:"), m_selected_match_list);
+  form->addRow(QString(), m_clear_efb_check);
+  form->addRow(m_clear_efb_min_label, m_clear_efb_min_spin);
+  form->addRow(m_clear_efb_max_label, m_clear_efb_max_spin);
 
   auto* runtime_group_row = new QHBoxLayout;
   runtime_group_row->addWidget(m_runtime_use_projection_check);
@@ -368,6 +394,8 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
   connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
   connect(m_match_kind_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
           &ElementsGroupOverrideAddEditDialog::RefreshMatchKindUi);
+  connect(m_clear_efb_check, &QCheckBox::toggled, this,
+          &ElementsGroupOverrideAddEditDialog::RefreshClearEFBUi);
   connect(m_handling_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
           &ElementsGroupOverrideAddEditDialog::RefreshHandlingUi);
   connect(m_element_filter_check, &QCheckBox::toggled, this, [this](bool checked) {
@@ -457,6 +485,9 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
     }
     SetTextureHashValues(edit_override->texture_hashes);
     m_runtime_element = edit_override->runtime_element;
+    m_clear_efb_check->setChecked(edit_override->clear_efb);
+    m_clear_efb_min_spin->setValue(edit_override->clear_efb_min_width);
+    m_clear_efb_max_spin->setValue(edit_override->clear_efb_max_width);
     m_selected_match_filters = edit_override->selected_match_filter;
     m_selected_match_filters_excluded = edit_override->selected_match_filter_excluded;
   }
@@ -476,6 +507,7 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
 
   RefreshHandlingUi();
   RefreshMatchKindUi();
+  RefreshClearEFBUi();
   m_element_start_label->setVisible(m_element_filter_check->isChecked());
   m_element_start_spin->setVisible(m_element_filter_check->isChecked());
   m_element_end_label->setVisible(m_element_filter_check->isChecked());
@@ -506,6 +538,9 @@ ElementsGroupManager::ElementGroupOverride ElementsGroupOverrideAddEditDialog::G
   result.selected_match_filter = m_selected_match_filters;
   result.selected_match_filter_excluded =
       !result.selected_match_filter.empty() && m_selected_match_mode_combo->currentData().toBool();
+  result.clear_efb = m_clear_efb_check->isChecked();
+  result.clear_efb_min_width = result.clear_efb ? m_clear_efb_min_spin->value() : 0;
+  result.clear_efb_max_width = result.clear_efb ? m_clear_efb_max_spin->value() : 0;
   result.flag_group = m_flag_edit->text().trimmed().toStdString();
   result.condition_flag = m_condition_combo->currentText().trimmed().toStdString();
   result.condition_inverted =
@@ -729,6 +764,17 @@ void ElementsGroupOverrideAddEditDialog::RefreshMatchKindUi()
   m_selected_match_list->setVisible(!profile_layer);
   m_add_current_match_button->setVisible(!profile_layer);
   m_remove_selected_match_button->setVisible(!profile_layer);
+}
+
+void ElementsGroupOverrideAddEditDialog::RefreshClearEFBUi()
+{
+  // Clear EFB works for both runtime-signature and profile-layer matches, so it stays visible in
+  // either mode; only the width bounds depend on the checkbox.
+  const bool show = m_clear_efb_check->isChecked();
+  m_clear_efb_min_label->setVisible(show);
+  m_clear_efb_min_spin->setVisible(show);
+  m_clear_efb_max_label->setVisible(show);
+  m_clear_efb_max_spin->setVisible(show);
 }
 
 void ElementsGroupOverrideAddEditDialog::CaptureCurrentSeed()

@@ -43,6 +43,7 @@ private:
   void RefreshRuntimeElementSummary();
   void RefreshHandlingUi();
   void RefreshMatchKindUi();
+  void RefreshClearEFBUi();
   std::vector<MetroidElementLayer> CollectProfileLayers() const;
   void SetProfileLayers(const std::vector<MetroidElementLayer>& layers);
   void CaptureCurrentSeed();
@@ -88,6 +89,11 @@ private:
   QCheckBox* m_runtime_use_viewport_check = nullptr;
   QCheckBox* m_runtime_use_scissor_check = nullptr;
   QCheckBox* m_runtime_use_render_state_check = nullptr;
+  QCheckBox* m_clear_efb_check = nullptr;
+  QLabel* m_clear_efb_min_label = nullptr;
+  QSpinBox* m_clear_efb_min_spin = nullptr;
+  QLabel* m_clear_efb_max_label = nullptr;
+  QSpinBox* m_clear_efb_max_spin = nullptr;
   QComboBox* m_texture_mode_combo = nullptr;
   QComboBox* m_selected_match_mode_combo = nullptr;
   QPushButton* m_view_textures_button = nullptr;

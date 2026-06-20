@@ -107,6 +107,12 @@ public:
     std::string flag_group;
     std::string condition_flag;
     bool condition_inverted = false;
+    // Clear EFB: when a draw matching this override is rendered, clear the next EFB-to-texture copy
+    // to transparent instead of copying. Independent of handling (can combine with Skip/Screen/etc.).
+    // Because matching is on the full element signature, only this element arms the clear.
+    bool clear_efb = false;
+    int clear_efb_min_width = 0;  // Only clear copies with native width >= this (0 = any).
+    int clear_efb_max_width = 0;  // Only clear copies with native width <= this (0 = any).
   };
 
   struct SeedCandidate
@@ -194,6 +200,10 @@ public:
   int GetOverrideLayer(const DrawRecord& draw) const;
   float GetOverrideElementDepth(const DrawRecord& draw) const;
   float GetOverrideUnitsPerMeter(const DrawRecord& draw) const;
+  // Clear EFB: arm a pending clear when a draw matches a clear_efb override; ShouldClearEFBCopy is
+  // consumed by the next EFB-to-texture copy (see TextureCacheBase).
+  void CheckClearEFBForDraw(const DrawRecord& draw);
+  bool ShouldClearEFBCopy(int width);
 
 private:
   ElementsGroupManager() = default;
@@ -283,4 +293,10 @@ private:
   mutable std::unordered_map<CounterKey, int, CounterKeyHasher> m_current_draw_indices;
   mutable std::unordered_map<u64, int> m_stable_submatch_occurrence_counters;
   mutable StableSubMatchContext m_current_stable_submatch;
+
+  // Clear EFB pending state (video thread): armed by CheckClearEFBForDraw, consumed by the next
+  // ShouldClearEFBCopy.
+  bool m_clear_next_efb = false;
+  int m_pending_clear_min = 0;
+  int m_pending_clear_max = 0;
 };

@@ -149,6 +149,8 @@ void ElementsGroupOverrideWidget::UpdateList()
     }
     if (!entry.texture_hashes.empty())
       label += QStringLiteral(" tex");
+    if (entry.clear_efb)
+      label += QStringLiteral(" clear_efb");
     if (!entry.selected_match_filter.empty())
     {
       label += QStringLiteral(" %1[%2]")

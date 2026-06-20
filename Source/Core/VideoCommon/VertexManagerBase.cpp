@@ -1361,6 +1361,8 @@ void VertexManagerBase::Flush()
             hunter.CheckClearEFBForDraw(vs_hash, ps_hash, gs_hash);
           if (texmgr_has_overrides)
             texmgr.CheckClearEFBForDraw(tex_hashes);
+          if (elements_has_overrides)
+            elements.CheckClearEFBForDraw(*element_draw);
 
           // VR Draw Debug Logging: log every draw call's projection, viewport, scissor, and
           // shader hashes so we can identify how specific visual elements (e.g. cinematic bars)

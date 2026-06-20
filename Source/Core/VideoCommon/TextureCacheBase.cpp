@@ -45,6 +45,7 @@
 #include "VideoCommon/GraphicsModSystem/Runtime/GraphicsModActionData.h"
 #include "VideoCommon/GraphicsModSystem/Runtime/GraphicsModManager.h"
 #include "VideoCommon/OpcodeDecoding.h"
+#include "VideoCommon/ElementsGroupManager.h"
 #include "VideoCommon/PixelShaderManager.h"
 #include "VideoCommon/Present.h"
 #include "VideoCommon/Resources/CustomResourceManager.h"
@@ -2481,8 +2482,9 @@ void TextureCacheBase::CopyRenderTargetToTexture(
       //    The ClearEFB flag is set by VertexManagerBase::Flush when a shader with ClearEFB handling
       //    is drawn, and consumed (reset) here when the next EFB copy occurs.
       // 3. Texture-based: same, but armed by a Texture Element Override with Clear EFB.
-      // Evaluate both shader and texture clears (don't short-circuit) so each consumes its own
-      // pending flag on every copy.
+      // 4. Element-based: same, but armed by an Element Group Override with Clear EFB (matched on the
+      //    full element signature, so only the targeted element arms it).
+      // Evaluate all clears (don't short-circuit) so each consumes its own pending flag every copy.
       const int clear_min = g_ActiveConfig.vr_clear_efb_min_width;
       const bool size_clear = !is_xfb_copy && clear_min > 0 &&
                               static_cast<int>(width) >= clear_min;
@@ -2492,7 +2494,10 @@ void TextureCacheBase::CopyRenderTargetToTexture(
       const bool texture_clear = !is_xfb_copy &&
                                  TextureElementManager::GetInstance().ShouldClearEFBCopy(
                                      static_cast<int>(width));
-      if ((size_clear || shader_clear || texture_clear) &&
+      const bool element_clear = !is_xfb_copy &&
+                                 ElementsGroupManager::GetInstance().ShouldClearEFBCopy(
+                                     static_cast<int>(width));
+      if ((size_clear || shader_clear || texture_clear || element_clear) &&
           g_ActiveConfig.stereo_mode == StereoMode::OpenXR)
       {
         g_gfx->SetAndClearFramebuffer(entry->framebuffer.get(),
