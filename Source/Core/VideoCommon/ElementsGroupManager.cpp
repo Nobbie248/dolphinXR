@@ -346,20 +346,6 @@ size_t ComputeRuntimeElementKey(const ShaderHunter::RuntimeElementSignature& sig
   return seed;
 }
 
-size_t ComputeProfileElementKey(MetroidElementProfile profile,
-                                const std::vector<MetroidElementLayer>& layers,
-                                const std::vector<u64>& texture_hashes, bool texture_excluded)
-{
-  size_t seed = 0;
-  HashCombineValue(seed, static_cast<int>(profile));
-  for (const MetroidElementLayer layer : layers)
-    HashCombineValue(seed, static_cast<int>(layer));
-  HashCombineValue(seed, texture_excluded);
-  for (const u64 texture_hash : texture_hashes)
-    HashCombineValue(seed, texture_hash);
-  return seed;
-}
-
 const char* GetHandlingName(ElementsGroupManager::HandlingType handling)
 {
   return handling == ElementsGroupManager::HandlingType::Screen         ? "screen" :
@@ -415,17 +401,6 @@ bool StableSubMatchBaseEqual(const ElementsGroupManager::StableSubMatchSignature
   return SignaturesEqual(lhs.runtime_element, rhs.runtime_element) && lhs.vs_family == rhs.vs_family &&
          lhs.ps_family == rhs.ps_family && lhs.gs_family == rhs.gs_family &&
          lhs.texture_hashes == rhs.texture_hashes;
-}
-
-size_t ComputeSelectedSubgroupKey(const ElementsGroupManager::SelectedSubgroupSignature& signature)
-{
-  size_t seed = 0;
-  HashCombineValue(seed, signature.vs_family);
-  HashCombineValue(seed, signature.ps_family);
-  HashCombineValue(seed, signature.gs_family);
-  for (const u64 texture_hash : signature.texture_hashes)
-    HashCombineValue(seed, texture_hash);
-  return seed;
 }
 
 size_t ComputeStableSubMatchBaseKey(const ElementsGroupManager::StableSubMatchSignature& signature)
@@ -593,11 +568,6 @@ ElementsGroupManager::MakeSelectedSubgroupSignature(const DrawRecord& draw)
   signature.gs_family = draw.gs_family;
   signature.texture_hashes = CollectNonZeroTextureHashes(draw.textures);
   return signature;
-}
-
-size_t ElementsGroupManager::CounterKeyHasher::operator()(const CounterKey& key) const noexcept
-{
-  return std::hash<u64>{}(key.value);
 }
 
 ParsedElementGroupOverrideFile
@@ -781,12 +751,6 @@ LoadElementGroupOverridesFromINIFile(const std::string& path)
     else if (key == "condition_mode")
       current.condition_inverted =
           (value == "deactivate" || value == "inactive" || value == "1" || value == "true");
-    else if (key == "element_start")
-      current.element_start = ParseGroupedInt(value);
-    else if (key == "element_end")
-      current.element_end = ParseGroupedInt(value);
-    else if (key == "element_total")
-      current.element_reference_total = ParseGroupedInt(value);
     else if (key == "clear_efb")
       current.clear_efb = (value == "1" || value == "true");
     else if (key == "clear_efb_min")
@@ -949,12 +913,6 @@ void ElementsGroupManager::SaveOverridesToINI(const std::string& game_id,
       out << "condition=" << entry.condition_flag << "\n";
       out << "condition_mode=" << (entry.condition_inverted ? "deactivate" : "activate") << "\n";
     }
-    if (entry.element_start >= 0)
-      out << "element_start=" << entry.element_start << "\n";
-    if (entry.element_end >= 0)
-      out << "element_end=" << entry.element_end << "\n";
-    if (entry.element_reference_total > 0)
-      out << "element_total=" << entry.element_reference_total << "\n";
     if (entry.clear_efb)
     {
       out << "clear_efb=1\n";
@@ -1007,9 +965,6 @@ void ElementsGroupManager::LoadOverrides(const std::string& game_id)
   std::lock_guard lock(m_mutex);
   m_loaded_game_id = game_id;
   m_overrides.clear();
-  m_draw_counters.clear();
-  m_draw_totals_prev.clear();
-  m_current_draw_indices.clear();
   m_stable_submatch_occurrence_counters.clear();
   m_current_stable_submatch = {};
   m_clear_next_efb = false;
@@ -1531,10 +1486,6 @@ void ElementsGroupManager::OnFrameEnd()
 {
   std::lock_guard lock(m_mutex);
 
-  m_draw_totals_prev = m_draw_counters;
-  m_draw_counters.clear();
-  m_current_draw_indices.clear();
-
   if (m_popup_open_count <= 0)
     return;
 
@@ -1746,23 +1697,6 @@ ElementsGroupManager::GetStableSubMatchSignatureLocked(const DrawRecord& draw) c
   return m_current_stable_submatch.signature;
 }
 
-void ElementsGroupManager::AdvanceOverrideDrawCounters(const DrawRecord& draw)
-{
-  std::lock_guard lock(m_mutex);
-  GetStableSubMatchSignatureLocked(draw);
-  for (const auto& entry : m_overrides)
-  {
-    if (entry.element_start < 0 || entry.element_end < 0)
-      continue;
-    if (!DoesEntryMatchForRange(entry, draw))
-      continue;
-
-    const CounterKey key = GetCounterKey(entry);
-    m_current_draw_indices[key] = m_draw_counters[key];
-    m_draw_counters[key]++;
-  }
-}
-
 bool ElementsGroupManager::DoesTextureFilterPass(const DrawRecord& draw,
                                                  const ElementGroupOverride& entry) const
 {
@@ -1785,54 +1719,8 @@ bool ElementsGroupManager::DoesTextureFilterPass(const DrawRecord& draw,
   return entry.texture_hashes_excluded ? !any_match : any_match;
 }
 
-ElementsGroupManager::CounterKey ElementsGroupManager::GetCounterKey(
-    const ElementGroupOverride& entry) const
-{
-  size_t seed = 0;
-  HashCombineValue(seed, static_cast<int>(entry.match_kind));
-  if (entry.match_kind == MatchKind::ProfileLayer)
-  {
-    HashCombineValue(seed, ComputeProfileElementKey(entry.profile_id, entry.profile_layers,
-                                                    entry.texture_hashes,
-                                                    entry.texture_hashes_excluded));
-  }
-  else
-  {
-    HashCombineValue(seed, ComputeRuntimeElementKey(entry.runtime_element, entry.texture_hashes,
-                                                    entry.texture_hashes_excluded));
-  }
-  for (const SelectedSubgroupSignature& filter : entry.selected_match_filter)
-  {
-    HashCombineValue(seed, ComputeSelectedSubgroupKey(filter));
-  }
-  HashCombineValue(seed, entry.selected_match_filter_excluded);
-  return CounterKey{static_cast<u64>(seed)};
-}
-
-std::pair<int, int> ElementsGroupManager::ResolveElementRange(const ElementGroupOverride& entry,
-                                                              const DrawRecord& draw) const
-{
-  if (entry.element_start < 0 || entry.element_end < 0)
-    return {-1, -1};
-
-  const CounterKey key = GetCounterKey(entry);
-  const auto total_it = m_draw_totals_prev.find(key);
-  const int current_total = total_it != m_draw_totals_prev.end() ? total_it->second :
-                                                               entry.element_reference_total;
-  const int reference_total = entry.element_reference_total;
-  if (current_total <= 0 || reference_total <= 0 || current_total == reference_total)
-    return {entry.element_start, entry.element_end};
-
-  const double scale = static_cast<double>(current_total) / static_cast<double>(reference_total);
-  const int range_start = std::clamp(static_cast<int>(std::lround(entry.element_start * scale)),
-                                     0, current_total - 1);
-  const int range_end = std::clamp(static_cast<int>(std::lround(entry.element_end * scale)),
-                                   0, current_total - 1);
-  return {std::min(range_start, range_end), std::max(range_start, range_end)};
-}
-
-bool ElementsGroupManager::DoesEntryMatchForRange(const ElementGroupOverride& entry,
-                                                  const DrawRecord& draw) const
+bool ElementsGroupManager::DoesEntryBaseMatch(const ElementGroupOverride& entry,
+                                              const DrawRecord& draw) const
 {
   if (!entry.enabled)
     return false;
@@ -1886,18 +1774,8 @@ bool ElementsGroupManager::DoesSelectedMatchFilterPass(const ElementGroupOverrid
 bool ElementsGroupManager::DoesEntryMatch(const ElementGroupOverride& entry, const DrawRecord& draw,
                                           bool include_condition) const
 {
-  if (!DoesEntryMatchForRange(entry, draw))
+  if (!DoesEntryBaseMatch(entry, draw))
     return false;
-
-  if (entry.element_start >= 0 && entry.element_end >= 0)
-  {
-    const auto [range_start, range_end] = ResolveElementRange(entry, draw);
-    const CounterKey key = GetCounterKey(entry);
-    const auto current_it = m_current_draw_indices.find(key);
-    const int current_draw_index = current_it != m_current_draw_indices.end() ? current_it->second : -1;
-    if (current_draw_index < range_start || current_draw_index > range_end)
-      return false;
-  }
 
   if (include_condition && !entry.condition_flag.empty())
   {

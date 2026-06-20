@@ -271,14 +271,6 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
   m_condition_mode_combo->addItem(tr("Activate"), false);
   m_condition_mode_combo->addItem(tr("Deactivate"), true);
 
-  m_element_filter_check = new QCheckBox(tr("Use Draw Call Range"));
-  m_element_start_label = new QLabel(tr("Draw Start:"));
-  m_element_start_spin = new QSpinBox;
-  m_element_start_spin->setRange(0, 1000000);
-  m_element_end_label = new QLabel(tr("Draw End:"));
-  m_element_end_spin = new QSpinBox;
-  m_element_end_spin->setRange(0, 1000000);
-
   m_capture_seed_button = new QPushButton(tr("Use Current Hunt Seed"));
   m_runtime_element_summary_label = new QLabel;
   m_runtime_element_summary_label->setWordWrap(true);
@@ -352,9 +344,6 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
   form->addRow(m_flag_label, m_flag_edit);
   form->addRow(m_condition_label, m_condition_combo);
   form->addRow(m_condition_mode_label, m_condition_mode_combo);
-  form->addRow(m_element_filter_check);
-  form->addRow(m_element_start_label, m_element_start_spin);
-  form->addRow(m_element_end_label, m_element_end_spin);
   form->addRow(QString(), m_view_textures_button);
   form->addRow(tr("Texture Mode:"), m_texture_mode_combo);
   form->addRow(tr("Texture Filters:"), m_texture_hash_scroll);
@@ -398,12 +387,6 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
           &ElementsGroupOverrideAddEditDialog::RefreshClearEFBUi);
   connect(m_handling_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
           &ElementsGroupOverrideAddEditDialog::RefreshHandlingUi);
-  connect(m_element_filter_check, &QCheckBox::toggled, this, [this](bool checked) {
-    m_element_start_label->setVisible(checked);
-    m_element_start_spin->setVisible(checked);
-    m_element_end_label->setVisible(checked);
-    m_element_end_spin->setVisible(checked);
-  });
   connect(m_capture_seed_button, &QPushButton::clicked, this,
           &ElementsGroupOverrideAddEditDialog::CaptureCurrentSeed);
   connect(m_view_textures_button, &QPushButton::clicked, this,
@@ -471,13 +454,6 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
       if (idx >= 0)
         m_condition_mode_combo->setCurrentIndex(idx);
     }
-    m_element_filter_check->setChecked(edit_override->element_start >= 0 &&
-                                       edit_override->element_end >= 0);
-    if (edit_override->element_start >= 0)
-      m_element_start_spin->setValue(edit_override->element_start);
-    if (edit_override->element_end >= 0)
-      m_element_end_spin->setValue(edit_override->element_end);
-    m_edit_element_reference_total = edit_override->element_reference_total;
     {
       const int idx = m_texture_mode_combo->findData(edit_override->texture_hashes_excluded);
       if (idx >= 0)
@@ -508,10 +484,6 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
   RefreshHandlingUi();
   RefreshMatchKindUi();
   RefreshClearEFBUi();
-  m_element_start_label->setVisible(m_element_filter_check->isChecked());
-  m_element_start_spin->setVisible(m_element_filter_check->isChecked());
-  m_element_end_label->setVisible(m_element_filter_check->isChecked());
-  m_element_end_spin->setVisible(m_element_filter_check->isChecked());
   RefreshRuntimeElementSummary();
 }
 
@@ -545,12 +517,6 @@ ElementsGroupManager::ElementGroupOverride ElementsGroupOverrideAddEditDialog::G
   result.condition_flag = m_condition_combo->currentText().trimmed().toStdString();
   result.condition_inverted =
       !result.condition_flag.empty() && m_condition_mode_combo->currentData().toBool();
-  if (m_element_filter_check->isChecked())
-  {
-    result.element_start = m_element_start_spin->value();
-    result.element_end = m_element_end_spin->value();
-    result.element_reference_total = std::max(m_edit_element_reference_total, result.element_end + 1);
-  }
   if (result.match_kind == ElementsGroupManager::MatchKind::ProfileLayer)
   {
     result.runtime_element = {};
@@ -912,12 +878,6 @@ void ElementsGroupOverrideAddEditDialog::OnAccept()
   {
     QMessageBox::warning(this, tr("Elements Group Override"),
                          tr("Flag handling requires a flag group name."));
-    return;
-  }
-  if (m_element_filter_check->isChecked() && m_element_end_spin->value() < m_element_start_spin->value())
-  {
-    QMessageBox::warning(this, tr("Elements Group Override"),
-                         tr("Draw End must be greater than or equal to Draw Start."));
     return;
   }
 

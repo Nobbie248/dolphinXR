@@ -95,9 +95,6 @@ public:
     int layer = -1;
     float element_depth = -1.0f;
     float units_per_meter = -1.0f;
-    int element_start = -1;
-    int element_end = -1;
-    int element_reference_total = 0;
     std::vector<u64> texture_hashes;
     bool texture_hashes_excluded = false;
     std::vector<SelectedSubgroupSignature> selected_match_filter;
@@ -193,7 +190,6 @@ public:
   PreviewAction RegisterDraw(const DrawRecord& draw);
   void OnFrameEnd();
 
-  void AdvanceOverrideDrawCounters(const DrawRecord& draw);
   void RegisterFlagsForDraw(const DrawRecord& draw);
   bool ShouldSkipByOverride(const DrawRecord& draw) const;
   HandlingType GetOverrideHandling(const DrawRecord& draw) const;
@@ -207,21 +203,6 @@ public:
 
 private:
   ElementsGroupManager() = default;
-
-  struct CounterKey
-  {
-    u64 value = 0;
-
-    bool operator==(const CounterKey& other) const
-    {
-      return value == other.value;
-    }
-  };
-
-  struct CounterKeyHasher
-  {
-    size_t operator()(const CounterKey& key) const noexcept;
-  };
 
   struct StableSubMatchContext
   {
@@ -248,14 +229,11 @@ private:
   bool MatchesSelectedMatchFilterSignatureLocked(const SelectedSubgroupSignature& signature) const;
   std::vector<CurrentMatchCandidate> ResolveSelectedMatchDisplayDrawsLocked() const;
   StableSubMatchSignature GetStableSubMatchSignatureLocked(const DrawRecord& draw) const;
-  std::pair<int, int> ResolveElementRange(const ElementGroupOverride& entry,
-                                          const DrawRecord& draw) const;
-  bool DoesEntryMatchForRange(const ElementGroupOverride& entry, const DrawRecord& draw) const;
+  bool DoesEntryBaseMatch(const ElementGroupOverride& entry, const DrawRecord& draw) const;
   bool DoesSelectedMatchFilterPass(const ElementGroupOverride& entry, const DrawRecord& draw) const;
   bool DoesEntryMatch(const ElementGroupOverride& entry, const DrawRecord& draw,
                       bool include_condition) const;
   bool DoesTextureFilterPass(const DrawRecord& draw, const ElementGroupOverride& entry) const;
-  CounterKey GetCounterKey(const ElementGroupOverride& entry) const;
 
   mutable std::mutex m_mutex;
   int m_popup_open_count = 0;
@@ -288,9 +266,6 @@ private:
   std::vector<ElementGroupOverride> m_overrides;
   std::string m_loaded_game_id;
 
-  mutable std::unordered_map<CounterKey, int, CounterKeyHasher> m_draw_counters;
-  mutable std::unordered_map<CounterKey, int, CounterKeyHasher> m_draw_totals_prev;
-  mutable std::unordered_map<CounterKey, int, CounterKeyHasher> m_current_draw_indices;
   mutable std::unordered_map<u64, int> m_stable_submatch_occurrence_counters;
   mutable StableSubMatchContext m_current_stable_submatch;
 

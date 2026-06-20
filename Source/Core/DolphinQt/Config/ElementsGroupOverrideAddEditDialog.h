@@ -52,7 +52,6 @@ private:
   void OnAccept();
 
   std::vector<std::string> m_available_flags;
-  int m_edit_element_reference_total = 0;
   bool m_updating_texture_hash_fields = false;
 
   QLineEdit* m_name_edit = nullptr;
@@ -76,11 +75,6 @@ private:
   QLabel* m_condition_label = nullptr;
   QComboBox* m_condition_mode_combo = nullptr;
   QLabel* m_condition_mode_label = nullptr;
-  QCheckBox* m_element_filter_check = nullptr;
-  QSpinBox* m_element_start_spin = nullptr;
-  QLabel* m_element_start_label = nullptr;
-  QSpinBox* m_element_end_spin = nullptr;
-  QLabel* m_element_end_label = nullptr;
   QPushButton* m_capture_seed_button = nullptr;
   QLabel* m_runtime_element_summary_label = nullptr;
   QCheckBox* m_runtime_use_projection_check = nullptr;

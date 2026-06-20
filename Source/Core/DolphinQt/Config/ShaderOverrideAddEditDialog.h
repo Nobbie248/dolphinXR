@@ -42,7 +42,6 @@ private:
 
   void OnAccept();
   void OnHandlingChanged();
-  void OnElementFilterChanged();
 
   QLineEdit* m_name_edit;
   QPlainTextEdit* m_comments_edit;
@@ -64,11 +63,6 @@ private:
   QLabel* m_condition_label;
   QComboBox* m_condition_mode_combo;
   QLabel* m_condition_mode_label;
-  QSpinBox* m_element_start_spin;
-  QSpinBox* m_element_end_spin;
-  QLabel* m_element_start_label;
-  QLabel* m_element_end_label;
-  QCheckBox* m_element_filter_check;
   QCheckBox* m_hash_family_check;
   QPushButton* m_view_textures_button;
   QComboBox* m_texture_mode_combo;
@@ -78,6 +72,5 @@ private:
   QVBoxLayout* m_texture_hash_layout;
   std::vector<QLineEdit*> m_texture_hash_edits;
   bool m_updating_texture_hash_fields = false;
-  int m_edit_element_reference_total = 0;
   u64 m_edit_family_signature = 0;
 };

@@ -150,27 +150,6 @@ ShaderOverrideAddEditDialog::ShaderOverrideAddEditDialog(
       tr("Activate: apply when the selected flag is active.\n"
          "Deactivate: apply when the selected flag is NOT active."));
 
-  m_element_start_label = new QLabel(tr("Draw Call Start:"));
-  m_element_start_spin = new QSpinBox;
-  m_element_start_spin->setRange(0, 9999);
-  m_element_start_spin->setValue(0);
-  m_element_start_spin->setToolTip(
-      tr("First draw call index to apply this override.\n"
-         "Only used when Draw Call Filter is enabled.\n"
-         "Use Draw Call mode in Shader Hunter to identify draw call indices."));
-
-  m_element_end_label = new QLabel(tr("Draw Call End:"));
-  m_element_end_spin = new QSpinBox;
-  m_element_end_spin->setRange(0, 9999);
-  m_element_end_spin->setValue(0);
-  m_element_end_spin->setToolTip(
-      tr("Last draw call index to apply this override.\n"
-         "Only used when Draw Call Filter is enabled.\n"
-         "Range is inclusive: start=2, end=5 skips draws 2,3,4,5."));
-  m_element_filter_check = new QCheckBox(tr("Draw Call Filter"));
-  m_element_filter_check->setToolTip(
-      tr("Enable to apply this override only to a specific draw-call range.\n"
-         "Ranges adapt automatically when draw-call counts change between frames."));
   m_hash_family_check = new QCheckBox(tr("Match Shader Family"));
   m_hash_family_check->setToolTip(
       tr("Match this override against a relaxed shader family signature instead of the exact hash.\n"
@@ -204,7 +183,6 @@ ShaderOverrideAddEditDialog::ShaderOverrideAddEditDialog(
   // Pre-fill fields in edit mode
   if (edit_override)
   {
-    m_edit_element_reference_total = edit_override->element_reference_total;
     m_edit_family_signature = edit_override->family_signature;
     m_name_edit->setText(QString::fromStdString(edit_override->name));
     m_comments_edit->setPlainText(QString::fromStdString(edit_override->comments));
@@ -235,12 +213,7 @@ ShaderOverrideAddEditDialog::ShaderOverrideAddEditDialog(
       m_units_per_meter_spin->setValue(edit_override->units_per_meter);
     m_flag_edit->setText(QString::fromStdString(edit_override->flag_group));
 
-    const bool has_element_filter =
-        edit_override->element_start >= 0 || edit_override->element_end >= 0;
-    m_element_filter_check->setChecked(has_element_filter);
     m_hash_family_check->setChecked(edit_override->hash_family_match);
-    m_element_start_spin->setValue(std::max(0, edit_override->element_start));
-    m_element_end_spin->setValue(std::max(0, edit_override->element_end));
 
     m_updating_texture_hash_fields = true;
     while (m_texture_hash_edits.size() < edit_override->texture_hashes.size())
@@ -290,9 +263,6 @@ ShaderOverrideAddEditDialog::ShaderOverrideAddEditDialog(
   form->addRow(m_flag_label, m_flag_edit);
   form->addRow(m_condition_label, m_condition_combo);
   form->addRow(m_condition_mode_label, m_condition_mode_combo);
-  form->addRow(QString(), m_element_filter_check);
-  form->addRow(m_element_start_label, m_element_start_spin);
-  form->addRow(m_element_end_label, m_element_end_spin);
   form->addRow(QString(), m_view_textures_button);
   form->addRow(m_texture_mode_label, m_texture_mode_combo);
   form->addRow(tr("Texture Filters:"), m_texture_hash_scroll);
@@ -304,8 +274,6 @@ ShaderOverrideAddEditDialog::ShaderOverrideAddEditDialog(
   connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
   connect(m_handling_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
           &ShaderOverrideAddEditDialog::OnHandlingChanged);
-  connect(m_element_filter_check, &QCheckBox::toggled, this,
-          &ShaderOverrideAddEditDialog::OnElementFilterChanged);
   connect(m_condition_combo, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) {
     const bool has_condition = !m_condition_combo->currentData().toString().isEmpty();
     m_condition_mode_label->setEnabled(has_condition);
@@ -324,7 +292,6 @@ ShaderOverrideAddEditDialog::ShaderOverrideAddEditDialog(
   const bool has_condition = !m_condition_combo->currentData().toString().isEmpty();
   m_condition_mode_label->setEnabled(has_condition);
   m_condition_mode_combo->setEnabled(has_condition);
-  OnElementFilterChanged();
 }
 
 ShaderHunter::ShaderOverride ShaderOverrideAddEditDialog::GetResult() const
@@ -363,18 +330,6 @@ ShaderHunter::ShaderOverride ShaderOverrideAddEditDialog::GetResult() const
   result.units_per_meter = result.handling == ShaderHunter::HandlingType::UnitsPerMeter ?
                                static_cast<float>(m_units_per_meter_spin->value()) :
                                -1.0f;
-  if (m_element_filter_check->isChecked())
-  {
-    result.element_start = m_element_start_spin->value();
-    result.element_end = m_element_end_spin->value();
-    result.element_reference_total = m_edit_element_reference_total;
-  }
-  else
-  {
-    result.element_start = -1;
-    result.element_end = -1;
-    result.element_reference_total = 0;
-  }
   const auto texture_tokens = CollectTextureHashTokens();
   for (const std::string& token : texture_tokens)
   {
@@ -461,15 +416,6 @@ void ShaderOverrideAddEditDialog::OnAccept()
   }
 
   // Validate flag group name for Flag handling
-  if (m_element_filter_check->isChecked() &&
-      m_element_start_spin->value() > m_element_end_spin->value())
-  {
-    QMessageBox::warning(this, tr("Validation Error"),
-                         tr("Draw Call Start must be less than or equal to Draw Call End."));
-    return;
-  }
-
-  // Validate flag group name for Flag handling
   const auto handling = static_cast<ShaderHunter::HandlingType>(
       m_handling_combo->currentData().toInt());
   if (handling == ShaderHunter::HandlingType::Flag && m_flag_edit->text().trimmed().isEmpty())
@@ -511,15 +457,6 @@ void ShaderOverrideAddEditDialog::OnHandlingChanged()
   m_condition_combo->setVisible(!is_flag);
   m_condition_mode_label->setVisible(!is_flag);
   m_condition_mode_combo->setVisible(!is_flag);
-}
-
-void ShaderOverrideAddEditDialog::OnElementFilterChanged()
-{
-  const bool show = m_element_filter_check->isChecked();
-  m_element_start_label->setVisible(show);
-  m_element_start_spin->setVisible(show);
-  m_element_end_label->setVisible(show);
-  m_element_end_spin->setVisible(show);
 }
 
 void ShaderOverrideAddEditDialog::ShowTextureBrowser()

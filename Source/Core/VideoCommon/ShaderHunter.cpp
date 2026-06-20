@@ -212,17 +212,6 @@ void ShaderHunter::OnFrameEnd()
   // Clear debug logging per-frame dedup set
   m_debug_logged_combos.clear();
 
-  // Reset per-hash override draw counters for next frame (always, even when hunting disabled)
-  if (m_has_element_overrides)
-  {
-    m_override_draw_totals_prev = m_override_draw_counters;
-    m_override_draw_counters.clear();
-  }
-  else
-  {
-    m_override_draw_totals_prev.clear();
-  }
-
   if (!m_enabled)
     return;
   std::lock_guard lock(m_mutex);
@@ -232,15 +221,6 @@ void ShaderHunter::OnFrameEnd()
     m_collecting[i].clear();
   }
 
-  // Element mode: store total draw count for UI, reset per-frame counter
-  m_element_total = m_element_counter;
-  m_element_counter = 0;
-
-  // Swap element texture capture buffers
-  m_element_textures_display = std::move(m_element_textures_collecting);
-  m_element_textures_collecting.clear();
-  m_element_tex_names_display = std::move(m_element_tex_names_collecting);
-  m_element_tex_names_collecting.clear();
   m_shader_texture_usage_display = std::move(m_shader_texture_usage_collecting);
   for (auto& per_type : m_shader_texture_usage_collecting)
     per_type.clear();
@@ -294,22 +274,6 @@ bool ShaderHunter::ShouldSkipDraw(u64 vs_hash, u64 ps_hash, u64 gs_hash)
       name = m_current_draw_texture_names[i];
   }
 
-  // Count this draw call for element mode tracking
-  const int draw_index = m_element_counter++;
-
-  // Capture per-element textures during hunting (for UI display)
-  if (m_element_mode)
-  {
-    // Grow the collecting vectors to fit this draw index
-    if (draw_index >= static_cast<int>(m_element_textures_collecting.size()))
-    {
-      m_element_textures_collecting.resize(draw_index + 1);
-      m_element_tex_names_collecting.resize(draw_index + 1);
-    }
-    m_element_textures_collecting[draw_index] = m_current_draw_textures;
-    m_element_tex_names_collecting[draw_index] = m_current_draw_texture_names;
-  }
-
   bool selected_draw_matches_hunting = false;
 
   // Texture-filter mode: target the union of the currently browsed texture hash
@@ -349,15 +313,6 @@ bool ShaderHunter::ShouldSkipDraw(u64 vs_hash, u64 ps_hash, u64 gs_hash)
       m_should_highlight_selected_draw = false;
       return false;
     }
-  }
-  else if (m_element_mode)
-  {
-    // Range mode: target all draws in [start, end]
-    if (m_element_start >= 0 && m_element_end >= 0)
-      selected_draw_matches_hunting = draw_index >= m_element_start && draw_index <= m_element_end;
-    // Single element mode: target only the cursor
-    else if (m_selected_element >= 0)
-      selected_draw_matches_hunting = draw_index == m_selected_element;
   }
   else
   {
@@ -581,120 +536,11 @@ int ShaderHunter::GetTotalCount() const
   return static_cast<int>(m_display[static_cast<int>(m_active_type)].size());
 }
 
-void ShaderHunter::SetElementMode(bool enabled)
-{
-  std::lock_guard lock(m_mutex);
-  m_element_mode = enabled;
-  if (enabled)
-  {
-    if (m_selected_element < 0)
-      m_selected_element = 0;
-  }
-  else
-  {
-    // Reset range when element mode is disabled
-    m_element_start = -1;
-    m_element_end = -1;
-  }
-}
-
-bool ShaderHunter::IsElementMode() const
-{
-  return m_element_mode;
-}
-
-void ShaderHunter::NextElement()
-{
-  std::lock_guard lock(m_mutex);
-  if (m_element_total <= 0)
-    return;
-  m_selected_element++;
-  if (m_selected_element >= m_element_total)
-    m_selected_element = 0;
-}
-
-void ShaderHunter::PrevElement()
-{
-  std::lock_guard lock(m_mutex);
-  if (m_element_total <= 0)
-    return;
-  m_selected_element--;
-  if (m_selected_element < 0)
-    m_selected_element = m_element_total - 1;
-}
-
-int ShaderHunter::GetSelectedElement() const
-{
-  return m_selected_element;
-}
-
-int ShaderHunter::GetElementTotal() const
-{
-  return m_element_total;
-}
-
-void ShaderHunter::MarkRangeStart()
-{
-  std::lock_guard lock(m_mutex);
-  if (m_selected_element >= 0)
-  {
-    m_element_start = m_selected_element;
-    // If end is not set or is before start, snap it to start
-    if (m_element_end < m_element_start)
-      m_element_end = m_element_start;
-  }
-}
-
-void ShaderHunter::MarkRangeEnd()
-{
-  std::lock_guard lock(m_mutex);
-  if (m_selected_element >= 0)
-  {
-    m_element_end = m_selected_element;
-    // If start is not set or is after end, snap it to end
-    if (m_element_start < 0 || m_element_start > m_element_end)
-      m_element_start = m_element_end;
-  }
-}
-
-void ShaderHunter::ClearRange()
-{
-  std::lock_guard lock(m_mutex);
-  m_element_start = -1;
-  m_element_end = -1;
-}
-
-int ShaderHunter::GetElementStart() const
-{
-  return m_element_start;
-}
-
-int ShaderHunter::GetElementEnd() const
-{
-  return m_element_end;
-}
-
 void ShaderHunter::SetCurrentDrawTextures(const std::array<u64, 8>& hashes,
                                            const std::array<std::string, 8>& names)
 {
   m_current_draw_textures = hashes;
   m_current_draw_texture_names = names;
-}
-
-std::array<u64, 8> ShaderHunter::GetElementTextures(int element) const
-{
-  std::lock_guard lock(m_mutex);
-  if (element >= 0 && element < static_cast<int>(m_element_textures_display.size()))
-    return m_element_textures_display[element];
-  return {};
-}
-
-std::array<std::string, 8> ShaderHunter::GetElementTextureNames(int element) const
-{
-  std::lock_guard lock(m_mutex);
-  if (element >= 0 && element < static_cast<int>(m_element_tex_names_display.size()))
-    return m_element_tex_names_display[element];
-  return {};
 }
 
 // ============================================================================
@@ -1007,18 +853,6 @@ LoadShaderOverridesFromINIFile(const std::string& path)
           current.condition_inverted = false;
         }
       }
-      else if (key == "element_start")
-      {
-        current.element_start = std::stoi(value);
-      }
-      else if (key == "element_end")
-      {
-        current.element_end = std::stoi(value);
-      }
-      else if (key == "element_total")
-      {
-        current.element_reference_total = std::stoi(value);
-      }
       else if (key == "texture")
       {
         const auto parsed_hashes = ParseTextureHashList(value);
@@ -1175,12 +1009,6 @@ void ShaderHunter::SaveOverridesToINI(const std::string& game_id,
       out << "condition=" << ovr.condition_flag << "\n";
       out << "condition_mode=" << (ovr.condition_inverted ? "deactivate" : "activate") << "\n";
     }
-    if (ovr.element_start >= 0)
-      out << "element_start=" << ovr.element_start << "\n";
-    if (ovr.element_end >= 0)
-      out << "element_end=" << ovr.element_end << "\n";
-    if (ovr.element_reference_total > 0)
-      out << "element_total=" << ovr.element_reference_total << "\n";
     if (ovr.hash_family_match)
     {
       out << "hash_family=1\n";
@@ -1223,16 +1051,11 @@ void ShaderHunter::LoadOverrides(const std::string& game_id)
   m_flags_seen_this_frame.clear();
   m_flag_age.clear();
   m_all_override_hashes.clear();
-  m_has_element_overrides = false;
   m_has_texture_overrides = false;
-  m_override_draw_counters.clear();
-  m_override_draw_totals_prev.clear();
-  m_runtime_element_reference_totals.clear();
   m_loaded_game_id = game_id;
   m_has_overrides.store(false, std::memory_order_relaxed);
   m_needs_shader_family_signatures.store(false, std::memory_order_relaxed);
   m_needs_texture_hashes.store(false, std::memory_order_relaxed);
-  m_needs_override_draw_counters.store(false, std::memory_order_relaxed);
 
   if (game_id.empty())
     return;
@@ -1241,7 +1064,6 @@ void ShaderHunter::LoadOverrides(const std::string& game_id)
   bool has_overrides = false;
   bool needs_shader_family_signatures = false;
   bool needs_texture_hashes = false;
-  bool needs_override_draw_counters = false;
 
   for (auto& ovr : all)
   {
@@ -1253,8 +1075,6 @@ void ShaderHunter::LoadOverrides(const std::string& game_id)
       needs_shader_family_signatures = true;
     if (!ovr.texture_hashes.empty())
       needs_texture_hashes = true;
-    if (ovr.element_start >= 0 && ovr.element_end >= 0)
-      needs_override_draw_counters = true;
 
     m_all_override_hashes.insert(ovr.hash);
     // Any override with a flag_group sets a flag when drawn (regardless of handling type)
@@ -1269,20 +1089,15 @@ void ShaderHunter::LoadOverrides(const std::string& game_id)
       continue;
     }
 
-    // Conditional, draw-call-range, or texture-conditioned overrides: store separately
-    if (!ovr.condition_flag.empty() ||
-        (ovr.element_start >= 0 && ovr.element_end >= 0) || !ovr.texture_hashes.empty() ||
-        ovr.hash_family_match)
+    // Conditional or texture-conditioned overrides: store separately
+    if (!ovr.condition_flag.empty() || !ovr.texture_hashes.empty() || ovr.hash_family_match)
     {
-      if (ovr.element_start >= 0 && ovr.element_end >= 0)
-        m_has_element_overrides = true;
       if (!ovr.texture_hashes.empty())
         m_has_texture_overrides = true;
       m_conditional_overrides.push_back(
           {ovr.hash, ovr.handling, ovr.type, ovr.layer, ovr.element_depth, ovr.units_per_meter,
-           ovr.element_start, ovr.element_end, ovr.element_reference_total, ovr.texture_hashes,
-           ovr.texture_hashes_excluded, ovr.hash_family_match, ovr.family_signature,
-           ovr.condition_flag, ovr.condition_inverted});
+           ovr.texture_hashes, ovr.texture_hashes_excluded, ovr.hash_family_match,
+           ovr.family_signature, ovr.condition_flag, ovr.condition_inverted});
       m_overrides.push_back(std::move(ovr));
       continue;
     }
@@ -1341,8 +1156,6 @@ void ShaderHunter::LoadOverrides(const std::string& game_id)
   m_needs_shader_family_signatures.store(needs_shader_family_signatures,
                                          std::memory_order_relaxed);
   m_needs_texture_hashes.store(needs_texture_hashes, std::memory_order_relaxed);
-  m_needs_override_draw_counters.store(needs_override_draw_counters,
-                                       std::memory_order_relaxed);
 
   if (!m_overrides.empty())
   {
@@ -1449,11 +1262,6 @@ bool ShaderHunter::NeedsShaderFamilySignatures() const
 bool ShaderHunter::NeedsTextureHashes() const
 {
   return m_needs_texture_hashes.load(std::memory_order_relaxed);
-}
-
-bool ShaderHunter::NeedsOverrideDrawCounters() const
-{
-  return m_needs_override_draw_counters.load(std::memory_order_relaxed);
 }
 
 void ShaderHunter::RegisterFlags(u64 vs_hash, u64 ps_hash, u64 gs_hash)
@@ -1609,57 +1417,6 @@ void ShaderHunter::DebugLogUnmatched(u64 vs_hash, u64 ps_hash, u64 gs_hash) cons
       static_cast<u32>(vs_hash), static_cast<u32>(ps_hash), static_cast<u32>(gs_hash));
 }
 
-void ShaderHunter::AdvanceOverrideDrawCounters(u64 vs_hash, u64 ps_hash, u64 gs_hash)
-{
-  if (!m_has_element_overrides)
-    return;
-  m_current_vs_draw_idx = m_override_draw_counters[vs_hash]++;
-  m_current_ps_draw_idx = m_override_draw_counters[ps_hash]++;
-  m_current_gs_draw_idx = m_override_draw_counters[gs_hash]++;
-}
-
-std::pair<int, int> ShaderHunter::ResolveElementRange(const ConditionalOverride& cond) const
-{
-  int start = cond.element_start;
-  int end = cond.element_end;
-  if (start < 0 || end < 0)
-    return {start, end};
-
-  const auto total_it = m_override_draw_totals_prev.find(cond.hash);
-  if (total_it == m_override_draw_totals_prev.end() || total_it->second <= 0)
-    return {start, end};
-
-  const int previous_total = total_it->second;
-  int reference_total = cond.element_reference_total;
-  if (reference_total <= 0)
-  {
-    const auto inserted =
-        m_runtime_element_reference_totals.emplace(cond.hash, previous_total);
-    reference_total = inserted.first->second;
-  }
-
-  const int delta = previous_total - reference_total;
-  start += delta;
-  end += delta;
-
-  if (start < 0)
-    start = 0;
-  if (end < start)
-    end = start;
-
-  if (previous_total > 0)
-  {
-    if (start >= previous_total)
-      start = previous_total - 1;
-    if (end >= previous_total)
-      end = previous_total - 1;
-    if (end < start)
-      end = start;
-  }
-
-  return {start, end};
-}
-
 bool ShaderHunter::IsConditionFlagMatch(const ConditionalOverride& cond) const
 {
   if (cond.condition_flag.empty())
@@ -1777,16 +1534,6 @@ bool ShaderHunter::ShouldSkipByOverride(u64 vs_hash, u64 ps_hash, u64 gs_hash) c
       continue;
     if (!IsConditionFlagMatch(cond))
       continue;
-    // Element range: check per-hash draw index
-    if (cond.element_start >= 0 && cond.element_end >= 0)
-    {
-      const auto [range_start, range_end] = ResolveElementRange(cond);
-      const int draw_idx = cond.type == ShaderType::Vertex   ? m_current_vs_draw_idx :
-                           cond.type == ShaderType::Pixel    ? m_current_ps_draw_idx :
-                                                                m_current_gs_draw_idx;
-      if (draw_idx < range_start || draw_idx > range_end)
-        continue;
-    }
     // Texture condition: require at least one matching texture bound to any stage.
     if (!DoesTextureFilterPass(m_current_draw_textures, cond.texture_hashes,
                                cond.texture_hashes_excluded))
@@ -1856,16 +1603,6 @@ ShaderHunter::HandlingType ShaderHunter::GetOverrideHandling(u64 vs_hash, u64 ps
         continue;
       if (!IsConditionFlagMatch(cond))
         continue;
-      // Element range: check per-hash draw index
-      if (cond.element_start >= 0 && cond.element_end >= 0)
-      {
-        const auto [range_start, range_end] = ResolveElementRange(cond);
-        const int draw_idx = cond.type == ShaderType::Vertex   ? m_current_vs_draw_idx :
-                             cond.type == ShaderType::Pixel    ? m_current_ps_draw_idx :
-                                                                  m_current_gs_draw_idx;
-        if (draw_idx < range_start || draw_idx > range_end)
-          continue;
-      }
       // Texture condition: require at least one matching texture bound to any stage.
       if (!DoesTextureFilterPass(m_current_draw_textures, cond.texture_hashes,
                                  cond.texture_hashes_excluded))
@@ -1921,15 +1658,6 @@ int ShaderHunter::GetOverrideLayer(u64 vs_hash, u64 ps_hash, u64 gs_hash) const
       continue;
     if (!IsConditionFlagMatch(cond))
       continue;
-    if (cond.element_start >= 0 && cond.element_end >= 0)
-    {
-      const auto [range_start, range_end] = ResolveElementRange(cond);
-      const int draw_idx = cond.type == ShaderType::Vertex   ? m_current_vs_draw_idx :
-                           cond.type == ShaderType::Pixel    ? m_current_ps_draw_idx :
-                                                                m_current_gs_draw_idx;
-      if (draw_idx < range_start || draw_idx > range_end)
-        continue;
-    }
     if (!DoesTextureFilterPass(m_current_draw_textures, cond.texture_hashes,
                                cond.texture_hashes_excluded))
       continue;
@@ -1960,15 +1688,6 @@ float ShaderHunter::GetOverrideElementDepth(u64 vs_hash, u64 ps_hash, u64 gs_has
       continue;
     if (!IsConditionFlagMatch(cond))
       continue;
-    if (cond.element_start >= 0 && cond.element_end >= 0)
-    {
-      const auto [range_start, range_end] = ResolveElementRange(cond);
-      const int draw_idx = cond.type == ShaderType::Vertex   ? m_current_vs_draw_idx :
-                           cond.type == ShaderType::Pixel    ? m_current_ps_draw_idx :
-                                                                m_current_gs_draw_idx;
-      if (draw_idx < range_start || draw_idx > range_end)
-        continue;
-    }
     if (!DoesTextureFilterPass(m_current_draw_textures, cond.texture_hashes,
                                cond.texture_hashes_excluded))
       continue;
@@ -1999,15 +1718,6 @@ float ShaderHunter::GetOverrideUnitsPerMeter(u64 vs_hash, u64 ps_hash, u64 gs_ha
       continue;
     if (!IsConditionFlagMatch(cond))
       continue;
-    if (cond.element_start >= 0 && cond.element_end >= 0)
-    {
-      const auto [range_start, range_end] = ResolveElementRange(cond);
-      const int draw_idx = cond.type == ShaderType::Vertex   ? m_current_vs_draw_idx :
-                           cond.type == ShaderType::Pixel    ? m_current_ps_draw_idx :
-                                                                m_current_gs_draw_idx;
-      if (draw_idx < range_start || draw_idx > range_end)
-        continue;
-    }
     if (!DoesTextureFilterPass(m_current_draw_textures, cond.texture_hashes,
                                cond.texture_hashes_excluded))
       continue;
@@ -2266,11 +1976,6 @@ ShaderHunter::HuntingStatus ShaderHunter::GetHuntingStatusForOSD() const
   status.selected_position = m_selected_pos[t];
   status.selected_total = static_cast<int>(m_display[t].size());
 
-  status.element_mode = m_element_mode;
-  status.selected_element = m_selected_element;
-  status.element_total = m_element_total;
-  status.element_start = m_element_start;
-  status.element_end = m_element_end;
   const auto texture_hashes = GetSortedTextureHashes(m_texture_usage_display);
   if (!texture_hashes.empty())
   {

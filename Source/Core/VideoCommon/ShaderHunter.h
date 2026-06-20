@@ -127,27 +127,10 @@ public:
   int GetSelectedPosition() const;
   int GetTotalCount() const;
 
-  // Element mode: cycle through individual draw calls of the selected shader
-  void SetElementMode(bool enabled);
-  bool IsElementMode() const;
-  void NextElement();
-  void PrevElement();
-  int GetSelectedElement() const;
-  int GetElementTotal() const;
-
-  // Element range: skip a contiguous range of draw calls instead of just one
-  void MarkRangeStart();   // Set range start to current cursor position
-  void MarkRangeEnd();     // Set range end to current cursor position
-  void ClearRange();       // Reset to single-element mode
-  int GetElementStart() const;
-  int GetElementEnd() const;
-
-  // Texture tracking: capture bound textures per draw call for element identification
+  // Texture tracking: capture the current draw's bound textures/signature for override matching.
   void SetCurrentDrawSignature(const RuntimeElementSignature& signature);
   void SetCurrentDrawTextures(const std::array<u64, 8>& hashes,
                               const std::array<std::string, 8>& names);
-  std::array<u64, 8> GetElementTextures(int element) const;
-  std::array<std::string, 8> GetElementTextureNames(int element) const;
 
   // --- Persistent overrides (per-game INI) ---
   struct ShaderOverride
@@ -163,9 +146,6 @@ public:
     int layer = -1;          // Manual layer index for Screen handling (-1 = auto)
     float element_depth = -1.0f;  // Per-override within-element depth (-1 = use global)
     float units_per_meter = -1.0f;  // Per-override UPM for UnitsPerMeter handling (-1 = global)
-    int element_start = -1;      // First draw call index to apply override (-1 = all)
-    int element_end = -1;        // Last draw call index (-1 = all)
-    int element_reference_total = 0;  // Draw-call count used when range was authored (0 = fixed)
     std::vector<u64> texture_hashes;  // Only apply when any listed texture is bound (empty = any)
     bool texture_hashes_excluded = false;  // false=Include list, true=Exclude list
     bool hash_family_match = false;  // false=exact hash, true=family signature
@@ -191,11 +171,6 @@ public:
   bool HasOverrides() const;
   bool NeedsShaderFamilySignatures() const;
   bool NeedsTextureHashes() const;
-  bool NeedsOverrideDrawCounters() const;
-
-  // Advance per-hash draw counters for element-aware overrides.
-  // Must be called once per draw from VertexManagerBase, before any override checks.
-  void AdvanceOverrideDrawCounters(u64 vs_hash, u64 ps_hash, u64 gs_hash);
 
   // Always-active skip check (independent of hunting)
   bool ShouldSkipByOverride(u64 vs_hash, u64 ps_hash, u64 gs_hash) const;
@@ -234,11 +209,6 @@ public:
     u64 selected_hash = 0;
     int selected_position = -1;
     int selected_total = 0;
-    bool element_mode = false;
-    int selected_element = -1;
-    int element_total = 0;
-    int element_start = -1;
-    int element_end = -1;
     u64 selected_texture_hash = 0;
     std::vector<u64> texture_filters;
   };
@@ -297,14 +267,6 @@ private:
   std::array<u64, TYPE_COUNT> m_selected_hash{~0ULL, ~0ULL, ~0ULL};
   std::array<int, TYPE_COUNT> m_selected_pos{-1, -1, -1};
 
-  // Element mode: per-draw-call cycling within a selected shader
-  bool m_element_mode = false;
-  int m_selected_element = -1;   // Cursor position for identification (-1 = skip all)
-  int m_element_start = -1;      // Range start (-1 = not set, use cursor)
-  int m_element_end = -1;        // Range end (-1 = not set, use cursor)
-  int m_element_total = 0;       // Total draw calls using selected hash last frame
-  int m_element_counter = 0;     // Per-frame counter, incremented in ShouldSkipDraw
-
   // UID cache: hash → raw UID bytes (for shader source regeneration/dump)
   std::array<std::unordered_map<u64, std::vector<u8>>, TYPE_COUNT> m_uid_cache{};
 
@@ -323,7 +285,6 @@ private:
   std::atomic_bool m_has_overrides = false;
   std::atomic_bool m_needs_shader_family_signatures = false;
   std::atomic_bool m_needs_texture_hashes = false;
-  std::atomic_bool m_needs_override_draw_counters = false;
 
   // Flag system: flags are active only while their shader is drawn each frame.
   struct FlagRule
@@ -354,9 +315,6 @@ private:
     int layer;
     float element_depth;
     float units_per_meter;
-    int element_start;         // First draw index (-1 = all)
-    int element_end;           // Last draw index (-1 = all)
-    int element_reference_total;  // Draw-call count used when range was authored (0 = fixed)
     std::vector<u64> texture_hashes;  // Only apply when any listed texture is bound (empty = any)
     bool texture_hashes_excluded;     // false=Include list, true=Exclude list
     bool hash_family_match;           // false=exact hash, true=family signature
@@ -366,18 +324,6 @@ private:
   };
   std::vector<ConditionalOverride> m_conditional_overrides;
 
-  // Per-hash per-frame draw counters for element-aware overrides.
-  // Written by AdvanceOverrideDrawCounters(), read by ShouldSkipByOverride/GetOverrideHandling.
-  // All access is on the video thread only, no lock needed.
-  bool m_has_element_overrides = false;
-  mutable std::unordered_map<u64, int> m_override_draw_counters;
-  mutable std::unordered_map<u64, int> m_override_draw_totals_prev;  // previous frame totals
-  mutable std::unordered_map<u64, int> m_runtime_element_reference_totals;
-  mutable int m_current_vs_draw_idx = 0;
-  mutable int m_current_ps_draw_idx = 0;
-  mutable int m_current_gs_draw_idx = 0;
-
-  std::pair<int, int> ResolveElementRange(const ConditionalOverride& cond) const;
   bool IsConditionFlagMatch(const ConditionalOverride& cond) const;
   bool IsConditionalHashMatch(const ConditionalOverride& cond, u64 vs_hash, u64 ps_hash,
                               u64 gs_hash) const;
@@ -393,10 +339,6 @@ private:
   u64 m_current_vs_family = 0;
   u64 m_current_ps_family = 0;
   u64 m_current_gs_family = 0;
-  std::vector<std::array<u64, 8>> m_element_textures_collecting;
-  std::vector<std::array<u64, 8>> m_element_textures_display;
-  std::vector<std::array<std::string, 8>> m_element_tex_names_collecting;
-  std::vector<std::array<std::string, 8>> m_element_tex_names_display;
   std::array<std::unordered_map<u64, std::unordered_map<u64, std::string>>, TYPE_COUNT>
       m_shader_texture_usage_collecting{};
   std::array<std::unordered_map<u64, std::unordered_map<u64, std::string>>, TYPE_COUNT>

@@ -1040,7 +1040,6 @@ void VertexManagerBase::Flush()
             elements_popup_open || elements_has_overrides || metroid_profile_active;
         const bool hunter_needs_families = hunter.NeedsShaderFamilySignatures();
         const bool hunter_needs_textures = hunter.NeedsTextureHashes();
-        const bool hunter_needs_counters = hunter.NeedsOverrideDrawCounters();
         const bool texmgr_has_overrides = texmgr.HasOverrides();
         const bool texmgr_hunter_active = texmgr.IsHunterActive();
         const bool texmgr_active = texmgr_has_overrides || texmgr_hunter_active;
@@ -1190,11 +1189,6 @@ void VertexManagerBase::Flush()
             hunter.RegisterFlags(vs_hash, ps_hash, gs_hash);
           if (elements_runtime_active)
             elements.RegisterFlagsForDraw(*element_draw);
-
-          if (hunter_needs_counters)
-            hunter.AdvanceOverrideDrawCounters(vs_hash, ps_hash, gs_hash);
-          if (elements_runtime_active)
-            elements.AdvanceOverrideDrawCounters(*element_draw);
 
           if (!hunter_skip && !elements_skip && elements_has_overrides)
             elements_skip = elements.ShouldSkipByOverride(*element_draw);

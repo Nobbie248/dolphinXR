@@ -33,8 +33,6 @@ private:
   void CreateWidgets();
   void ConnectSignals();
   void UpdateDisplay();
-  void ShowDrawCallDialog();
-  void SetSelectedDrawCallRange(int start, int end, int total);
   void SetSelectedTextureHashes(const std::vector<uint64_t>& hashes);
   void SaveCurrentShader();
   void DumpCurrentShader();
@@ -56,13 +54,8 @@ private:
   QPushButton* m_save_button;
   QPushButton* m_dump_button;
   QPushButton* m_textures_button;
-  QPushButton* m_draw_calls_button;
-  QLabel* m_selected_draw_call_label;
   QComboBox* m_texture_filter_mode_combo;
   QLabel* m_selected_texture_label;
   QTimer* m_update_timer;
-  int m_saved_element_start = -1;
-  int m_saved_element_end = -1;
-  int m_saved_element_total = 0;
   std::vector<uint64_t> m_saved_texture_filters;
 };

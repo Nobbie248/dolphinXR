@@ -249,13 +249,6 @@ void ShaderOverrideWidget::UpdateList()
     if (ovr.hash_family_match)
       label += QStringLiteral(" family");
 
-    if (ovr.element_start >= 0 && ovr.element_end >= 0)
-    {
-      label += QStringLiteral(" elem[%1-%2]").arg(ovr.element_start).arg(ovr.element_end);
-      if (ovr.element_reference_total > 0)
-        label += QStringLiteral("@%1").arg(ovr.element_reference_total);
-    }
-
     if (!ovr.texture_hashes.empty())
     {
       QStringList texture_hashes;

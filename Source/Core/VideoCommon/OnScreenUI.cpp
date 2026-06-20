@@ -400,23 +400,6 @@ void OnScreenUI::DrawDebugText()
         ImGui::Text("Selected: (none)");
       }
 
-      if (status.element_mode)
-      {
-        if (status.selected_element >= 0 && status.element_total > 0)
-          ImGui::Text("Draw Call: %d / %d", status.selected_element + 1, status.element_total);
-        else
-          ImGui::Text("Draw Call: - / %d", status.element_total);
-
-        if (status.element_start >= 0 && status.element_end >= 0)
-          ImGui::Text("Range: %d - %d", status.element_start + 1, status.element_end + 1);
-        else
-          ImGui::TextUnformatted("Range: (single draw call)");
-      }
-      else
-      {
-        ImGui::TextUnformatted("Draw Call Filter: OFF");
-      }
-
       if (status.selected_texture_hash == 0 && status.texture_filters.empty())
       {
         ImGui::TextUnformatted("Texture Hashes: (none)");

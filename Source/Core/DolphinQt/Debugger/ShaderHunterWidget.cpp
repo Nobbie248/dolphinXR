@@ -183,17 +183,6 @@ void ShaderHunterWidget::CreateWidgets()
   nav_layout->addWidget(m_next_button);
   layout->addLayout(nav_layout);
 
-  m_draw_calls_button = new QPushButton(tr("Draw Call Filter"));
-  m_draw_calls_button->setToolTip(
-      tr("Open the draw-call filter tool for the selected shader.\n"
-         "Use it to isolate draw calls and define a range for saved overrides."));
-  layout->addWidget(m_draw_calls_button);
-
-  m_selected_draw_call_label = new QLabel;
-  m_selected_draw_call_label->setFont(QFont(QStringLiteral("Courier")));
-  m_selected_draw_call_label->setVisible(false);
-  layout->addWidget(m_selected_draw_call_label);
-
   // Save shader override section
   m_shader_name_edit = new QLineEdit;
   m_shader_name_edit->setPlaceholderText(tr("Enter shader name..."));
@@ -276,20 +265,17 @@ void ShaderHunterWidget::ConnectSignals()
     ShaderHunter::GetInstance().SetDebugLogging(checked);
   });
   connect(m_type_combo, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int index) {
-    SetSelectedDrawCallRange(-1, -1, 0);
     m_saved_texture_filters.clear();
     SetSelectedTextureHashes({});
     ShaderHunter::GetInstance().SetActiveType(static_cast<ShaderHunter::ShaderType>(index));
   });
   connect(m_prev_button, &QPushButton::clicked, this, [this] {
-    SetSelectedDrawCallRange(-1, -1, 0);
     m_saved_texture_filters.clear();
     SetSelectedTextureHashes({});
     ShaderHunter::GetInstance().PrevShader();
     UpdateDisplay();
   });
   connect(m_next_button, &QPushButton::clicked, this, [this] {
-    SetSelectedDrawCallRange(-1, -1, 0);
     m_saved_texture_filters.clear();
     SetSelectedTextureHashes({});
     ShaderHunter::GetInstance().NextShader();
@@ -298,7 +284,6 @@ void ShaderHunterWidget::ConnectSignals()
   connect(m_save_button, &QPushButton::clicked, this, &ShaderHunterWidget::SaveCurrentShader);
   connect(m_dump_button, &QPushButton::clicked, this, &ShaderHunterWidget::DumpCurrentShader);
   connect(m_textures_button, &QPushButton::clicked, this, &ShaderHunterWidget::ShowTexturesDialog);
-  connect(m_draw_calls_button, &QPushButton::clicked, this, &ShaderHunterWidget::ShowDrawCallDialog);
   connect(m_texture_filter_mode_combo, qOverload<int>(&QComboBox::currentIndexChanged), this,
           [this](int) { SetSelectedTextureHashes(m_saved_texture_filters); });
   connect(m_handling_combo, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) {
@@ -399,7 +384,6 @@ void ShaderHunterWidget::SaveCurrentShader()
   const auto handling =
       static_cast<ShaderHunter::HandlingType>(m_handling_combo->currentData().toInt());
 
-  // Build override with element range if set
   ShaderHunter::ShaderOverride entry;
   entry.name = name;
   entry.hash = hash;
@@ -411,59 +395,6 @@ void ShaderHunterWidget::SaveCurrentShader()
     entry.units_per_meter = static_cast<float>(m_units_per_meter_spin->value());
   if (handling == ShaderHunter::HandlingType::Flag)
     entry.flag_group = name;
-
-  // Include draw-call range saved from Draw Call Filter popup (if any),
-  // otherwise use the current hunting range.
-  if (m_saved_element_start >= 0 && m_saved_element_end >= 0)
-  {
-    entry.element_start = m_saved_element_start;
-    entry.element_end = m_saved_element_end;
-    entry.element_reference_total = m_saved_element_total;
-  }
-  else if (hunter.IsElementMode())
-  {
-    const int range_start = hunter.GetElementStart();
-    const int range_end = hunter.GetElementEnd();
-    if (range_start >= 0 && range_end >= 0)
-    {
-      entry.element_start = range_start;
-      entry.element_end = range_end;
-      entry.element_reference_total = hunter.GetElementTotal();
-    }
-
-    // Auto-capture texture hash from the current element cursor
-    const int elem = hunter.GetSelectedElement();
-    if (elem >= 0)
-    {
-      const auto textures = hunter.GetElementTextures(elem);
-      // Use the first non-zero texture hash (stage 0 is typically the main texture)
-      for (u64 th : textures)
-      {
-        if (th != 0)
-        {
-          entry.texture_hashes.push_back(th);
-          break;
-        }
-      }
-    }
-  }
-  else if (m_saved_element_start >= 0 && m_saved_element_end >= 0 && hunter.IsElementMode())
-  {
-    // Preserve auto texture capture when range was saved from the popup.
-    const int elem = hunter.GetSelectedElement();
-    if (elem >= 0)
-    {
-      const auto textures = hunter.GetElementTextures(elem);
-      for (u64 th : textures)
-      {
-        if (th != 0)
-        {
-          entry.texture_hashes.push_back(th);
-          break;
-        }
-      }
-    }
-  }
 
   // Include texture filters saved from the Texture Hunter popup (if any).
   entry.texture_hashes.insert(entry.texture_hashes.end(), m_saved_texture_filters.begin(),
@@ -502,9 +433,6 @@ void ShaderHunterWidget::SaveCurrentShader()
       .arg(static_cast<uint>(hash), 8, 16, QLatin1Char('0'))
       .arg(QString::fromLatin1(handling_str));
 
-  if (entry.element_start >= 0 && entry.element_end >= 0)
-    msg += tr("\nElement range: %1 - %2").arg(entry.element_start + 1).arg(entry.element_end + 1);
-
   if (handling == ShaderHunter::HandlingType::UnitsPerMeter && entry.units_per_meter > 0.0f)
     msg += tr("\nUnits per Meter: %1").arg(entry.units_per_meter, 0, 'f', 2);
 
@@ -522,7 +450,6 @@ void ShaderHunterWidget::SaveCurrentShader()
 
   QMessageBox::information(this, tr("Save Shader"), msg);
   m_shader_name_edit->clear();
-  SetSelectedDrawCallRange(-1, -1, 0);
   m_saved_texture_filters.clear();
   m_texture_filter_mode_combo->setCurrentIndex(0);
   SetSelectedTextureHashes({});
@@ -531,9 +458,7 @@ void ShaderHunterWidget::SaveCurrentShader()
 void ShaderHunterWidget::closeEvent(QCloseEvent* event)
 {
   auto& hunter = ShaderHunter::GetInstance();
-  hunter.SetElementMode(false);
   hunter.SetEnabled(false);
-  SetSelectedDrawCallRange(-1, -1, 0);
   m_saved_texture_filters.clear();
   m_texture_filter_mode_combo->setCurrentIndex(0);
   SetSelectedTextureHashes({});
@@ -580,226 +505,6 @@ void ShaderHunterWidget::DumpCurrentShader()
                             "Make sure shader hunting is enabled and the shader has been "
                             "seen in the current session."));
   }
-}
-
-void ShaderHunterWidget::ShowDrawCallDialog()
-{
-  auto& hunter = ShaderHunter::GetInstance();
-  const int pos = hunter.GetSelectedPosition();
-  if (pos < 0)
-  {
-    QMessageBox::warning(this, tr("Draw Call Filter"),
-                         tr("No shader selected. Enable hunting and select a shader first."));
-    return;
-  }
-
-  const u64 hash = hunter.GetSelectedHash();
-  const auto type = hunter.GetActiveType();
-  const char* type_str = type == ShaderHunter::ShaderType::Pixel    ? "PS" :
-                         type == ShaderHunter::ShaderType::Vertex   ? "VS" :
-                                                                       "GS";
-
-  auto* dlg = new QDialog(this);
-  dlg->setWindowTitle(tr("Draw Call Filter for %1 %2")
-                          .arg(QString::fromLatin1(type_str))
-                          .arg(static_cast<uint>(hash), 8, 16, QLatin1Char('0')));
-  dlg->setAttribute(Qt::WA_DeleteOnClose);
-  dlg->setMinimumSize(560, 320);
-
-  auto* info_label = new QLabel(
-      tr("Use draw-call filtering to isolate one draw at a time or define a start/end range.\n"
-         "Saved overrides will include the current draw-call range."));
-  info_label->setWordWrap(true);
-
-  auto* enable_check = new QCheckBox(tr("Enable Draw Call Filter"));
-  enable_check->setChecked(hunter.IsElementMode());
-
-  auto* draw_call_label = new QLabel(tr("Draw Call: - / -"));
-  auto* range_label = new QLabel(tr("Range: (not set)"));
-  auto* textures_label = new QLabel(tr("Textures: (none)"));
-  textures_label->setFont(QFont(QStringLiteral("Courier"), 8));
-  textures_label->setWordWrap(true);
-
-  auto* prev_button = new QPushButton(tr("<< Prev Element"));
-  auto* next_button = new QPushButton(tr("Next Element >>"));
-  auto* mark_start_button = new QPushButton(tr("Mark Start"));
-  auto* mark_end_button = new QPushButton(tr("Mark End"));
-  auto* clear_range_button = new QPushButton(tr("Clear Range"));
-
-  mark_start_button->setToolTip(tr("Set the range start to the current element cursor position."));
-  mark_end_button->setToolTip(tr("Set the range end to the current element cursor position."));
-  clear_range_button->setToolTip(tr("Clear the range and go back to single-element skipping."));
-
-  auto* nav_layout = new QHBoxLayout;
-  nav_layout->addWidget(prev_button);
-  nav_layout->addWidget(next_button);
-
-  auto* range_buttons_layout = new QHBoxLayout;
-  range_buttons_layout->addWidget(mark_start_button);
-  range_buttons_layout->addWidget(mark_end_button);
-  range_buttons_layout->addWidget(clear_range_button);
-
-  auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close);
-  auto* save_button = buttons->addButton(tr("Save To Shader"), QDialogButtonBox::ActionRole);
-  connect(buttons, &QDialogButtonBox::rejected, dlg, &QDialog::close);
-
-  const auto update_ui = [enable_check, draw_call_label, range_label, textures_label, prev_button,
-                          next_button, mark_start_button, mark_end_button, clear_range_button,
-                          &hunter]() {
-    const bool active = hunter.IsElementMode();
-    {
-      const QSignalBlocker blocker(enable_check);
-      enable_check->setChecked(active);
-    }
-
-    prev_button->setEnabled(active);
-    next_button->setEnabled(active);
-    mark_start_button->setEnabled(active);
-    mark_end_button->setEnabled(active);
-    clear_range_button->setEnabled(active);
-
-    if (!active)
-    {
-      draw_call_label->setText(QObject::tr("Draw Call: (disabled)"));
-      range_label->setText(QObject::tr("Range: (disabled)"));
-      textures_label->setText(QObject::tr("Textures: (disabled)"));
-      return;
-    }
-
-    const int elem = hunter.GetSelectedElement();
-    const int elem_total = hunter.GetElementTotal();
-    const int range_start = hunter.GetElementStart();
-    const int range_end = hunter.GetElementEnd();
-
-    if (elem_total > 0)
-      draw_call_label->setText(QObject::tr("Draw Call: %1 / %2").arg(elem + 1).arg(elem_total));
-    else
-      draw_call_label->setText(QObject::tr("Draw Call: - / 0"));
-
-    if (range_start >= 0 && range_end >= 0)
-    {
-      const int count = range_end - range_start + 1;
-      range_label->setText(QObject::tr("Range: %1 - %2 (%3 draw(s) skipped)")
-                               .arg(range_start + 1)
-                               .arg(range_end + 1)
-                               .arg(count));
-    }
-    else
-    {
-      range_label->setText(QObject::tr("Range: (not set - skipping single element)"));
-    }
-
-    if (elem >= 0 && elem_total > 0)
-    {
-      const auto tex_names = hunter.GetElementTextureNames(elem);
-      const auto tex_hashes = hunter.GetElementTextures(elem);
-      QStringList tex_list;
-      for (int i = 0; i < 8; i++)
-      {
-        if (tex_hashes[i] == 0)
-          continue;
-
-        const QString name = QString::fromStdString(tex_names[i]);
-        if (!name.isEmpty())
-        {
-          tex_list.append(QStringLiteral("[%1] %2").arg(i).arg(name));
-        }
-        else
-        {
-          tex_list.append(QObject::tr("[%1] %2")
-                              .arg(i)
-                              .arg(QString::number(tex_hashes[i], 16)
-                                       .rightJustified(16, QLatin1Char('0'))));
-        }
-      }
-
-      if (tex_list.isEmpty())
-        textures_label->setText(QObject::tr("Textures: (none)"));
-      else
-        textures_label->setText(QObject::tr("Textures:\n%1").arg(tex_list.join(QStringLiteral("\n"))));
-    }
-    else
-    {
-      textures_label->setText(QObject::tr("Textures: (none)"));
-    }
-  };
-
-  connect(enable_check, &QCheckBox::toggled, dlg, [&hunter, update_ui](bool checked) {
-    hunter.SetElementMode(checked);
-    update_ui();
-  });
-  connect(prev_button, &QPushButton::clicked, dlg, [&hunter, update_ui]() {
-    hunter.PrevElement();
-    update_ui();
-  });
-  connect(next_button, &QPushButton::clicked, dlg, [&hunter, update_ui]() {
-    hunter.NextElement();
-    update_ui();
-  });
-  connect(mark_start_button, &QPushButton::clicked, dlg, [&hunter, update_ui]() {
-    hunter.MarkRangeStart();
-    update_ui();
-  });
-  connect(mark_end_button, &QPushButton::clicked, dlg, [&hunter, update_ui]() {
-    hunter.MarkRangeEnd();
-    update_ui();
-  });
-  connect(clear_range_button, &QPushButton::clicked, dlg, [&hunter, update_ui]() {
-    hunter.ClearRange();
-    update_ui();
-  });
-  connect(save_button, &QPushButton::clicked, dlg, [this, &hunter, dlg]() {
-    if (!hunter.IsElementMode())
-    {
-      QMessageBox::warning(
-          dlg, tr("Draw Call Filter"),
-          tr("Enable Draw Call Filter first, then choose a draw call or range."));
-      return;
-    }
-
-    int range_start = hunter.GetElementStart();
-    int range_end = hunter.GetElementEnd();
-    if (range_start < 0 || range_end < 0)
-    {
-      const int elem = hunter.GetSelectedElement();
-      if (elem < 0)
-      {
-        QMessageBox::warning(dlg, tr("Draw Call Filter"),
-                             tr("No draw call is selected yet."));
-        return;
-      }
-      range_start = elem;
-      range_end = elem;
-    }
-
-    SetSelectedDrawCallRange(range_start, range_end, hunter.GetElementTotal());
-
-    QMessageBox::information(
-        dlg, tr("Draw Calls Saved"),
-        tr("Saved draw call range %1 - %2 to the current shader.\n"
-           "Press 'Save Shader' in Shader Hunter to write it to the config.")
-            .arg(range_start + 1)
-            .arg(range_end + 1));
-  });
-
-  auto* timer = new QTimer(dlg);
-  timer->setInterval(100);
-  connect(timer, &QTimer::timeout, dlg, update_ui);
-  timer->start();
-
-  auto* layout = new QVBoxLayout;
-  layout->addWidget(info_label);
-  layout->addWidget(enable_check);
-  layout->addWidget(draw_call_label);
-  layout->addLayout(nav_layout);
-  layout->addWidget(range_label);
-  layout->addLayout(range_buttons_layout);
-  layout->addWidget(textures_label);
-  layout->addWidget(buttons);
-  dlg->setLayout(layout);
-
-  update_ui();
-  dlg->show();
 }
 
 void ShaderHunterWidget::ShowTexturesDialog()
@@ -1084,33 +789,5 @@ void ShaderHunterWidget::SetSelectedTextureHashes(const std::vector<uint64_t>& h
       tr("Selected Texture %1:\n%2")
           .arg(exclude_mode ? tr("Exclude Filter(s)") : tr("Include Filter(s)"))
           .arg(hash_list.join(QStringLiteral("\n"))));
-}
-
-void ShaderHunterWidget::SetSelectedDrawCallRange(int start, int end, int total)
-{
-  m_saved_element_start = start;
-  m_saved_element_end = end;
-  m_saved_element_total = total;
-
-  if (start < 0 || end < 0)
-  {
-    m_selected_draw_call_label->setVisible(false);
-    return;
-  }
-
-  m_selected_draw_call_label->setVisible(true);
-  if (total > 0)
-  {
-    m_selected_draw_call_label->setText(
-        tr("Selected Draw Call Range:\n%1 - %2 @%3")
-            .arg(start + 1)
-            .arg(end + 1)
-            .arg(total));
-  }
-  else
-  {
-    m_selected_draw_call_label->setText(
-        tr("Selected Draw Call Range:\n%1 - %2").arg(start + 1).arg(end + 1));
-  }
 }
 

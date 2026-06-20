@@ -158,8 +158,6 @@ void ElementsGroupOverrideWidget::UpdateList()
                                                                QStringLiteral("matches"))
                    .arg(entry.selected_match_filter.size());
     }
-    if (entry.element_start >= 0 && entry.element_end >= 0)
-      label += QStringLiteral(" draw[%1-%2]").arg(entry.element_start).arg(entry.element_end);
     if (!entry.condition_flag.empty())
       label += QStringLiteral(" when(%1%2)")
                    .arg(entry.condition_inverted ? QStringLiteral("!") : QString())
