@@ -250,12 +250,6 @@ ParsedTextureOverrideFile LoadTextureOverridesFromINIFile(const std::string& pat
         current.element_depth = std::stof(value);
       else if (key == "units_per_meter" || key == "upm")
         current.units_per_meter = std::stof(value);
-      else if (key == "clear_efb")
-        current.clear_efb = (value == "1" || value == "true");
-      else if (key == "clear_efb_min")
-        current.clear_efb_min_width = std::stoi(value);
-      else if (key == "clear_efb_max")
-        current.clear_efb_max_width = std::stoi(value);
       else if (key == "comments")
         current.comments = value;
       else if (key == "texture")
@@ -363,14 +357,6 @@ void TextureElementManager::SaveOverridesToINI(
       out << "element_depth=" << ovr.element_depth << "\n";
     if (ovr.handling == HandlingType::UnitsPerMeter && ovr.units_per_meter > 0.0f)
       out << "units_per_meter=" << ovr.units_per_meter << "\n";
-    if (ovr.clear_efb)
-    {
-      out << "clear_efb=1\n";
-      if (ovr.clear_efb_min_width > 0)
-        out << "clear_efb_min=" << ovr.clear_efb_min_width << "\n";
-      if (ovr.clear_efb_max_width > 0)
-        out << "clear_efb_max=" << ovr.clear_efb_max_width << "\n";
-    }
     if (!ovr.comments.empty())
     {
       // Keep comments single-line so they don't corrupt the section.
@@ -394,11 +380,6 @@ void TextureElementManager::LoadOverrides(const std::string& game_id)
 
   m_overrides.clear();
   m_texture_handling.clear();
-  m_clear_efb_textures.clear();
-  m_clear_efb_bounds.clear();
-  m_clear_next_efb = false;
-  m_pending_clear_min = 0;
-  m_pending_clear_max = 0;
   m_loaded_game_id = game_id;
   m_has_overrides.store(false, std::memory_order_relaxed);
 
@@ -421,13 +402,6 @@ void TextureElementManager::LoadOverrides(const std::string& game_id)
     {
       // First enabled override that lists a texture wins.
       m_texture_handling.emplace(texture_hash, resolved);
-
-      if (ovr.clear_efb)
-      {
-        m_clear_efb_textures.insert(texture_hash);
-        if (ovr.clear_efb_min_width > 0 || ovr.clear_efb_max_width > 0)
-          m_clear_efb_bounds[texture_hash] = {ovr.clear_efb_min_width, ovr.clear_efb_max_width};
-      }
     }
 
     m_overrides.push_back(std::move(ovr));
@@ -499,65 +473,6 @@ TextureElementManager::HandlingType TextureElementManager::GetHandlingForTexture
     return it->second.handling;
   }
   return HandlingType::Skip;
-}
-
-void TextureElementManager::CheckClearEFBForDraw(const std::array<u64, 8>& bound)
-{
-  if (m_clear_efb_textures.empty())
-    return;
-
-  for (u64 hash : bound)
-  {
-    if (hash == 0 || m_clear_efb_textures.count(hash) == 0)
-      continue;
-
-    m_clear_next_efb = true;
-
-    const auto it = m_clear_efb_bounds.find(hash);
-    if (it != m_clear_efb_bounds.end())
-    {
-      // Store this override's size bounds; if multiple match, widen to the union.
-      if (m_pending_clear_min == 0 && m_pending_clear_max == 0)
-      {
-        m_pending_clear_min = it->second.first;
-        m_pending_clear_max = it->second.second;
-      }
-      else
-      {
-        m_pending_clear_min = std::min(m_pending_clear_min, it->second.first);
-        m_pending_clear_max = (m_pending_clear_max == 0 || it->second.second == 0) ?
-                                  0 :
-                                  std::max(m_pending_clear_max, it->second.second);
-      }
-    }
-    else
-    {
-      // No bounds specified = any size.
-      m_pending_clear_min = 0;
-      m_pending_clear_max = 0;
-    }
-    return;
-  }
-}
-
-bool TextureElementManager::ShouldClearEFBCopy(int width)
-{
-  if (!m_clear_next_efb)
-    return false;
-
-  m_clear_next_efb = false;
-  const int min_w = m_pending_clear_min;
-  const int max_w = m_pending_clear_max;
-  m_pending_clear_min = 0;
-  m_pending_clear_max = 0;
-
-  if (min_w == 0 && max_w == 0)
-    return true;
-  if (min_w > 0 && width < min_w)
-    return false;
-  if (max_w > 0 && width > max_w)
-    return false;
-  return true;
 }
 
 void TextureElementManager::SetHunterActive(bool active)

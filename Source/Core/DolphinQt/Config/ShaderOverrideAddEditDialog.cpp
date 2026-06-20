@@ -150,33 +150,6 @@ ShaderOverrideAddEditDialog::ShaderOverrideAddEditDialog(
       tr("Activate: apply when the selected flag is active.\n"
          "Deactivate: apply when the selected flag is NOT active."));
 
-  m_clear_efb_check = new QCheckBox(tr("Clear EFB Copy"));
-  m_clear_efb_check->setToolTip(
-      tr("When this shader is drawn, the next EFB copy will be cleared to\n"
-         "transparent instead of copying the framebuffer content.\n"
-         "Use this to remove post-processing effects (bloom, blur) in VR.\n"
-         "Can be combined with any handling type (Skip, Screen, etc.)."));
-
-  m_clear_efb_min_label = new QLabel(tr("EFB Min Width:"));
-  m_clear_efb_min_spin = new QSpinBox;
-  m_clear_efb_min_spin->setRange(0, 640);
-  m_clear_efb_min_spin->setSingleStep(10);
-  m_clear_efb_min_spin->setSpecialValueText(tr("Any"));
-  m_clear_efb_min_spin->setValue(0);
-  m_clear_efb_min_spin->setToolTip(tr("Only clear EFB copies whose native width >= this value.\n"
-                                       "0 (Any) = no lower bound.\n"
-                                       "Full EFB = 640 wide; set ~400 to only clear full-screen effects."));
-
-  m_clear_efb_max_label = new QLabel(tr("EFB Max Width:"));
-  m_clear_efb_max_spin = new QSpinBox;
-  m_clear_efb_max_spin->setRange(0, 640);
-  m_clear_efb_max_spin->setSingleStep(10);
-  m_clear_efb_max_spin->setSpecialValueText(tr("Any"));
-  m_clear_efb_max_spin->setValue(0);
-  m_clear_efb_max_spin->setToolTip(tr("Only clear EFB copies whose native width <= this value.\n"
-                                       "0 (Any) = no upper bound.\n"
-                                       "Use to restrict clearing to small or partial EFB copies."));
-
   m_element_start_label = new QLabel(tr("Draw Call Start:"));
   m_element_start_spin = new QSpinBox;
   m_element_start_spin->setRange(0, 9999);
@@ -262,10 +235,6 @@ ShaderOverrideAddEditDialog::ShaderOverrideAddEditDialog(
       m_units_per_meter_spin->setValue(edit_override->units_per_meter);
     m_flag_edit->setText(QString::fromStdString(edit_override->flag_group));
 
-    m_clear_efb_check->setChecked(edit_override->clear_efb);
-    m_clear_efb_min_spin->setValue(edit_override->clear_efb_min_width);
-    m_clear_efb_max_spin->setValue(edit_override->clear_efb_max_width);
-
     const bool has_element_filter =
         edit_override->element_start >= 0 || edit_override->element_end >= 0;
     m_element_filter_check->setChecked(has_element_filter);
@@ -321,9 +290,6 @@ ShaderOverrideAddEditDialog::ShaderOverrideAddEditDialog(
   form->addRow(m_flag_label, m_flag_edit);
   form->addRow(m_condition_label, m_condition_combo);
   form->addRow(m_condition_mode_label, m_condition_mode_combo);
-  form->addRow(QString(), m_clear_efb_check);
-  form->addRow(m_clear_efb_min_label, m_clear_efb_min_spin);
-  form->addRow(m_clear_efb_max_label, m_clear_efb_max_spin);
   form->addRow(QString(), m_element_filter_check);
   form->addRow(m_element_start_label, m_element_start_spin);
   form->addRow(m_element_end_label, m_element_end_spin);
@@ -338,8 +304,6 @@ ShaderOverrideAddEditDialog::ShaderOverrideAddEditDialog(
   connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
   connect(m_handling_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
           &ShaderOverrideAddEditDialog::OnHandlingChanged);
-  connect(m_clear_efb_check, &QCheckBox::toggled, this,
-          &ShaderOverrideAddEditDialog::OnClearEFBChanged);
   connect(m_element_filter_check, &QCheckBox::toggled, this,
           &ShaderOverrideAddEditDialog::OnElementFilterChanged);
   connect(m_condition_combo, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) {
@@ -360,7 +324,6 @@ ShaderOverrideAddEditDialog::ShaderOverrideAddEditDialog(
   const bool has_condition = !m_condition_combo->currentData().toString().isEmpty();
   m_condition_mode_label->setEnabled(has_condition);
   m_condition_mode_combo->setEnabled(has_condition);
-  OnClearEFBChanged();
   OnElementFilterChanged();
 }
 
@@ -400,9 +363,6 @@ ShaderHunter::ShaderOverride ShaderOverrideAddEditDialog::GetResult() const
   result.units_per_meter = result.handling == ShaderHunter::HandlingType::UnitsPerMeter ?
                                static_cast<float>(m_units_per_meter_spin->value()) :
                                -1.0f;
-  result.clear_efb = m_clear_efb_check->isChecked();
-  result.clear_efb_min_width = result.clear_efb ? m_clear_efb_min_spin->value() : 0;
-  result.clear_efb_max_width = result.clear_efb ? m_clear_efb_max_spin->value() : 0;
   if (m_element_filter_check->isChecked())
   {
     result.element_start = m_element_start_spin->value();
@@ -551,15 +511,6 @@ void ShaderOverrideAddEditDialog::OnHandlingChanged()
   m_condition_combo->setVisible(!is_flag);
   m_condition_mode_label->setVisible(!is_flag);
   m_condition_mode_combo->setVisible(!is_flag);
-}
-
-void ShaderOverrideAddEditDialog::OnClearEFBChanged()
-{
-  const bool show = m_clear_efb_check->isChecked();
-  m_clear_efb_min_label->setVisible(show);
-  m_clear_efb_min_spin->setVisible(show);
-  m_clear_efb_max_label->setVisible(show);
-  m_clear_efb_max_spin->setVisible(show);
 }
 
 void ShaderOverrideAddEditDialog::OnElementFilterChanged()

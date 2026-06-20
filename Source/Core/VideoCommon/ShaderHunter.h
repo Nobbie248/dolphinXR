@@ -163,9 +163,6 @@ public:
     int layer = -1;          // Manual layer index for Screen handling (-1 = auto)
     float element_depth = -1.0f;  // Per-override within-element depth (-1 = use global)
     float units_per_meter = -1.0f;  // Per-override UPM for UnitsPerMeter handling (-1 = global)
-    bool clear_efb = false;      // Clear the next EFB copy to transparent when this shader draws
-    int clear_efb_min_width = 0; // Min native width for EFB clear (0 = no lower bound)
-    int clear_efb_max_width = 0; // Max native width for EFB clear (0 = no upper bound)
     int element_start = -1;      // First draw call index to apply override (-1 = all)
     int element_end = -1;        // Last draw call index (-1 = all)
     int element_reference_total = 0;  // Draw-call count used when range was authored (0 = fixed)
@@ -216,13 +213,6 @@ public:
 
   // Returns the per-override units per meter (>0 = override, -1 = use global setting).
   float GetOverrideUnitsPerMeter(u64 vs_hash, u64 ps_hash, u64 gs_hash) const;
-
-  // ClearEFB: check if any hash has clear_efb set, and mark pending clear with size bounds.
-  // Called from VertexManagerBase::Flush when a shader with clear_efb=true is drawn.
-  void CheckClearEFBForDraw(u64 vs_hash, u64 ps_hash, u64 gs_hash);
-  // Called from TextureCacheBase: returns true (and resets the flag) if EFB copy should be cleared.
-  // Checks the copy's native width against stored per-override size bounds.
-  bool ShouldClearEFBCopy(int width);
 
   // Flag system: register flag shaders and check conditions.
   void RegisterFlags(u64 vs_hash, u64 ps_hash, u64 gs_hash);
@@ -317,14 +307,6 @@ private:
 
   // UID cache: hash → raw UID bytes (for shader source regeneration/dump)
   std::array<std::unordered_map<u64, std::vector<u8>>, TYPE_COUNT> m_uid_cache{};
-
-  // ClearEFB: when a shader with clear_efb=true is drawn, set this flag.
-  // The next EFB copy operation will clear to transparent instead of copying.
-  bool m_clear_next_efb = false;
-  int m_pending_clear_min = 0;   // Pending clear lower width bound (0 = no lower bound)
-  int m_pending_clear_max = 0;   // Pending clear upper width bound (0 = no upper bound)
-  std::unordered_set<u64> m_clear_efb_hashes;  // Hashes with clear_efb=true (any handling type)
-  std::unordered_map<u64, std::pair<int, int>> m_clear_efb_bounds;  // hash → (min_w, max_w)
 
   // Persistent overrides loaded from per-game INI
   std::vector<ShaderOverride> m_overrides;

@@ -94,31 +94,6 @@ TextureElementOverrideAddEditDialog::TextureElementOverrideAddEditDialog(
   m_units_per_meter_spin->setToolTip(tr("Temporary per-texture scale override for VR.\n"
                                         "Higher values make these textures appear larger."));
 
-  m_clear_efb_check = new QCheckBox(tr("Clear EFB Copy"));
-  m_clear_efb_check->setToolTip(
-      tr("When a listed texture is drawn, the next EFB copy will be cleared to\n"
-         "transparent instead of copying the framebuffer content.\n"
-         "Use this to remove post-processing effects (bloom, blur) in VR.\n"
-         "Can be combined with any handling type (Skip, Screen, etc.)."));
-
-  m_clear_efb_min_label = new QLabel(tr("EFB Min Width:"));
-  m_clear_efb_min_spin = new QSpinBox;
-  m_clear_efb_min_spin->setRange(0, 640);
-  m_clear_efb_min_spin->setSingleStep(10);
-  m_clear_efb_min_spin->setSpecialValueText(tr("Any"));
-  m_clear_efb_min_spin->setValue(0);
-  m_clear_efb_min_spin->setToolTip(tr("Only clear EFB copies whose native width >= this value.\n"
-                                      "0 (Any) = no lower bound."));
-
-  m_clear_efb_max_label = new QLabel(tr("EFB Max Width:"));
-  m_clear_efb_max_spin = new QSpinBox;
-  m_clear_efb_max_spin->setRange(0, 640);
-  m_clear_efb_max_spin->setSingleStep(10);
-  m_clear_efb_max_spin->setSpecialValueText(tr("Any"));
-  m_clear_efb_max_spin->setValue(0);
-  m_clear_efb_max_spin->setToolTip(tr("Only clear EFB copies whose native width <= this value.\n"
-                                      "0 (Any) = no upper bound."));
-
   m_view_textures_button = new QPushButton(tr("Texture Hunter"));
   m_view_textures_button->setToolTip(
       tr("Browse currently-loaded textures and check the ones to add to this override."));
@@ -149,10 +124,6 @@ TextureElementOverrideAddEditDialog::TextureElementOverrideAddEditDialog(
     if (edit_override->units_per_meter > 0.0f)
       m_units_per_meter_spin->setValue(edit_override->units_per_meter);
 
-    m_clear_efb_check->setChecked(edit_override->clear_efb);
-    m_clear_efb_min_spin->setValue(edit_override->clear_efb_min_width);
-    m_clear_efb_max_spin->setValue(edit_override->clear_efb_max_width);
-
     m_updating_texture_hash_fields = true;
     while (m_texture_hash_edits.size() < edit_override->texture_hashes.size())
       AddTextureHashField(QString());
@@ -173,9 +144,6 @@ TextureElementOverrideAddEditDialog::TextureElementOverrideAddEditDialog(
   form->addRow(m_layer_label, m_layer_spin);
   form->addRow(m_element_depth_label, m_element_depth_spin);
   form->addRow(m_units_per_meter_label, m_units_per_meter_spin);
-  form->addRow(QString(), m_clear_efb_check);
-  form->addRow(m_clear_efb_min_label, m_clear_efb_min_spin);
-  form->addRow(m_clear_efb_max_label, m_clear_efb_max_spin);
   form->addRow(QString(), m_view_textures_button);
   form->addRow(tr("Texture Hashes:"), m_texture_hash_scroll);
   form->addRow(tr("Comments:"), m_comments_edit);
@@ -186,8 +154,6 @@ TextureElementOverrideAddEditDialog::TextureElementOverrideAddEditDialog(
   connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
   connect(m_handling_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
           &TextureElementOverrideAddEditDialog::OnHandlingChanged);
-  connect(m_clear_efb_check, &QCheckBox::toggled, this,
-          &TextureElementOverrideAddEditDialog::OnClearEFBChanged);
   connect(m_view_textures_button, &QPushButton::clicked, this,
           &TextureElementOverrideAddEditDialog::ShowTextureBrowser);
 
@@ -197,7 +163,6 @@ TextureElementOverrideAddEditDialog::TextureElementOverrideAddEditDialog(
   setLayout(layout);
 
   OnHandlingChanged();
-  OnClearEFBChanged();
 }
 
 TextureElementOverride TextureElementOverrideAddEditDialog::GetResult() const
@@ -217,9 +182,6 @@ TextureElementOverride TextureElementOverrideAddEditDialog::GetResult() const
   result.units_per_meter = result.handling == HandlingType::UnitsPerMeter ?
                                static_cast<float>(m_units_per_meter_spin->value()) :
                                -1.0f;
-  result.clear_efb = m_clear_efb_check->isChecked();
-  result.clear_efb_min_width = result.clear_efb ? m_clear_efb_min_spin->value() : 0;
-  result.clear_efb_max_width = result.clear_efb ? m_clear_efb_max_spin->value() : 0;
 
   for (const std::string& token : CollectTextureHashTokens())
   {
@@ -295,15 +257,6 @@ void TextureElementOverrideAddEditDialog::OnHandlingChanged()
   m_element_depth_spin->setVisible(show_layer);
   m_units_per_meter_label->setVisible(show_units_per_meter);
   m_units_per_meter_spin->setVisible(show_units_per_meter);
-}
-
-void TextureElementOverrideAddEditDialog::OnClearEFBChanged()
-{
-  const bool show = m_clear_efb_check->isChecked();
-  m_clear_efb_min_label->setVisible(show);
-  m_clear_efb_min_spin->setVisible(show);
-  m_clear_efb_max_label->setVisible(show);
-  m_clear_efb_max_spin->setVisible(show);
 }
 
 void TextureElementOverrideAddEditDialog::ShowTextureBrowser()

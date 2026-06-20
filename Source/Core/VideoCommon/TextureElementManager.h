@@ -45,9 +45,6 @@ public:
     int layer = -1;                 // Manual layer for Screen/HeadLocked (-1 = auto)
     float element_depth = -1.0f;    // Per-override within-element depth (-1 = global)
     float units_per_meter = -1.0f;  // Per-override UPM for UnitsPerMeter handling (-1 = global)
-    bool clear_efb = false;         // Clear the next EFB copy to transparent when matched
-    int clear_efb_min_width = 0;    // Min native width for EFB clear (0 = no lower bound)
-    int clear_efb_max_width = 0;    // Max native width for EFB clear (0 = no upper bound)
     std::vector<u64> texture_hashes;  // The group's textures (matched when any is bound)
     bool enabled = true;
   };
@@ -74,10 +71,6 @@ public:
   // filled for Screen/HeadLocked (layer, element_depth) and UnitsPerMeter (units_per_meter).
   HandlingType GetHandlingForTextures(const std::array<u64, 8>& bound, int* layer,
                                       float* element_depth, float* units_per_meter) const;
-
-  // ClearEFB: arm a pending clear when a clear_efb override matches; consumed by the next EFB copy.
-  void CheckClearEFBForDraw(const std::array<u64, 8>& bound);
-  bool ShouldClearEFBCopy(int width);
 
   // --- Texture Hunter browse support (global per-frame texture capture) ---
   void SetHunterActive(bool active);
@@ -114,15 +107,8 @@ private:
   // Lookup maps: written by LoadOverrides, read lock-free on the video thread.
   std::vector<TextureElementOverride> m_overrides;
   std::unordered_map<u64, ResolvedHandling> m_texture_handling;  // texture hash -> handling
-  std::unordered_set<u64> m_clear_efb_textures;
-  std::unordered_map<u64, std::pair<int, int>> m_clear_efb_bounds;  // hash -> (min_w, max_w)
   std::string m_loaded_game_id;
   std::atomic_bool m_has_overrides = false;
-
-  // ClearEFB pending state (video thread only).
-  bool m_clear_next_efb = false;
-  int m_pending_clear_min = 0;
-  int m_pending_clear_max = 0;
 
   // Texture Hunter: double-buffered "all textures seen this frame" (mutex-guarded).
   std::atomic_bool m_hunter_active = false;

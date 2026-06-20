@@ -42,7 +42,6 @@ private:
 
   void OnAccept();
   void OnHandlingChanged();
-  void OnClearEFBChanged();
   void OnElementFilterChanged();
 
   QLineEdit* m_name_edit;
@@ -65,11 +64,6 @@ private:
   QLabel* m_condition_label;
   QComboBox* m_condition_mode_combo;
   QLabel* m_condition_mode_label;
-  QCheckBox* m_clear_efb_check;
-  QSpinBox* m_clear_efb_min_spin;
-  QSpinBox* m_clear_efb_max_spin;
-  QLabel* m_clear_efb_min_label;
-  QLabel* m_clear_efb_max_label;
   QSpinBox* m_element_start_spin;
   QSpinBox* m_element_end_spin;
   QLabel* m_element_start_label;

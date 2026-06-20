@@ -138,16 +138,6 @@ void TextureElementOverrideWidget::UpdateList()
       label += QStringLiteral(" UPM%1").arg(ovr.units_per_meter, 0, 'f', 2);
     }
 
-    if (ovr.clear_efb)
-    {
-      if (ovr.clear_efb_min_width > 0 || ovr.clear_efb_max_width > 0)
-        label += QStringLiteral(" +clearEFB(%1-%2)")
-                     .arg(ovr.clear_efb_min_width)
-                     .arg(ovr.clear_efb_max_width > 0 ? ovr.clear_efb_max_width : 640);
-      else
-        label += QStringLiteral(" +clearEFB");
-    }
-
     if (!ovr.texture_hashes.empty())
     {
       QStringList texture_hashes;

@@ -46,7 +46,6 @@ private:
 
   void OnAccept();
   void OnHandlingChanged();
-  void OnClearEFBChanged();
 
   QLineEdit* m_name_edit;
   QPlainTextEdit* m_comments_edit;
@@ -57,11 +56,6 @@ private:
   QLabel* m_element_depth_label;
   QDoubleSpinBox* m_units_per_meter_spin;
   QLabel* m_units_per_meter_label;
-  QCheckBox* m_clear_efb_check;
-  QSpinBox* m_clear_efb_min_spin;
-  QSpinBox* m_clear_efb_max_spin;
-  QLabel* m_clear_efb_min_label;
-  QLabel* m_clear_efb_max_label;
   QPushButton* m_view_textures_button;
   QWidget* m_texture_hash_container;
   QScrollArea* m_texture_hash_scroll;

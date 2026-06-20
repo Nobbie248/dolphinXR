@@ -1356,11 +1356,7 @@ void VertexManagerBase::Flush()
           }
 
           // ClearEFB is an independent flag, checked regardless of handling type.
-          // This lets a shader be e.g. Skip+ClearEFB or Screen+ClearEFB.
-          if (hunter_has_overrides)
-            hunter.CheckClearEFBForDraw(vs_hash, ps_hash, gs_hash);
-          if (texmgr_has_overrides)
-            texmgr.CheckClearEFBForDraw(tex_hashes);
+          // This lets an element be e.g. Skip+ClearEFB or Screen+ClearEFB.
           if (elements_has_overrides)
             elements.CheckClearEFBForDraw(*element_draw);
 

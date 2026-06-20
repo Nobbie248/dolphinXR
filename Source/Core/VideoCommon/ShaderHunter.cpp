@@ -1007,18 +1007,6 @@ LoadShaderOverridesFromINIFile(const std::string& path)
           current.condition_inverted = false;
         }
       }
-      else if (key == "clear_efb")
-      {
-        current.clear_efb = (value == "1" || value == "true");
-      }
-      else if (key == "clear_efb_min")
-      {
-        current.clear_efb_min_width = std::stoi(value);
-      }
-      else if (key == "clear_efb_max")
-      {
-        current.clear_efb_max_width = std::stoi(value);
-      }
       else if (key == "element_start")
       {
         current.element_start = std::stoi(value);
@@ -1187,14 +1175,6 @@ void ShaderHunter::SaveOverridesToINI(const std::string& game_id,
       out << "condition=" << ovr.condition_flag << "\n";
       out << "condition_mode=" << (ovr.condition_inverted ? "deactivate" : "activate") << "\n";
     }
-    if (ovr.clear_efb)
-    {
-      out << "clear_efb=1\n";
-      if (ovr.clear_efb_min_width > 0)
-        out << "clear_efb_min=" << ovr.clear_efb_min_width << "\n";
-      if (ovr.clear_efb_max_width > 0)
-        out << "clear_efb_max=" << ovr.clear_efb_max_width << "\n";
-    }
     if (ovr.element_start >= 0)
       out << "element_start=" << ovr.element_start << "\n";
     if (ovr.element_end >= 0)
@@ -1236,9 +1216,6 @@ void ShaderHunter::LoadOverrides(const std::string& game_id)
   m_fullscreen_hashes.clear();
   m_headlocked_hashes.clear();
   m_units_per_meter_overrides.clear();
-  m_clear_efb_hashes.clear();
-  m_clear_efb_bounds.clear();
-  m_clear_next_efb = false;
   m_screen_layers.clear();
   m_element_depths.clear();
   m_flag_rules.clear();
@@ -1355,14 +1332,6 @@ void ShaderHunter::LoadOverrides(const std::string& game_id)
       break;
     default:
       break;
-    }
-
-    // ClearEFB is an independent flag that can be set on any handling type.
-    if (ovr.clear_efb)
-    {
-      m_clear_efb_hashes.insert(ovr.hash);
-      if (ovr.clear_efb_min_width > 0 || ovr.clear_efb_max_width > 0)
-        m_clear_efb_bounds[ovr.hash] = {ovr.clear_efb_min_width, ovr.clear_efb_max_width};
     }
 
     m_overrides.push_back(std::move(ovr));
@@ -1485,70 +1454,6 @@ bool ShaderHunter::NeedsTextureHashes() const
 bool ShaderHunter::NeedsOverrideDrawCounters() const
 {
   return m_needs_override_draw_counters.load(std::memory_order_relaxed);
-}
-
-void ShaderHunter::CheckClearEFBForDraw(u64 vs_hash, u64 ps_hash, u64 gs_hash)
-{
-  if (ShouldBypassSelectedOverrideForTextureTool(vs_hash, ps_hash, gs_hash))
-    return;
-
-  if (m_clear_efb_hashes.empty())
-    return;
-
-  for (u64 h : {vs_hash, ps_hash, gs_hash})
-  {
-    if (m_clear_efb_hashes.count(h) == 0)
-      continue;
-
-    m_clear_next_efb = true;
-
-    auto it = m_clear_efb_bounds.find(h);
-    if (it != m_clear_efb_bounds.end())
-    {
-      // Store this override's size bounds; if multiple match, widen to the union.
-      if (m_pending_clear_min == 0 && m_pending_clear_max == 0)
-      {
-        m_pending_clear_min = it->second.first;
-        m_pending_clear_max = it->second.second;
-      }
-      else
-      {
-        m_pending_clear_min = std::min(m_pending_clear_min, it->second.first);
-        m_pending_clear_max = (m_pending_clear_max == 0 || it->second.second == 0) ?
-                                  0 : std::max(m_pending_clear_max, it->second.second);
-      }
-    }
-    else
-    {
-      // No bounds specified = any size — widen to unrestricted.
-      m_pending_clear_min = 0;
-      m_pending_clear_max = 0;
-    }
-    return;
-  }
-}
-
-bool ShaderHunter::ShouldClearEFBCopy(int width)
-{
-  if (!m_clear_next_efb)
-    return false;
-
-  m_clear_next_efb = false;
-  const int min_w = m_pending_clear_min;
-  const int max_w = m_pending_clear_max;
-  m_pending_clear_min = 0;
-  m_pending_clear_max = 0;
-
-  // Both 0 = no restriction, clear any size.
-  if (min_w == 0 && max_w == 0)
-    return true;
-
-  if (min_w > 0 && width < min_w)
-    return false;
-  if (max_w > 0 && width > max_w)
-    return false;
-
-  return true;
 }
 
 void ShaderHunter::RegisterFlags(u64 vs_hash, u64 ps_hash, u64 gs_hash)
