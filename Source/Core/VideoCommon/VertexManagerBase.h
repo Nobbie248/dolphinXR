@@ -20,6 +20,7 @@ struct CustomPixelShaderContents;
 class CustomShaderCache;
 class DataReader;
 class GeometryShaderManager;
+enum class MetroidElementProfile;
 class NativeVertexFormat;
 class PixelShaderManager;
 class PointerWrap;
@@ -234,6 +235,11 @@ private:
   void UpdatePipelineConfig();
   void UpdatePipelineObject();
 
+  // Resolve the game's Metroid VR profile once and cache it. The game ID is constant for this
+  // VertexManager's lifetime (a new game re-initializes the video backend), so this avoids a
+  // per-draw GetGameID() string allocation on the render hot path.
+  MetroidElementProfile GetCachedMetroidProfile();
+
   const AbstractPipeline*
   GetCustomPipeline(const CustomPixelShaderContents& custom_pixel_shader_contents,
                     const VideoCommon::GXPipelineUid& current_pipeline_config,
@@ -248,6 +254,8 @@ private:
   u32 m_last_efb_copy_draw_counter = 0;
   bool m_metroid_prime1_combat_context_seen = false;
   bool m_metroid_prime1_menu_context_seen = false;
+  MetroidElementProfile m_metroid_profile{};  // == MetroidElementProfile::None until resolved
+  bool m_metroid_profile_resolved = false;
   bool m_unflushed_efb_copy = false;
   std::vector<u32> m_cpu_accesses_this_frame;
   std::vector<u32> m_scheduled_command_buffer_kicks;

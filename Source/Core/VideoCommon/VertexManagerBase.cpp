@@ -181,12 +181,6 @@ MetroidElementClassifier& GetMetroidElementClassifier()
   return classifier;
 }
 
-bool IsMetroidProfileActive()
-{
-  return GetMetroidProfileForGameID(SConfig::GetInstance().GetGameID()) !=
-         MetroidElementProfile::None;
-}
-
 constexpr int METROID_HUD_CONTEXT_DEFAULT = 0;
 constexpr int METROID_HUD_CONTEXT_COMBAT = 1;
 constexpr int METROID_HUD_CONTEXT_MENU = 2;
@@ -482,6 +476,19 @@ VertexManagerBase::VertexManagerBase()
 }
 
 VertexManagerBase::~VertexManagerBase() = default;
+
+MetroidElementProfile VertexManagerBase::GetCachedMetroidProfile()
+{
+  if (!m_metroid_profile_resolved)
+  {
+    const std::string game_id = SConfig::GetInstance().GetGameID();
+    if (game_id.empty())
+      return MetroidElementProfile::None;  // ID not available yet; resolve on a later draw.
+    m_metroid_profile = GetMetroidProfileForGameID(game_id);
+    m_metroid_profile_resolved = true;
+  }
+  return m_metroid_profile;
+}
 
 bool VertexManagerBase::Initialize()
 {
@@ -1035,7 +1042,8 @@ void VertexManagerBase::Flush()
         const bool hunter_has_overrides = hunter.HasOverrides();
         const bool elements_popup_open = elements.IsPopupOpen();
         const bool elements_has_overrides = elements.HasOverrides();
-        const bool metroid_profile_active = IsMetroidProfileActive();
+        const bool metroid_profile_active =
+            GetCachedMetroidProfile() != MetroidElementProfile::None;
         const bool elements_runtime_active =
             elements_popup_open || elements_has_overrides || metroid_profile_active;
         const bool hunter_needs_families = hunter.NeedsShaderFamilySignatures();
@@ -1132,7 +1140,7 @@ void VertexManagerBase::Flush()
 
             if (metroid_profile_active)
             {
-              metroid_profile = GetMetroidProfileForGameID(SConfig::GetInstance().GetGameID());
+              metroid_profile = GetCachedMetroidProfile();
               metroid_metrics = BuildMetroidProjectionMetrics(xfmem, m_draw_counter);
               metroid_layer =
                   GetMetroidElementClassifier().Classify(metroid_profile, metroid_metrics);
