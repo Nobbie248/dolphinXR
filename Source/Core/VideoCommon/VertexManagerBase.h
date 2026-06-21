@@ -4,6 +4,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "Common/BitSet.h"
@@ -255,6 +256,7 @@ private:
   bool m_metroid_prime1_combat_context_seen = false;
   bool m_metroid_prime1_menu_context_seen = false;
   MetroidElementProfile m_metroid_profile{};  // == MetroidElementProfile::None until resolved
+  std::string m_metroid_game_id;              // Cached alongside m_metroid_profile
   bool m_metroid_profile_resolved = false;
   bool m_unflushed_efb_copy = false;
   std::vector<u32> m_cpu_accesses_this_frame;

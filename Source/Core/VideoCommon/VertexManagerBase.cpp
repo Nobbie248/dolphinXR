@@ -198,12 +198,12 @@ bool IsMetroidPrime1Profile(MetroidElementProfile profile)
 }
 
 MetroidHydraHudSettings GetMetroidHydraHudSettings(MetroidElementProfile profile,
-                                                   MetroidElementLayer layer)
+                                                   MetroidElementLayer layer,
+                                                   std::string_view game_id)
 {
   if (!IsMetroidPrime1Profile(profile))
     return {};
 
-  const std::string game_id = SConfig::GetInstance().GetGameID();
   if (!(game_id.starts_with("GM8") || game_id.starts_with("D93") || game_id.starts_with("R3I")))
     return {};
 
@@ -481,10 +481,11 @@ MetroidElementProfile VertexManagerBase::GetCachedMetroidProfile()
 {
   if (!m_metroid_profile_resolved)
   {
-    const std::string game_id = SConfig::GetInstance().GetGameID();
+    std::string game_id = SConfig::GetInstance().GetGameID();
     if (game_id.empty())
       return MetroidElementProfile::None;  // ID not available yet; resolve on a later draw.
     m_metroid_profile = GetMetroidProfileForGameID(game_id);
+    m_metroid_game_id = std::move(game_id);
     m_metroid_profile_resolved = true;
   }
   return m_metroid_profile;
@@ -1229,8 +1230,9 @@ void VertexManagerBase::Flush()
             float element_depth = -1.0f;
             float units_per_meter = -1.0f;
             const MetroidHydraHudSettings metroid_hydra_hud =
-                metroid_profile_active ? GetMetroidHydraHudSettings(metroid_profile, metroid_layer) :
-                                         MetroidHydraHudSettings{};
+                metroid_profile_active ?
+                    GetMetroidHydraHudSettings(metroid_profile, metroid_layer, m_metroid_game_id) :
+                    MetroidHydraHudSettings{};
 
             if (elements_has_overrides)
               handling = elements.GetOverrideHandling(*element_draw);
