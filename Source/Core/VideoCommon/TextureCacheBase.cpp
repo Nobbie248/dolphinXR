@@ -81,14 +81,28 @@ static bool IsMetroidPrime2GC()
   return game_id.starts_with("G2M") || game_id.starts_with("P2M");
 }
 
+static bool IsMetroidPrimeTrilogyWii()
+{
+  const std::string& game_id = SConfig::GetInstance().GetGameID();
+  return game_id.starts_with("R3M");
+}
+
+static bool IsMetroidPrime3Wii()
+{
+  const std::string& game_id = SConfig::GetInstance().GetGameID();
+  return game_id.starts_with("RM3");
+}
+
 static bool IsMetroidVulkanPaletteFixGame()
 {
-  return IsMetroidPrime1GC() || IsMetroidPrime2GC();
+  return IsMetroidPrime1GC() || IsMetroidPrime2GC() || IsMetroidPrimeTrilogyWii() ||
+         IsMetroidPrime3Wii();
 }
 
 static bool IsMetroidD3DPaletteFixGame()
 {
-  return IsMetroidPrime1GC() || IsMetroidPrime2GC();
+  return IsMetroidPrime1GC() || IsMetroidPrime2GC() || IsMetroidPrimeTrilogyWii() ||
+         IsMetroidPrime3Wii();
 }
 
 static bool IsMetroidPrime2FullViewDarkTextureCandidate(u32 width, u32 height, u32 layers,
