@@ -9,8 +9,10 @@
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QGridLayout>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSignalBlocker>
@@ -191,6 +193,8 @@ HideObjectAddEditDialog::HideObjectAddEditDialog(
     m_result = *existing_code;
     if (!m_result.entries.empty())
       m_current_entry = m_result.entries[0];
+    else
+      m_current_entry.type = HideObjectEngine::HideObjectType::Bits8;
 
     for (size_t i = 0; i < m_all_codes.size(); ++i)
     {
@@ -208,11 +212,15 @@ HideObjectAddEditDialog::HideObjectAddEditDialog(
     m_current_entry.value_lower = 0;
   }
 
+  if (m_result.entries.empty())
+    m_result.entries.push_back(m_current_entry);
+
   setWindowTitle(m_is_edit ? tr("Edit Hide Object Code") : tr("Add Hide Object Code"));
-  setMinimumWidth(400);
+  setMinimumWidth(560);
 
   CreateWidgets();
   ConnectWidgets();
+  UpdateEntryList();
   UpdateValueDisplay();
 }
 
@@ -224,6 +232,20 @@ void HideObjectAddEditDialog::CreateWidgets()
     m_name_edit->setText(QString::fromStdString(m_result.name));
   else
     m_name_edit->setPlaceholderText(tr("Enter code name..."));
+
+  auto* entries_label = new QLabel(tr("Code lines:"));
+  entries_label->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+  m_entry_list = new QListWidget;
+  m_entry_list->setFont(QFont(QStringLiteral("Courier New"), 10));
+  m_entry_list->setMinimumHeight(120);
+
+  m_entry_add = new QPushButton(tr("Add Line"));
+  m_entry_remove = new QPushButton(tr("Remove Line"));
+
+  auto* entry_button_layout = new QHBoxLayout;
+  entry_button_layout->addWidget(m_entry_add);
+  entry_button_layout->addWidget(m_entry_remove);
+  entry_button_layout->addStretch();
 
   auto* type_label = new QLabel(tr("Size:"));
   m_type_combo = new QComboBox;
@@ -259,13 +281,16 @@ void HideObjectAddEditDialog::CreateWidgets()
   auto* grid = new QGridLayout;
   grid->addWidget(name_label, 0, 0);
   grid->addWidget(m_name_edit, 0, 1, 1, 3);
-  grid->addWidget(type_label, 1, 0);
-  grid->addWidget(m_type_combo, 1, 1, 1, 3);
-  grid->addWidget(value_label, 2, 0);
-  grid->addWidget(m_value_edit, 2, 1);
-  grid->addWidget(m_up_button, 2, 2);
-  grid->addWidget(m_down_button, 2, 3);
-  grid->addWidget(m_value_slider, 3, 1, 1, 3);
+  grid->addWidget(entries_label, 1, 0);
+  grid->addWidget(m_entry_list, 1, 1, 1, 3);
+  grid->addLayout(entry_button_layout, 2, 1, 1, 3);
+  grid->addWidget(type_label, 3, 0);
+  grid->addWidget(m_type_combo, 3, 1, 1, 3);
+  grid->addWidget(value_label, 4, 0);
+  grid->addWidget(m_value_edit, 4, 1);
+  grid->addWidget(m_up_button, 4, 2);
+  grid->addWidget(m_down_button, 4, 3);
+  grid->addWidget(m_value_slider, 5, 1, 1, 3);
 
   auto* layout = new QVBoxLayout{this};
   layout->addLayout(grid);
@@ -283,8 +308,39 @@ void HideObjectAddEditDialog::ConnectWidgets()
           &HideObjectAddEditDialog::OnValueTextChanged);
   connect(m_value_slider, &QSlider::valueChanged, this,
           &HideObjectAddEditDialog::OnValueSliderChanged);
+  connect(m_entry_list, &QListWidget::itemSelectionChanged, this,
+          &HideObjectAddEditDialog::OnEntrySelectionChanged);
+  connect(m_entry_add, &QPushButton::clicked, this, &HideObjectAddEditDialog::OnAddEntryClicked);
+  connect(m_entry_remove, &QPushButton::clicked, this,
+          &HideObjectAddEditDialog::OnRemoveEntryClicked);
   connect(m_up_button, &QPushButton::clicked, this, &HideObjectAddEditDialog::OnUpClicked);
   connect(m_down_button, &QPushButton::clicked, this, &HideObjectAddEditDialog::OnDownClicked);
+}
+
+void HideObjectAddEditDialog::UpdateEntryList()
+{
+  const QSignalBlocker blocker(m_entry_list);
+  m_entry_list->clear();
+
+  for (const auto& entry : m_result.entries)
+  {
+    m_entry_list->addItem(QStringLiteral("[%1] %2").arg(
+        QString::fromLatin1(HideObjectEngine::GetTypeName(entry.type)), FormatEntryValue(entry)));
+  }
+
+  m_entry_list->setCurrentRow(static_cast<int>(m_current_entry_index));
+  m_entry_remove->setEnabled(m_result.entries.size() > 1);
+}
+
+void HideObjectAddEditDialog::UpdateCurrentEntryListItem()
+{
+  QListWidgetItem* const item = m_entry_list->item(static_cast<int>(m_current_entry_index));
+  if (!item)
+    return;
+
+  item->setText(QStringLiteral("[%1] %2").arg(
+      QString::fromLatin1(HideObjectEngine::GetTypeName(m_current_entry.type)),
+      FormatEntryValue(m_current_entry)));
 }
 
 void HideObjectAddEditDialog::UpdateValueDisplay()
@@ -328,6 +384,12 @@ bool HideObjectAddEditDialog::ParseValueFromUI()
   return true;
 }
 
+void HideObjectAddEditDialog::StoreCurrentEntry()
+{
+  m_result.entries[m_current_entry_index] = m_current_entry;
+  UpdateCurrentEntryListItem();
+}
+
 void HideObjectAddEditDialog::OnTypeChanged()
 {
   if (!ParseValueFromUI())
@@ -336,6 +398,7 @@ void HideObjectAddEditDialog::OnTypeChanged()
   const auto new_type = static_cast<HideObjectEngine::HideObjectType>(m_type_combo->currentIndex());
   m_current_entry = ResizeEntryForType(m_current_entry, new_type, 0x00);
 
+  StoreCurrentEntry();
   UpdateValueDisplay();
   ApplyTemporarily();
 }
@@ -350,6 +413,7 @@ void HideObjectAddEditDialog::OnUpClicked()
   const u8 next_low_byte = static_cast<u8>(low_byte + 1);
   m_current_entry.value_lower = (m_current_entry.value_lower & ~0xFFULL) | next_low_byte;
 
+  StoreCurrentEntry();
   UpdateValueDisplay();
   ApplyTemporarily();
 }
@@ -364,6 +428,7 @@ void HideObjectAddEditDialog::OnDownClicked()
   const u8 prev_low_byte = static_cast<u8>(low_byte - 1);
   m_current_entry.value_lower = (m_current_entry.value_lower & ~0xFFULL) | prev_low_byte;
 
+  StoreCurrentEntry();
   UpdateValueDisplay();
   ApplyTemporarily();
 }
@@ -371,6 +436,13 @@ void HideObjectAddEditDialog::OnDownClicked()
 void HideObjectAddEditDialog::OnValueTextChanged()
 {
   UpdateValueSliderFromText();
+
+  HideObjectEngine::HideObjectEntry parsed;
+  if (TryParseEntryValue(m_value_edit->text(), m_current_entry.type, &parsed))
+  {
+    m_current_entry = parsed;
+    StoreCurrentEntry();
+  }
 }
 
 void HideObjectAddEditDialog::OnValueSliderChanged(int value)
@@ -380,6 +452,71 @@ void HideObjectAddEditDialog::OnValueSliderChanged(int value)
     return;
 
   m_current_entry = EntryFromLastByteSliderValue(m_current_entry.type, value, current_entry);
+  StoreCurrentEntry();
+  UpdateValueDisplay();
+  ApplyTemporarily();
+}
+
+void HideObjectAddEditDialog::OnEntrySelectionChanged()
+{
+  const int selected_row = m_entry_list->currentRow();
+  if (selected_row < 0 || static_cast<size_t>(selected_row) == m_current_entry_index)
+    return;
+
+  if (!ParseValueFromUI())
+  {
+    const QSignalBlocker blocker(m_entry_list);
+    m_entry_list->setCurrentRow(static_cast<int>(m_current_entry_index));
+    return;
+  }
+
+  StoreCurrentEntry();
+  m_current_entry_index = static_cast<size_t>(selected_row);
+  m_current_entry = m_result.entries[m_current_entry_index];
+
+  {
+    const QSignalBlocker blocker(m_type_combo);
+    m_type_combo->setCurrentIndex(static_cast<int>(m_current_entry.type));
+  }
+  UpdateValueDisplay();
+}
+
+void HideObjectAddEditDialog::OnAddEntryClicked()
+{
+  if (!ParseValueFromUI())
+    return;
+
+  StoreCurrentEntry();
+
+  HideObjectEngine::HideObjectEntry entry;
+  entry.type = HideObjectEngine::HideObjectType::Bits8;
+  m_result.entries.push_back(entry);
+  m_current_entry_index = m_result.entries.size() - 1;
+  m_current_entry = entry;
+
+  {
+    const QSignalBlocker blocker(m_type_combo);
+    m_type_combo->setCurrentIndex(static_cast<int>(m_current_entry.type));
+  }
+  UpdateEntryList();
+  UpdateValueDisplay();
+}
+
+void HideObjectAddEditDialog::OnRemoveEntryClicked()
+{
+  if (m_result.entries.size() <= 1)
+    return;
+
+  m_result.entries.erase(m_result.entries.begin() + m_current_entry_index);
+  if (m_current_entry_index >= m_result.entries.size())
+    m_current_entry_index = m_result.entries.size() - 1;
+  m_current_entry = m_result.entries[m_current_entry_index];
+
+  {
+    const QSignalBlocker blocker(m_type_combo);
+    m_type_combo->setCurrentIndex(static_cast<int>(m_current_entry.type));
+  }
+  UpdateEntryList();
   UpdateValueDisplay();
   ApplyTemporarily();
 }
@@ -400,7 +537,7 @@ void HideObjectAddEditDialog::ApplyTemporarily()
 
   HideObjectEngine::HideObject temp_code;
   temp_code.name = "temp_brute_force";
-  temp_code.entries.push_back(m_current_entry);
+  temp_code.entries = m_result.entries;
   temp_code.active = true;
   temp_code.user_defined = false;
   temp_list.push_back(std::move(temp_code));
@@ -431,9 +568,8 @@ void HideObjectAddEditDialog::OnAccept()
   if (!ParseValueFromUI())
     return;
 
+  StoreCurrentEntry();
   m_result.name = name.toStdString();
-  m_result.entries.clear();
-  m_result.entries.push_back(m_current_entry);
   m_result.active = true;
   m_result.user_defined = true;
 

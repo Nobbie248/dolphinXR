@@ -12,6 +12,7 @@
 
 class QComboBox;
 class QLineEdit;
+class QListWidget;
 class QPushButton;
 class QSlider;
 
@@ -36,11 +37,17 @@ private:
   void OnDownClicked();
   void OnValueTextChanged();
   void OnValueSliderChanged(int value);
+  void OnEntrySelectionChanged();
+  void OnAddEntryClicked();
+  void OnRemoveEntryClicked();
   void OnAccept();
 
+  void UpdateEntryList();
+  void UpdateCurrentEntryListItem();
   void UpdateValueDisplay();
   void UpdateValueSliderFromText();
   bool ParseValueFromUI();
+  void StoreCurrentEntry();
   void ApplyTemporarily();
 
   bool m_is_edit = false;
@@ -48,11 +55,15 @@ private:
 
   HideObjectEngine::HideObject m_result;
   HideObjectEngine::HideObjectEntry m_current_entry;
+  size_t m_current_entry_index = 0;
   std::optional<size_t> m_existing_code_index;
 
   const std::vector<HideObjectEngine::HideObject>& m_all_codes;
 
   QLineEdit* m_name_edit;
+  QListWidget* m_entry_list;
+  QPushButton* m_entry_add;
+  QPushButton* m_entry_remove;
   QComboBox* m_type_combo;
   QLineEdit* m_value_edit;
   QSlider* m_value_slider;
