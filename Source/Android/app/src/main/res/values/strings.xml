@@ -828,6 +828,8 @@ It can efficiently compress both junk data and encrypted Wii data.
     <string name="quest_ar_background_alpha_description">Controls the alpha used for the OpenXR background when passthrough composition is active.</string>
     <string name="quest_lock_head_pose">Lock head pose per frame</string>
     <string name="quest_lock_head_pose_description">Keeps pose updates aligned with emulation frame boundaries for more stable stereo output.</string>
+    <string name="quest_detect_skybox">Detect Skybox</string>
+    <string name="quest_detect_skybox_description">Treats objects drawn at the camera origin as skyboxes and locks them to head rotation only, so the sky renders at infinity instead of appearing too close. Disable if it incorrectly affects non-sky geometry.</string>
     <string name="quest_vr_gamma">VR Gamma</string>
     <string name="quest_vr_gamma_description">Adjusts gamma correction for the OpenXR eye output.</string>
     <string name="quest_virtual_screen">Virtual Screen for 2D Content</string>

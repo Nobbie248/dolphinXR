@@ -2636,6 +2636,12 @@ class SettingsFragmentPresenter(
             R.string.quest_disable_cpu_culling,
             R.string.quest_disable_cpu_culling_description
         )
+        addBoolean(
+            "DetectSkybox",
+            false,
+            R.string.quest_detect_skybox,
+            R.string.quest_detect_skybox_description
+        )
         sl.add(
             SingleChoiceSetting(
                 context,
@@ -2770,6 +2776,14 @@ class SettingsFragmentPresenter(
                 QuestVrSettings.lockHeadPoseSetting(),
                 R.string.quest_lock_head_pose,
                 R.string.quest_lock_head_pose_description
+            )
+        )
+        sl.add(
+            SwitchSetting(
+                context,
+                QuestVrSettings.detectSkyboxSetting(),
+                R.string.quest_detect_skybox,
+                R.string.quest_detect_skybox_description
             )
         )
         sl.add(

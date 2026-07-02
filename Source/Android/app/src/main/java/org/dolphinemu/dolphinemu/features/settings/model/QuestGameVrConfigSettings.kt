@@ -24,6 +24,7 @@ object QuestGameVrConfigSettings {
         "DontClearScreen",
         "LoadCustomShaders",
         "DisableCPUCull",
+        "DetectSkybox",
         "OpcodeReplay",
         "ForcedVBIFrequency",
         "AutoVBIFromHMD",

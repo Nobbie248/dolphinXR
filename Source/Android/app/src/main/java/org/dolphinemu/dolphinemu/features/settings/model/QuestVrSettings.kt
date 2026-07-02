@@ -64,6 +64,8 @@ object QuestVrSettings {
 
     fun lockHeadPoseSetting() = vrBooleanSetting("LockHeadPosePerFrame", false)
 
+    fun detectSkyboxSetting() = vrBooleanSetting("DetectSkybox", false)
+
     fun opcodeReplaySetting() = vrIntSetting("OpcodeReplay", 0)
 
     fun vrGammaSetting() = vrFloatSetting("Gamma", 1.0f)
