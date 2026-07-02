@@ -32,6 +32,12 @@ namespace BPFunctions
 // Reference: Yet Another GameCube Documentation
 // ----------------------------------------------
 
+// VR: real active frame height, captured from the full-width EFB clear.
+// The 3D scene's own viewport can't tell us this (Metroid Prime Trilogy clears 640x480 but then
+// renders the scene into a 640x448 viewport, leaving a permanent 32-line bottom bar), so we read
+// it from the frame clear instead.
+static int s_vr_frame_active_height = 0;
+
 void FlushPipeline()
 {
   g_vertex_manager->Flush();
@@ -192,27 +198,44 @@ void SetScissorAndViewport(FramebufferManager* frame_buffer_manager, ScissorPos 
       g_ActiveConfig.vr_remove_bars &&
       xfmem.projection.type == ProjectionType::Perspective)
   {
+    const int x_off = scissor_offset.x << 1;
     const int y_off = scissor_offset.y << 1;
     const int efb_top = static_cast<int>(scissor_top_left.y) - y_off;
     const int efb_bot = static_cast<int>(scissor_bottom_right.y) - y_off;
 
-    // Derive the game's active height from the viewport center: the viewport yOrig sits at
-    // the center of the active area, so active_height = 2 * center_y.
+    // Derive the game's active area from the viewport center: the viewport origin sits at
+    // the center of the active area, so active extent = 2 * center.
     // This avoids using EFB_HEIGHT (528) when the game only uses 448 active lines.
+    const float center_x = viewport.xOrig - static_cast<float>(x_off);
     const float center_y = viewport.yOrig - static_cast<float>(y_off);
-    const int active_height = static_cast<int>(center_y * 2.0f);
+    const int active_width = static_cast<int>(center_x * 2.0f);
+    int active_height = static_cast<int>(center_y * 2.0f);
+
+    // Gate: only touch the main full-width scene draw. Perspective EFB-effect passes
+    // (shadow/env/reflection maps) use smaller viewports and must be left untouched or they
+    // distort under head tracking.
+    const bool is_main_scene = active_width >= static_cast<int>(EFB_WIDTH) * 9 / 10;
+
+    // The scene viewport only knows its own (possibly short) height — Metroid Prime Trilogy
+    // renders into 448 lines of a 480-line frame, so "448 already full" is wrong. Use the real
+    // frame height captured from the full-screen clear to detect that case.
+    if (is_main_scene && s_vr_frame_active_height > active_height)
+      active_height = s_vr_frame_active_height;
 
     // Expand if the scissor Y doesn't cover the full active area (any trimming at all)
-    if (active_height > 0 && (efb_top > 0 || efb_bot < active_height - 1))
+    if (is_main_scene && active_height > 0 && (efb_top > 0 || efb_bot < active_height - 1))
     {
       // Expand scissor Y to cover the full active area
       scissor_top_left.y = static_cast<u32>(y_off);
       scissor_bottom_right.y = static_cast<u32>(y_off + active_height - 1);
 
-      // Expand viewport ht so NDC [-1,+1] maps to the full active area.
-      // Keep yOrig (center) the same, just scale ht to half the active height.
+      // Expand the viewport DOWNWARD only: keep the top edge fixed where the game put it and
+      // extend the bottom to the real frame height. Re-centering on the old origin would shift
+      // the horizon and vertically stretch the scene.
+      const float new_half = static_cast<float>(active_height) * 0.5f;
       const float sign = (viewport.ht < 0) ? -1.0f : 1.0f;
-      viewport.ht = sign * center_y;
+      viewport.yOrig = static_cast<float>(y_off) + new_half;
+      viewport.ht = sign * new_half;
     }
   }
   // VR: Expand scissor for orthographic VR draws.
@@ -374,6 +397,17 @@ bool ClearScreen(FramebufferManager* frame_buffer_manager, const MathUtil::Recta
                  u32 clear_color_ar, u32 clear_color_gb, u32 clear_z_value,
                  bool frame_just_rendered)
 {
+  // VR: capture the real frame height for the cinematic-bar fix. Only trust clears that span
+  // (nearly) the full EFB width and start at the top — those are frame clears, not small
+  // EFB-effect clears. The last such clear each frame wins, which is correct because the frame
+  // clear precedes the scene draws.
+  if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR && g_ActiveConfig.vr_remove_bars &&
+      rc.left == 0 && rc.top == 0 && rc.GetWidth() >= static_cast<int>(EFB_WIDTH) * 9 / 10 &&
+      rc.GetHeight() > 0 && rc.GetHeight() <= static_cast<int>(EFB_HEIGHT))
+  {
+    s_vr_frame_active_height = rc.GetHeight();  // = 480 for Metroid Prime Trilogy
+  }
+
   // (1): Disable unused color channels
   if (pixel_format == PixelFormat::RGB8_Z24 || pixel_format == PixelFormat::RGB565_Z16 ||
       pixel_format == PixelFormat::Z24)
