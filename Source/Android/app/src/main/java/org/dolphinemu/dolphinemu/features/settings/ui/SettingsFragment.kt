@@ -286,6 +286,7 @@ class SettingsFragment : Fragment(), SettingsFragmentView {
             titles[MenuTag.QUEST_HIDE_OBJECTS] = R.string.quest_hide_objects
             titles[MenuTag.QUEST_SHADER_OVERRIDES] = R.string.quest_shader_overrides
             titles[MenuTag.QUEST_ELEMENTS_GROUP_OVERRIDES] = R.string.quest_elements_group_overrides
+            titles[MenuTag.QUEST_TEXTURE_ELEMENT_OVERRIDES] = R.string.quest_texture_element_overrides
             titles[MenuTag.CONFIG_LOG] = R.string.log_submenu
             titles[MenuTag.GCPAD_TYPE] = R.string.gcpad_settings
             titles[MenuTag.WIIMOTE] = R.string.wiimote_settings

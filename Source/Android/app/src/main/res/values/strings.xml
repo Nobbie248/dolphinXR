@@ -881,6 +881,8 @@ It can efficiently compress both junk data and encrypted Wii data.
     <string name="quest_shader_overrides_description">Enable or disable stored Shader Overrides for this game.</string>
     <string name="quest_elements_group_overrides">Elements Group Overrides</string>
     <string name="quest_elements_group_overrides_description">Enable or disable stored Elements Group Overrides for this game.</string>
+    <string name="quest_texture_element_overrides">Texture Element Overrides</string>
+    <string name="quest_texture_element_overrides_description">Enable or disable stored Texture Element Overrides for this game.</string>
     <string name="quest_no_stored_overrides">No stored overrides found for this game.</string>
 
     <!-- Aspect Ratio Preference -->

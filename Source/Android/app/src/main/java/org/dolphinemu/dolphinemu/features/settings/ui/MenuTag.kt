@@ -30,6 +30,7 @@ enum class MenuTag {
     QUEST_HIDE_OBJECTS("quest_hide_objects"),
     QUEST_SHADER_OVERRIDES("quest_shader_overrides"),
     QUEST_ELEMENTS_GROUP_OVERRIDES("quest_elements_group_overrides"),
+    QUEST_TEXTURE_ELEMENT_OVERRIDES("quest_texture_element_overrides"),
     GCPAD_TYPE("gc_pad_type"),
     WIIMOTE("wiimote"),
     WIIMOTE_EXTENSION("wiimote_extension"),

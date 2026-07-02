@@ -1169,11 +1169,19 @@ void VertexManagerBase::Flush()
                 }
               }
 
-              if (IsMetroidPrime2Profile(metroid_profile))
+              // Trilogy resolves to TrilogyAuto (never a Prime2 profile), but its MP2 content
+              // still copies the 408x286 dark-visor highlight source. That shape is
+              // MP2-specific, so scan for it under TrilogyAuto too. The 640x448 full-view dark
+              // copy stays Prime2-profile-only — under Trilogy that shape collides with MP1
+              // thermal sources.
+              const bool trilogy_auto_profile =
+                  metroid_profile == MetroidElementProfile::TrilogyAuto;
+              if (IsMetroidPrime2Profile(metroid_profile) || trilogy_auto_profile)
               {
                 for (const u32 i : used_textures)
                 {
-                  if (g_texture_cache->IsBoundMetroidPrime2DarkTexture(i))
+                  if (!trilogy_auto_profile &&
+                      g_texture_cache->IsBoundMetroidPrime2DarkTexture(i))
                     uses_mp2_dark_copy = true;
                   if (g_texture_cache->IsBoundMetroidPrime2DarkHighlightTexture(i))
                     uses_mp2_dark_highlight_copy = true;

@@ -138,6 +138,10 @@ class SettingsFragmentPresenter(
                 sl,
                 QuestGameOverrideSettings.Category.ELEMENTS_GROUP_OVERRIDES
             )
+            MenuTag.QUEST_TEXTURE_ELEMENT_OVERRIDES -> addQuestOverrideSettings(
+                sl,
+                QuestGameOverrideSettings.Category.TEXTURE_ELEMENT_OVERRIDES
+            )
             MenuTag.QUEST_VR_CONFIG -> addQuestGameVrConfigSettings(sl)
             MenuTag.CONFIG_LOG -> addLogConfigurationSettings(sl)
             MenuTag.DEBUG -> addDebugSettings(sl)
@@ -235,6 +239,13 @@ class SettingsFragmentPresenter(
                     context,
                     R.string.quest_elements_group_overrides,
                     MenuTag.QUEST_ELEMENTS_GROUP_OVERRIDES
+                )
+            )
+            sl.add(
+                SubmenuSetting(
+                    context,
+                    R.string.quest_texture_element_overrides,
+                    MenuTag.QUEST_TEXTURE_ELEMENT_OVERRIDES
                 )
             )
         }
@@ -2444,6 +2455,8 @@ class SettingsFragmentPresenter(
                 R.string.quest_shader_overrides_description
             QuestGameOverrideSettings.Category.ELEMENTS_GROUP_OVERRIDES ->
                 R.string.quest_elements_group_overrides_description
+            QuestGameOverrideSettings.Category.TEXTURE_ELEMENT_OVERRIDES ->
+                R.string.quest_texture_element_overrides_description
         }
 
         for (entry in entries) {

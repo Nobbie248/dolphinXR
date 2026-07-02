@@ -50,6 +50,7 @@
 #include "VideoCommon/Present.h"
 #include "VideoCommon/Resources/CustomResourceManager.h"
 #include "VideoCommon/ShaderCache.h"
+#include "VideoCommon/ShaderHunter.h"
 #include "VideoCommon/Statistics.h"
 #include "VideoCommon/TMEM.h"
 #include "VideoCommon/TextureConversionShader.h"
@@ -84,7 +85,14 @@ static bool IsMetroidPrime2GC()
 static bool IsMetroidPrimeTrilogyWii()
 {
   const std::string& game_id = SConfig::GetInstance().GetGameID();
-  return game_id.starts_with("R3M");
+  return game_id.starts_with("R3M") || game_id.starts_with("R3O");
+}
+
+static bool IsMetroidPrime2WiiStandalone()
+{
+  // Wii de Asobu Metroid Prime 2: Dark Echoes
+  const std::string& game_id = SConfig::GetInstance().GetGameID();
+  return game_id.starts_with("R32");
 }
 
 static bool IsMetroidPrime3Wii()
@@ -108,7 +116,10 @@ static bool IsMetroidD3DPaletteFixGame()
 static bool IsMetroidPrime2FullViewDarkTextureCandidate(u32 width, u32 height, u32 layers,
                                                         bool is_depth_copy, bool is_xfb_copy)
 {
-  return IsMetroidPrime2GC() && g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
+  // Not extended to Trilogy: its shared game ID also runs MP1/MP3 content, whose 640x448
+  // thermal sources would collide with this full-view shape.
+  return (IsMetroidPrime2GC() || IsMetroidPrime2WiiStandalone()) &&
+         g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
          !is_depth_copy && !is_xfb_copy && width == 640 && (height == 448 || height == 528) &&
          layers >= 2;
 }
@@ -116,7 +127,10 @@ static bool IsMetroidPrime2FullViewDarkTextureCandidate(u32 width, u32 height, u
 static bool IsMetroidPrime2DarkHighlightTextureCandidate(u32 width, u32 height, u32 layers,
                                                          bool is_depth_copy, bool is_xfb_copy)
 {
-  return IsMetroidPrime2GC() && g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
+  // The 408x286 dark-visor red-highlight palette source shape is MP2-specific, so it is safe
+  // to accept under Trilogy's shared game ID as well (MP1/MP3 content never copies it).
+  return (IsMetroidPrime2GC() || IsMetroidPrime2WiiStandalone() || IsMetroidPrimeTrilogyWii()) &&
+         g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
          !is_depth_copy && !is_xfb_copy && width == 408 && height == 286 && layers >= 2;
 }
 
@@ -353,6 +367,19 @@ RcTcacheEntry TextureCacheBase::ApplyPaletteToEntry(RcTcacheEntry& entry, const 
       g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
       (mp1_layered_palette_candidate ||
        ((vulkan_fix_enabled || d3d_fix_enabled) && mp2_highlight_palette_candidate));
+
+  // VR debug: log palette conversions of stereo EFB sources so missed layered-candidate
+  // sizes (e.g. per-game visor palette copy dimensions) can be identified from a log run.
+  if (ShaderHunter::GetInstance().IsDebugLogging() && entry->GetNumLayers() >= 2) [[unlikely]]
+  {
+    INFO_LOG_FMT(VIDEO,
+                 "VR_PALETTE: {}x{} layers={} tlutfmt={} layered={} "
+                 "(mp1_cand={} mp2_hl_cand={} vk_fix={} d3d_fix={})",
+                 entry->native_width, entry->native_height, entry->GetNumLayers(),
+                 static_cast<int>(tlutfmt), use_layered_pipeline, mp1_layered_palette_candidate,
+                 mp2_highlight_palette_candidate, vulkan_fix_enabled, d3d_fix_enabled);
+  }
+
   const AbstractPipeline* pipeline =
       g_shader_cache->GetPaletteConversionPipeline(tlutfmt, use_layered_pipeline);
   if (!pipeline && use_layered_pipeline)

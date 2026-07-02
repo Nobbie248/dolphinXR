@@ -17,6 +17,11 @@ object QuestGameOverrideSettings {
             "ElementsGroupOverride",
             "ElementsGroupOverride_Enable",
             true
+        ),
+        TEXTURE_ELEMENT_OVERRIDES(
+            "TextureElementOverride",
+            "TextureElementOverride_Enable",
+            true
         )
     }
 
