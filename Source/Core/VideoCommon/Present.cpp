@@ -1287,15 +1287,8 @@ void Presenter::Present(PresentInfo* present_info)
   // First real frame: if no pre-begun frame exists, start it here.
   const bool is_replay_present = VideoCommon::OpenXROpcodeReplay::IsReplaying();
 #if defined(ANDROID)
-  // GLES is always direct-to-HMD: eglSwapBuffers on the activity surface has FIFO
-  // semantics, and in immersive mode the shell never consumes those buffers, so the
-  // mirror path deadlocks the GPU thread once the queue fills (before the XR session
-  // can even leave IDLE). Vulkan's swapchain acquire tolerates the unconsumed surface,
-  // so it keeps honoring the config option.
   const bool openxr_direct_to_hmd = g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
-                                    VR::g_openxr &&
-                                    (g_ActiveConfig.vr_android_direct_to_hmd ||
-                                     g_backend_info.api_type == APIType::OpenGL);
+                                    VR::g_openxr && g_ActiveConfig.vr_android_direct_to_hmd;
 #else
   constexpr bool openxr_direct_to_hmd = false;
 #endif
