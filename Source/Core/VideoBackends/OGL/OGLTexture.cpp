@@ -214,10 +214,37 @@ OGLTexture::OGLTexture(const TextureConfig& tex_config, std::string_view name)
   }
 }
 
+OGLTexture::OGLTexture(const TextureConfig& tex_config, GLuint adopted_texture_id,
+                       std::string_view name)
+    : AbstractTexture(tex_config), m_texId(adopted_texture_id), m_name(name),
+      m_owns_texture(false)
+{
+  // Adopted textures are allocated and owned externally (e.g. by an OpenXR runtime),
+  // so no GL storage calls are made here.
+}
+
+std::unique_ptr<OGLTexture> OGLTexture::CreateAdopted(GLuint texture_id,
+                                                      const TextureConfig& config,
+                                                      std::string_view name)
+{
+  // GetGLTarget() must resolve to the real target of the adopted texture, and no
+  // storage is (re)allocated, so only plain single-level 2D textures are supported.
+  if (config.type != AbstractTextureType::Texture_2D || config.levels != 1 ||
+      config.layers != 1 || config.IsMultisampled())
+  {
+    PanicAlertFmt("Unsupported texture config for adoption: type {}, {} levels, {} layers",
+                  static_cast<int>(config.type), config.levels, config.layers);
+    return nullptr;
+  }
+
+  return std::unique_ptr<OGLTexture>(new OGLTexture(config, texture_id, name));
+}
+
 OGLTexture::~OGLTexture()
 {
   GetOGLGfx()->UnbindTexture(this);
-  glDeleteTextures(1, &m_texId);
+  if (m_owns_texture)
+    glDeleteTextures(1, &m_texId);
 }
 
 void OGLTexture::CopyRectangleFromTexture(const AbstractTexture* src,
@@ -697,7 +724,15 @@ OGLFramebuffer::Create(OGLTexture* color_attachment, OGLTexture* depth_attachmen
   std::vector<GLenum> buffers;
   if (color_attachment)
   {
-    if (color_attachment->GetConfig().layers > 1)
+    if (color_attachment->GetConfig().type == AbstractTextureType::Texture_2D)
+    {
+      // glFramebufferTextureLayer() is invalid for non-array textures (e.g. adopted
+      // OpenXR swapchain images).
+      glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                             color_attachment->GetGLTarget(),
+                             color_attachment->GetGLTextureId(), 0);
+    }
+    else if (color_attachment->GetConfig().layers > 1)
     {
       glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, color_attachment->GetGLTextureId(),
                            0);
@@ -715,7 +750,12 @@ OGLFramebuffer::Create(OGLTexture* color_attachment, OGLTexture* depth_attachmen
     GLenum attachment = AbstractTexture::IsStencilFormat(depth_format) ?
                             GL_DEPTH_STENCIL_ATTACHMENT :
                             GL_DEPTH_ATTACHMENT;
-    if (depth_attachment->GetConfig().layers > 1)
+    if (depth_attachment->GetConfig().type == AbstractTextureType::Texture_2D)
+    {
+      glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, depth_attachment->GetGLTarget(),
+                             depth_attachment->GetGLTextureId(), 0);
+    }
+    else if (depth_attachment->GetConfig().layers > 1)
     {
       glFramebufferTexture(GL_FRAMEBUFFER, attachment, depth_attachment->GetGLTextureId(), 0);
     }
@@ -730,7 +770,12 @@ OGLFramebuffer::Create(OGLTexture* color_attachment, OGLTexture* depth_attachmen
   {
     const auto attachment_enum = static_cast<GLenum>(GL_COLOR_ATTACHMENT0 + i + 1);
     OGLTexture* attachment = static_cast<OGLTexture*>(additional_color_attachments[i]);
-    if (attachment->GetConfig().layers > 1)
+    if (attachment->GetConfig().type == AbstractTextureType::Texture_2D)
+    {
+      glFramebufferTexture2D(GL_FRAMEBUFFER, attachment_enum, attachment->GetGLTarget(),
+                             attachment->GetGLTextureId(), 0);
+    }
+    else if (attachment->GetConfig().layers > 1)
     {
       glFramebufferTexture(GL_FRAMEBUFFER, attachment_enum, attachment->GetGLTextureId(), 0);
     }

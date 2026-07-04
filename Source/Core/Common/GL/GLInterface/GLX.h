@@ -19,6 +19,12 @@ public:
 
   bool IsHeadless() const override;
 
+  NativeContextType GetNativeContextType() const override { return NativeContextType::GLX; }
+  Display* GetDisplay() const { return m_display; }
+  GLXFBConfig GetFBConfig() const { return m_fbconfig; }
+  GLXDrawable GetDrawable() const { return m_drawable; }
+  GLXContext GetContext() const { return m_context; }
+
   std::unique_ptr<GLContext> CreateSharedContext() override;
 
   bool MakeCurrent() override;

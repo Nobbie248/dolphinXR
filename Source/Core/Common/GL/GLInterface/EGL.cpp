@@ -175,7 +175,7 @@ bool GLContextEGL::Initialize(const WindowSystemInfo& wsi, bool stereo, bool cor
                    EGL_BLUE_SIZE,
                    8,
                    EGL_SURFACE_TYPE,
-                   IsHeadless() ? 0 : EGL_WINDOW_BIT,
+                   IsHeadless() ? EGL_PBUFFER_BIT : EGL_WINDOW_BIT,
                    EGL_NONE};
 
   std::vector<EGLint> ctx_attribs;
@@ -310,10 +310,14 @@ bool GLContextEGL::CreateWindowSurface()
     m_backbuffer_width = static_cast<int>(surface_width);
     m_backbuffer_height = static_cast<int>(surface_height);
   }
-  else if (!m_supports_surfaceless)
+  else
   {
+    // Always use a pbuffer for headless contexts, even when surfaceless contexts are
+    // supported: Meta's GLES OpenXR runtime requires the app's context to be current
+    // on a real (non-window) surface — with EGL_NO_SURFACE the session never receives
+    // any state events. This mirrors the "tiny surface" from Meta's GLES samples.
     EGLint attrib_list[] = {
-        EGL_NONE,
+        EGL_WIDTH, 1280, EGL_HEIGHT, 720, EGL_NONE,
     };
     m_egl_surface = eglCreatePbufferSurface(m_egl_display, m_config, attrib_list);
     if (!m_egl_surface)
@@ -321,10 +325,8 @@ bool GLContextEGL::CreateWindowSurface()
       INFO_LOG_FMT(VIDEO, "Error: eglCreatePbufferSurface failed");
       return false;
     }
-  }
-  else
-  {
-    m_egl_surface = EGL_NO_SURFACE;
+    m_backbuffer_width = 1280;
+    m_backbuffer_height = 720;
   }
   return true;
 }

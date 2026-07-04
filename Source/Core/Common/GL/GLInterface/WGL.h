@@ -14,6 +14,10 @@ public:
 
   bool IsHeadless() const override;
 
+  NativeContextType GetNativeContextType() const override { return NativeContextType::WGL; }
+  HDC GetDCHandle() const { return m_dc; }
+  HGLRC GetRCHandle() const { return m_rc; }
+
   std::unique_ptr<GLContext> CreateSharedContext() override;
 
   bool MakeCurrent() override;

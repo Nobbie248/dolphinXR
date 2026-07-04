@@ -21,10 +21,24 @@ public:
     OpenGLES
   };
 
+  // Identifies the platform implementation behind this context, so consumers that
+  // need native handles (e.g. OpenXR graphics bindings) can downcast safely.
+  enum class NativeContextType
+  {
+    Unknown,
+    WGL,
+    GLX,
+    EGL,
+    AGL,
+    BGL
+  };
+
   virtual ~GLContext();
 
   Mode GetMode() const { return m_opengl_mode; }
   bool IsGLES() const { return m_opengl_mode == Mode::OpenGLES; }
+
+  virtual NativeContextType GetNativeContextType() const { return NativeContextType::Unknown; }
 
   u32 GetBackBufferWidth() const { return m_backbuffer_width; }
   u32 GetBackBufferHeight() const { return m_backbuffer_height; }

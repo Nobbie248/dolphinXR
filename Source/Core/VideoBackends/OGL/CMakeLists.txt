@@ -36,3 +36,12 @@ if(MSVC)
   # Add precompiled header
   target_link_libraries(videoogl PRIVATE use_pch)
 endif()
+
+if(ENABLE_VR)
+  target_sources(videoogl PRIVATE
+    OGLOpenXR.cpp
+    OGLOpenXR.h
+  )
+  target_link_libraries(videoogl PRIVATE openxr_loader)
+  target_include_directories(videoogl PRIVATE "${CMAKE_SOURCE_DIR}/Externals/OpenXR/include")
+endif()

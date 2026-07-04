@@ -22,6 +22,12 @@ public:
   explicit OGLTexture(const TextureConfig& tex_config, std::string_view name);
   ~OGLTexture() override;
 
+  // Wraps an externally-owned GL texture (e.g. an OpenXR swapchain image). The texture
+  // name is not deleted on destruction. config must describe the existing allocation
+  // (currently restricted to non-multisampled Texture_2D with 1 level / 1 layer).
+  static std::unique_ptr<OGLTexture> CreateAdopted(GLuint texture_id, const TextureConfig& config,
+                                                   std::string_view name = "");
+
   void CopyRectangleFromTexture(const AbstractTexture* src,
                                 const MathUtil::Rectangle<int>& src_rect, u32 src_layer,
                                 u32 src_level, const MathUtil::Rectangle<int>& dst_rect,
@@ -59,12 +65,15 @@ public:
   GLenum GetGLFormatForImageTexture() const;
 
 private:
+  OGLTexture(const TextureConfig& tex_config, GLuint adopted_texture_id, std::string_view name);
+
   void BlitFramebuffer(OGLTexture* srcentry, const MathUtil::Rectangle<int>& src_rect,
                        u32 src_layer, u32 src_level, const MathUtil::Rectangle<int>& dst_rect,
                        u32 dst_layer, u32 dst_level);
 
   GLuint m_texId;
   std::string m_name;
+  bool m_owns_texture = true;
 };
 
 class OGLStagingTexture final : public AbstractStagingTexture

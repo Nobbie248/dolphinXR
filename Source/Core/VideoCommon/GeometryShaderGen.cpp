@@ -290,7 +290,12 @@ ShaderCode GenerateGeometryShaderCode(APIType api_type, const ShaderHostConfig& 
       // VR replaces pos entirely — recalculate clip distances for the new position.
       if (host_config.backend_depth_clamp)
       {
-        if (api_type == APIType::Vulkan)
+        // GL enables GL_CLIP_DISTANCE0/1 globally and Vulkan always honors the GS
+        // ClipDistance builtin, so neutralize both planes — the VR-projected position
+        // no longer matches the console clip volume they encode (post-remap z >= 0
+        // makes -f.pos.z clip every vertex). D3D routes GS clipDist through TEXCOORD
+        // semantics (never clipped), so it keeps the original expressions.
+        if (api_type == APIType::Vulkan || api_type == APIType::OpenGL)
           out.Write("\t\tf.clipDist0 = 1.0;\n\t\tf.clipDist1 = 1.0;\n");
         else
           out.Write("\t\tf.clipDist0 = f.pos.z + f.pos.w;\n\t\tf.clipDist1 = -f.pos.z;\n");
@@ -335,7 +340,12 @@ ShaderCode GenerateGeometryShaderCode(APIType api_type, const ShaderHostConfig& 
       out.Write("\t\tf.pos.xy = f.pos.xy - f.pos.w * " I_VR_PIXELCENTER ".xy;\n");
       if (host_config.backend_depth_clamp)
       {
-        if (api_type == APIType::Vulkan)
+        // GL enables GL_CLIP_DISTANCE0/1 globally and Vulkan always honors the GS
+        // ClipDistance builtin, so neutralize both planes — the VR-projected position
+        // no longer matches the console clip volume they encode (post-remap z >= 0
+        // makes -f.pos.z clip every vertex). D3D routes GS clipDist through TEXCOORD
+        // semantics (never clipped), so it keeps the original expressions.
+        if (api_type == APIType::Vulkan || api_type == APIType::OpenGL)
           out.Write("\t\tf.clipDist0 = 1.0;\n\t\tf.clipDist1 = 1.0;\n");
         else
           out.Write("\t\tf.clipDist0 = f.pos.z + f.pos.w;\n\t\tf.clipDist1 = -f.pos.z;\n");
@@ -393,7 +403,12 @@ ShaderCode GenerateGeometryShaderCode(APIType api_type, const ShaderHostConfig& 
       out.Write("\t\tf.pos.xy = f.pos.xy - f.pos.w * " I_VR_PIXELCENTER ".xy;\n");
       if (host_config.backend_depth_clamp)
       {
-        if (api_type == APIType::Vulkan)
+        // GL enables GL_CLIP_DISTANCE0/1 globally and Vulkan always honors the GS
+        // ClipDistance builtin, so neutralize both planes — the VR-projected position
+        // no longer matches the console clip volume they encode (post-remap z >= 0
+        // makes -f.pos.z clip every vertex). D3D routes GS clipDist through TEXCOORD
+        // semantics (never clipped), so it keeps the original expressions.
+        if (api_type == APIType::Vulkan || api_type == APIType::OpenGL)
           out.Write("\t\tf.clipDist0 = 1.0;\n\t\tf.clipDist1 = 1.0;\n");
         else
           out.Write("\t\tf.clipDist0 = f.pos.z + f.pos.w;\n\t\tf.clipDist1 = -f.pos.z;\n");
@@ -456,7 +471,12 @@ ShaderCode GenerateGeometryShaderCode(APIType api_type, const ShaderHostConfig& 
       out.Write("\t\tf.pos.xy = f.pos.xy - f.pos.w * " I_VR_PIXELCENTER ".xy;\n");
       if (host_config.backend_depth_clamp)
       {
-        if (api_type == APIType::Vulkan)
+        // GL enables GL_CLIP_DISTANCE0/1 globally and Vulkan always honors the GS
+        // ClipDistance builtin, so neutralize both planes — the VR-projected position
+        // no longer matches the console clip volume they encode (post-remap z >= 0
+        // makes -f.pos.z clip every vertex). D3D routes GS clipDist through TEXCOORD
+        // semantics (never clipped), so it keeps the original expressions.
+        if (api_type == APIType::Vulkan || api_type == APIType::OpenGL)
           out.Write("\t\tf.clipDist0 = 1.0;\n\t\tf.clipDist1 = 1.0;\n");
         else
           out.Write("\t\tf.clipDist0 = f.pos.z + f.pos.w;\n\t\tf.clipDist1 = -f.pos.z;\n");

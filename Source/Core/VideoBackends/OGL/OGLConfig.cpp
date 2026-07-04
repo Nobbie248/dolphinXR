@@ -335,6 +335,9 @@ bool PopulateConfig(GLContext* m_main_gl_context)
   g_ogl_config.bSupportsImageLoadStore = GLExtensions::Supports("GL_ARB_shader_image_load_store");
   g_ogl_config.bSupportsConservativeDepth = GLExtensions::Supports("GL_ARB_conservative_depth");
   g_ogl_config.bSupportsAniso = GLExtensions::Supports("GL_EXT_texture_filter_anisotropic");
+  // GLES always encodes on render-to-sRGB unless this extension allows turning it off
+  // (used by the OpenXR GL swapchain path). Desktop GL has GL_FRAMEBUFFER_SRGB in core.
+  g_ogl_config.bSupportsSRGBWriteControl = GLExtensions::Supports("GL_EXT_sRGB_write_control");
   g_backend_info.bSupportsComputeShaders = GLExtensions::Supports("GL_ARB_compute_shader");
   g_backend_info.bSupportsST3CTextures = GLExtensions::Supports("GL_EXT_texture_compression_s3tc");
   g_backend_info.bSupportsBPTCTextures = GLExtensions::Supports("GL_ARB_texture_compression_bptc");

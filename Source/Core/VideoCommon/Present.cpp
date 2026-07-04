@@ -127,7 +127,17 @@ bool Presenter::Initialize()
 
   m_immediate_swap_happened_this_field.store(false, std::memory_order_relaxed);
 
-  if (!g_gfx->IsHeadless())
+#ifdef ENABLE_VR
+  // The Android GLES OpenXR path uses a headless (pbuffer) GL context — Meta's runtime
+  // never starts sessions for GLES contexts bound to a window surface — but the presenter
+  // must still fully initialize (post processor for the eye blits) and present each frame
+  // (Present() drives the XR frame lifecycle).
+  const bool xr_headless_present = g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
+                                   g_backend_info.api_type == APIType::OpenGL;
+#else
+  constexpr bool xr_headless_present = false;
+#endif
+  if (!g_gfx->IsHeadless() || xr_headless_present)
   {
     SetBackbuffer(g_gfx->GetSurfaceInfo());
 
@@ -1229,7 +1239,15 @@ void Presenter::Present(PresentInfo* present_info)
 {
   m_present_count++;
 
-  if (g_gfx->IsHeadless() || (!m_onscreen_ui && !m_xfb_entry))
+#ifdef ENABLE_VR
+  // See Initialize(): the Android GLES OpenXR path runs with a headless GL context, but
+  // Present() must still run — it pumps the XR event loop and performs the eye blits.
+  const bool xr_headless_present = g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
+                                   g_backend_info.api_type == APIType::OpenGL;
+#else
+  constexpr bool xr_headless_present = false;
+#endif
+  if ((g_gfx->IsHeadless() && !xr_headless_present) || (!m_onscreen_ui && !m_xfb_entry))
     return;
 
   if (!g_gfx->SupportsUtilityDrawing())
@@ -1269,9 +1287,15 @@ void Presenter::Present(PresentInfo* present_info)
   // First real frame: if no pre-begun frame exists, start it here.
   const bool is_replay_present = VideoCommon::OpenXROpcodeReplay::IsReplaying();
 #if defined(ANDROID)
+  // GLES is always direct-to-HMD: eglSwapBuffers on the activity surface has FIFO
+  // semantics, and in immersive mode the shell never consumes those buffers, so the
+  // mirror path deadlocks the GPU thread once the queue fills (before the XR session
+  // can even leave IDLE). Vulkan's swapchain acquire tolerates the unconsumed surface,
+  // so it keeps honoring the config option.
   const bool openxr_direct_to_hmd = g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
                                     VR::g_openxr &&
-                                    g_ActiveConfig.vr_android_direct_to_hmd;
+                                    (g_ActiveConfig.vr_android_direct_to_hmd ||
+                                     g_backend_info.api_type == APIType::OpenGL);
 #else
   constexpr bool openxr_direct_to_hmd = false;
 #endif

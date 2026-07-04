@@ -17,6 +17,11 @@ public:
 
   bool IsHeadless() const override;
 
+  NativeContextType GetNativeContextType() const override { return NativeContextType::EGL; }
+  EGLDisplay GetEGLDisplay() const { return m_egl_display; }
+  EGLConfig GetEGLConfig() const { return m_config; }
+  EGLContext GetEGLContext() const { return m_egl_context; }
+
   std::unique_ptr<GLContext> CreateSharedContext() override;
 
   bool MakeCurrent() override;

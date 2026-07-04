@@ -76,6 +76,7 @@ struct VideoConfig
   EsFbFetchType SupportedFramebufferFetch;
   bool bSupportsKHRShaderSubgroup;  // basic + arithmetic + ballot
   bool bSupportsExplicitLayoutInShader;
+  bool bSupportsSRGBWriteControl;  // GL_EXT_sRGB_write_control (GLES)
 
   const char* gl_vendor;
   const char* gl_renderer;

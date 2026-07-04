@@ -123,15 +123,13 @@ OGLGfx::OGLGfx(std::unique_ptr<GLContext> main_gl_context, float backbuffer_scal
       m_current_blend_state(RenderState::GetInvalidBlendingState()),
       m_backbuffer_scale(backbuffer_scale)
 {
-  // Create the window framebuffer.
-  if (!m_main_gl_context->IsHeadless())
-  {
-    m_system_framebuffer = std::make_unique<OGLFramebuffer>(
-        nullptr, nullptr, std::vector<AbstractTexture*>{}, AbstractTextureFormat::RGBA8,
-        AbstractTextureFormat::Undefined, std::max(m_main_gl_context->GetBackBufferWidth(), 1u),
-        std::max(m_main_gl_context->GetBackBufferHeight(), 1u), 1, 1, 0);
-    m_current_framebuffer = m_system_framebuffer.get();
-  }
+  // Create the window framebuffer. FBO 0 also exists for headless (pbuffer) contexts —
+  // the Android OpenXR path uses one and still runs the presenter for the XR frame loop.
+  m_system_framebuffer = std::make_unique<OGLFramebuffer>(
+      nullptr, nullptr, std::vector<AbstractTexture*>{}, AbstractTextureFormat::RGBA8,
+      AbstractTextureFormat::Undefined, std::max(m_main_gl_context->GetBackBufferWidth(), 1u),
+      std::max(m_main_gl_context->GetBackBufferHeight(), 1u), 1, 1, 0);
+  m_current_framebuffer = m_system_framebuffer.get();
 
   if (!m_main_gl_context->IsGLES())
   {
@@ -171,9 +169,15 @@ OGLGfx::OGLGfx(std::unique_ptr<GLContext> main_gl_context, float backbuffer_scal
     }
   }
 
-  // Handle VSync on/off
+  // Handle VSync on/off. When an OpenXR session drives frame pacing (xrWaitFrame),
+  // the mirror-window swap must never block on the monitor's vertical blank, or a
+  // 60 Hz monitor would throttle a 90 Hz HMD.
   if (!DriverDetails::HasBug(DriverDetails::BUG_BROKEN_VSYNC))
-    m_main_gl_context->SwapInterval(g_ActiveConfig.bVSyncActive);
+  {
+    const bool vsync =
+        g_ActiveConfig.bVSyncActive && g_ActiveConfig.stereo_mode != StereoMode::OpenXR;
+    m_main_gl_context->SwapInterval(vsync);
+  }
 
   if (g_backend_info.bSupportsClipControl)
     glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
@@ -386,7 +390,12 @@ void OGLGfx::ClearRegion(const MathUtil::Rectangle<int>& target_rc, bool colorEn
   if (zEnable)
   {
     glDepthMask(zEnable ? GL_TRUE : GL_FALSE);
-    glClearDepthf(float(z & 0xFFFFFF) / 16777216.0f);
+    float clear_depth = float(z & 0xFFFFFF) / 16777216.0f;
+    // Match AbstractGfx::ClearRegion: under the inverted-depth-range (Reverse-Z)
+    // convention (OpenXR mode), depth-buffer values are stored inverted.
+    if (!g_backend_info.bSupportsReversedDepthRange)
+      clear_depth = 1.0f - clear_depth;
+    glClearDepthf(clear_depth);
     clear_mask |= GL_DEPTH_BUFFER_BIT;
   }
 
@@ -438,7 +447,12 @@ void OGLGfx::OnConfigChanged(u32 bits)
   AbstractGfx::OnConfigChanged(bits);
 
   if (bits & CONFIG_CHANGE_BIT_VSYNC && !DriverDetails::HasBug(DriverDetails::BUG_BROKEN_VSYNC))
-    m_main_gl_context->SwapInterval(g_ActiveConfig.bVSyncActive);
+  {
+    // Keep the mirror-window swap non-blocking while OpenXR paces the frame loop.
+    const bool vsync =
+        g_ActiveConfig.bVSyncActive && g_ActiveConfig.stereo_mode != StereoMode::OpenXR;
+    m_main_gl_context->SwapInterval(vsync);
+  }
 
   if (bits & CONFIG_CHANGE_BIT_ANISOTROPY)
     g_sampler_cache->Clear();
@@ -528,8 +542,18 @@ void OGLGfx::ApplyDepthState(const DepthState state)
   if (m_current_depth_state == state)
     return;
 
-  const GLenum glCmpFuncs[8] = {GL_NEVER,   GL_LESS,     GL_EQUAL,  GL_LEQUAL,
-                                GL_GREATER, GL_NOTEQUAL, GL_GEQUAL, GL_ALWAYS};
+  // Less/greater are swapped when the inverted-depth-range (Reverse-Z) convention is
+  // used instead of a native reversed depth range (mirrors GetVulkanDepthStencilState).
+  // Today this only happens in OpenXR mode, where GL takes the D3D11 depth path.
+  const bool inverted_depth = !g_backend_info.bSupportsReversedDepthRange;
+  const GLenum glCmpFuncs[8] = {GL_NEVER,
+                                static_cast<GLenum>(inverted_depth ? GL_GREATER : GL_LESS),
+                                GL_EQUAL,
+                                static_cast<GLenum>(inverted_depth ? GL_GEQUAL : GL_LEQUAL),
+                                static_cast<GLenum>(inverted_depth ? GL_LESS : GL_GREATER),
+                                GL_NOTEQUAL,
+                                static_cast<GLenum>(inverted_depth ? GL_LEQUAL : GL_GEQUAL),
+                                GL_ALWAYS};
 
   if (state.test_enable)
   {

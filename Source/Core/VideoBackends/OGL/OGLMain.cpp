@@ -54,6 +54,11 @@ Make AA apply instantly during gameplay if possible
 #include "VideoBackends/OGL/ProgramShaderCache.h"
 #include "VideoBackends/OGL/SamplerCache.h"
 
+#ifdef ENABLE_VR
+#include "Common/Logging/Log.h"
+#include "VideoBackends/OGL/OGLOpenXR.h"
+#endif
+
 #include "VideoCommon/TextureCacheBase.h"
 #include "VideoCommon/VideoCommon.h"
 #include "VideoCommon/VideoConfig.h"
@@ -121,7 +126,18 @@ bool VideoBackend::FillBackendInfo(GLContext* context)
   g_backend_info.bSupports3DVision = false;
   g_backend_info.bSupportsPostProcessing = true;
   g_backend_info.bSupportsSSAA = true;
+#ifdef ENABLE_VR
+  // In OpenXR mode, take the inverted-depth-range (Reverse-Z trick) path that D3D11 and
+  // Quest Vulkan use instead of GL's native reversed depth range. With the native path,
+  // inverted game viewports (zRange < 0 — most titles) make UseVertexDepthRange() false,
+  // so the VR geometry shader emits raw depth and relies on the per-draw hardware depth
+  // slice — a pairing the VR clip-space rebuild was never validated on (SADX/SA2/MKDD
+  // render nothing with Fast Depth Calculation enabled). The D3D convention bakes the
+  // full depth mapping into the shader via depth_params and is fully supported by GL.
+  g_backend_info.bSupportsReversedDepthRange = g_Config.stereo_mode != StereoMode::OpenXR;
+#else
   g_backend_info.bSupportsReversedDepthRange = true;
+#endif
   g_backend_info.bSupportsLogicOp = true;
   g_backend_info.bSupportsMultithreading = false;
   g_backend_info.bSupportsCopyToVram = true;
@@ -194,8 +210,23 @@ bool VideoBackend::FillBackendInfo(GLContext* context)
 
 bool VideoBackend::Initialize(const WindowSystemInfo& wsi)
 {
+  WindowSystemInfo gl_wsi = wsi;
+#if defined(ANDROID) && defined(ENABLE_VR)
+  if (g_Config.stereo_mode == StereoMode::OpenXR)
+  {
+    // Meta's GLES OpenXR path (inherited from VrApi) requires that the app's EGL
+    // context is NOT current on an Android window surface — the compositor owns the
+    // display, and the runtime keeps the session parked in XR_SESSION_STATE_IDLE
+    // (never READY) while the context is bound to a real window. Create a headless
+    // context (surfaceless or pbuffer) instead, like Meta's own GLES samples do.
+    // Presentation goes exclusively through the XR swapchains on this path.
+    gl_wsi.type = WindowSystemType::Headless;
+    gl_wsi.render_window = nullptr;
+    gl_wsi.render_surface = nullptr;
+  }
+#endif
   std::unique_ptr<GLContext> main_gl_context =
-      GLContext::Create(wsi, g_Config.stereo_mode == StereoMode::QuadBuffer, true, false,
+      GLContext::Create(gl_wsi, g_Config.stereo_mode == StereoMode::QuadBuffer, true, false,
                         Config::Get(Config::GFX_PREFER_GLES));
   if (!main_gl_context)
     return false;
@@ -211,12 +242,42 @@ bool VideoBackend::Initialize(const WindowSystemInfo& wsi)
   auto perf_query = GetPerfQuery(gfx->IsGLES());
   auto bounding_box = std::make_unique<OGLBoundingBox>();
 
-  return InitializeShared(std::move(gfx), std::move(vertex_manager), std::move(perf_query),
-                          std::move(bounding_box));
+  if (!InitializeShared(std::move(gfx), std::move(vertex_manager), std::move(perf_query),
+                        std::move(bounding_box)))
+  {
+    return false;
+  }
+
+#ifdef ENABLE_VR
+  // OpenXR init must run after InitializeShared(): creating the eye-swapchain wrappers
+  // goes through OGLFramebuffer::Create() / ~OGLTexture(), which dereference the g_gfx
+  // global (null until InitializeShared assigns it).
+  if (g_Config.stereo_mode == StereoMode::OpenXR)
+  {
+    auto openxr = std::make_unique<OGLOpenXR>();
+    if (!openxr->Initialize(GetOGLGfx()->GetMainGLContext()))
+    {
+      WARN_LOG_FMT(VIDEO, "OpenXR initialization failed; continuing without VR.");
+    }
+    else
+    {
+      g_openxr_gl = std::move(openxr);
+    }
+  }
+#endif
+
+  return true;
 }
 
 void VideoBackend::Shutdown()
 {
+#ifdef ENABLE_VR
+  // Shut down VR while the GL context is still alive and current on this thread:
+  // g_openxr_gl first (releases the OGLTexture/OGLFramebuffer wrappers, then destroys
+  // swapchains/session/instance), then a defensive g_openxr reset.
+  g_openxr_gl.reset();
+  VR::g_openxr.reset();
+#endif
   ShutdownShared();
 
   ProgramShaderCache::Shutdown();

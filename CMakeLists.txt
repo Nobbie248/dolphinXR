@@ -93,7 +93,7 @@ option(ENABLE_CUBEB "Enables Cubeb sound backend" ON)
 option(ENABLE_LLVM "Enables LLVM support, for disassembly" ON)
 option(ENABLE_TESTS "Enables building the unit tests" ON)
 option(ENABLE_VULKAN "Enables vulkan video backend" ON)
-option(ENABLE_VR "Enables VR support via OpenXR (Windows D3D/Vulkan, Linux Vulkan, Android Vulkan)" OFF)
+option(ENABLE_VR "Enables VR support via OpenXR (Windows D3D/Vulkan/OpenGL, Linux Vulkan/OpenGL, Android Vulkan/GLES)" OFF)
 option(USE_DISCORD_PRESENCE "Enables Discord Rich Presence, show the current game on Discord" ON)
 option(USE_MGBA "Enables GBA controllers emulation using libmgba" ON)
 option(ENABLE_AUTOUPDATE "Enables support for automatic updates" ON)
@@ -661,11 +661,12 @@ endif()
 
 if(ENABLE_VR AND NOT DOLPHIN_OPENXR_SUPPORTED_PLATFORM)
   message(WARNING "OpenXR VR is only supported on Windows, desktop Linux, and Android; disabling ENABLE_VR.")
-  set(ENABLE_VR OFF CACHE BOOL "Enables VR support via OpenXR (Windows D3D/Vulkan, Linux Vulkan, Android Vulkan)" FORCE)
+  set(ENABLE_VR OFF CACHE BOOL "Enables VR support via OpenXR (Windows D3D/Vulkan/OpenGL, Linux Vulkan/OpenGL, Android Vulkan/GLES)" FORCE)
 endif()
 
 if(ENABLE_VR AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT ENABLE_VULKAN)
-  message(FATAL_ERROR "Desktop Linux OpenXR VR requires ENABLE_VULKAN=ON.")
+  # OpenGL (GLX) is always built on desktop Linux, so VR remains usable without Vulkan.
+  message(STATUS "Desktop Linux OpenXR VR without ENABLE_VULKAN: only the OpenGL backend will support VR.")
 endif()
 
 if(ENABLE_VR)
