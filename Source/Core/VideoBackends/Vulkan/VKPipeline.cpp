@@ -278,11 +278,16 @@ std::unique_ptr<VKPipeline> VKPipeline::Create(const AbstractPipelineConfig& con
   // built against a multiview-compatible render pass — pipelines and framebuffers must
   // agree on view masks for compatibility (Vulkan render-pass-compatibility rules).
   const bool multiview_pass = config.framebuffer_state.multiview != 0;
+  const AbstractTextureFormat additional_format =
+      config.framebuffer_state.additional_color_texture_format;
   VkRenderPass render_pass = g_object_cache->GetRenderPass(
       VKTexture::GetVkFormatForHostTextureFormat(config.framebuffer_state.color_texture_format),
       VKTexture::GetVkFormatForHostTextureFormat(config.framebuffer_state.depth_texture_format),
       config.framebuffer_state.samples, VK_ATTACHMENT_LOAD_OP_LOAD,
-      config.framebuffer_state.additional_color_attachment_count, multiview_pass);
+      config.framebuffer_state.additional_color_attachment_count, multiview_pass,
+      config.framebuffer_state.additional_color_attachment_count == 0 ?
+          VK_FORMAT_UNDEFINED :
+          VKTexture::GetVkFormatForHostTextureFormat(additional_format));
 
   if (render_pass == VK_NULL_HANDLE)
   {
@@ -391,11 +396,14 @@ std::unique_ptr<VKPipeline> VKPipeline::Create(const AbstractPipelineConfig& con
 
   std::vector<VkPipelineColorBlendAttachmentState> blend_attachment_states;
   blend_attachment_states.push_back(blend_attachment_state);
-  // Right now all our attachments have the same state
+  const VkPipelineColorBlendAttachmentState additional_blend_attachment_state =
+      config.use_independent_blending ?
+          GetVulkanAttachmentBlendState(config.additional_blending_state, config.usage) :
+          blend_attachment_state;
   for (u8 i = 0; i < static_cast<u8>(config.framebuffer_state.additional_color_attachment_count);
        i++)
   {
-    blend_attachment_states.push_back(blend_attachment_state);
+    blend_attachment_states.push_back(additional_blend_attachment_state);
   }
   VkPipelineColorBlendStateCreateInfo blend_state =
       GetVulkanColorBlendState(config.blending_state, blend_attachment_states.data(),

@@ -26,7 +26,8 @@ enum class AbstractTextureFormat : u32
   R32F,
   D32F,
   D32F_S8,
-  Undefined
+  Undefined,
+  R8
 };
 
 enum class StagingTextureType

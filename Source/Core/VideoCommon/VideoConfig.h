@@ -72,6 +72,12 @@ enum class OpenXRTrackingMode : int
   None = 2,
 };
 
+enum class VRPassthroughCoverageMode : int
+{
+  Exact = 0,
+  Fast = 1,
+};
+
 enum class ShaderCompilationMode : int
 {
   Synchronous,
@@ -153,6 +159,7 @@ enum ConfigChangeBits : u32
   CONFIG_CHANGE_BIT_ASPECT_RATIO = (1 << 8),
   CONFIG_CHANGE_BIT_POST_PROCESSING_SHADER = (1 << 9),
   CONFIG_CHANGE_BIT_HDR = (1 << 10),
+  CONFIG_CHANGE_BIT_VR_PASSTHROUGH = (1 << 11),
 };
 
 // Static config per API
@@ -214,6 +221,10 @@ struct BackendInfo
   bool bSupportsHDROutput = false;
   bool bSupportsUnrestrictedDepthRange = false;
   bool bSupportsMultiview = false;  // VK_KHR_multiview (Vulkan only); used for OpenXR stereo path
+  // Dedicated passthrough coverage is deliberately limited to Windows Vulkan.
+  bool bSupportsVRPassthroughCoverage = false;
+  u32 vr_passthrough_coverage_sample_counts = 0;
+  u32 max_fragment_dual_src_attachments = 0;
 };
 
 extern BackendInfo g_backend_info;
@@ -376,9 +387,18 @@ struct VideoConfig final
   bool vr_metroid_thermal_visor_fix = false;  // Preserve thermal EFB copy layers for MP1 Vulkan
   bool vr_metroid_d3d_thermal_palette_fix = false;  // Layered MP1 thermal palette conversion on D3D11
   bool vr_lock_head_pose = true;    // Snap head-pose updates to XFB-copy boundaries (FIFO order)
-  bool vr_ar_mode = false;          // Submit alpha-blended projection layer for headset passthrough
-  bool vr_ar_mode_debug = false;    // Fake AR effect: clear eye FB to solid magenta (no XR blend mode change)
-  float vr_ar_background_alpha = 0.0f;  // Eye-FB clear alpha when AR mode active (0 = transparent passthrough)
+  bool vr_passthrough = false;  // Show the headset camera feed behind unrendered (transparent) areas
+  // Reveal EFB regions untouched by game color draws or clears. Off initializes coverage
+  // opaque so only elements marked with Passthrough overrides make holes.
+  bool vr_passthrough_remove_black_bg = true;
+  // (Near-)black EFB color clears mark their region as unrendered instead of covered, so
+  // menus and skyless scenes (games clear fullscreen to black every frame) reveal the
+  // camera feed. Non-black clears always cover.
+  bool vr_passthrough_remove_black_clears = true;
+  // Whole-scene opacity over the camera feed (1 = opaque scene, 0 = camera only).
+  float vr_passthrough_scene_opacity = 1.0f;
+  VRPassthroughCoverageMode vr_passthrough_coverage_mode =
+      VRPassthroughCoverageMode::Exact;
   float vr_gamma = 1.0f;  // Gamma for VR eye output (1.0=off, 2.2=sRGB, adjustable per headset)
   float vr_layer_offset = 0.002f;
   float vr_element_depth = 0.001f;
@@ -432,6 +452,14 @@ struct VideoConfig final
     return bPreferVSForLinePointExpansion;
   }
   bool MultisamplingEnabled() const { return iMultisamples > 1; }
+  // VR passthrough (headset camera feed behind unrendered areas) is only meaningful
+  // while rendering through OpenXR.
+  bool VRPassthroughEnabled() const
+  {
+    return vr_passthrough && stereo_mode == StereoMode::OpenXR &&
+           g_backend_info.bSupportsVRPassthroughCoverage &&
+           (g_backend_info.vr_passthrough_coverage_sample_counts & iMultisamples) != 0;
+  }
   bool ExclusiveFullscreenEnabled() const
   {
     return g_backend_info.bSupportsExclusiveFullscreen && !bBorderlessFullscreen;

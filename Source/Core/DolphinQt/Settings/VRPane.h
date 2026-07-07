@@ -19,6 +19,7 @@ enum class OpenXROpcodeReplayMode : int;
 enum class OpenXRMirrorView : int;
 enum class OpenXRReferenceSpaceMode : int;
 enum class OpenXRTrackingMode : int;
+enum class VRPassthroughCoverageMode : int;
 
 namespace Core
 {
@@ -69,9 +70,12 @@ private:
   ConfigBool* m_detect_skybox = nullptr;
   ConfigBool* m_lock_head_pose = nullptr;
   ConfigBool* m_use_vulkan_multiview = nullptr;
-  ConfigBool* m_ar_mode = nullptr;
-  ConfigFloatSlider* m_ar_background_alpha = nullptr;
-  QLabel* m_ar_background_alpha_value = nullptr;
+  ConfigBool* m_passthrough = nullptr;
+  ConfigBool* m_passthrough_remove_black_bg = nullptr;
+  ConfigBool* m_passthrough_remove_black_clears = nullptr;
+  ConfigFloatSlider* m_passthrough_scene_opacity = nullptr;
+  QLabel* m_passthrough_scene_opacity_value = nullptr;
+  ConfigChoiceMap<VRPassthroughCoverageMode>* m_passthrough_coverage_mode = nullptr;
   ConfigFloatSlider* m_vr_gamma = nullptr;
   QLabel* m_vr_gamma_value = nullptr;
   ConfigBool* m_auto_layer_spread = nullptr;
@@ -84,7 +88,6 @@ private:
   QPushButton* m_reset_general_settings = nullptr;
   ConfigBool* m_load_custom_shaders = nullptr;
   ConfigBool* m_enable_openxr_config_scene = nullptr;
-  ConfigBool* m_ar_mode_debug = nullptr;
   QPointer<CullingCodeFinderWidget> m_culling_finder_widget;
   QPointer<ShaderHunterWidget> m_shader_hunter_widget;
 };

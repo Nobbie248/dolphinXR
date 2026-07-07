@@ -44,12 +44,6 @@ object QuestVrSettings {
     fun controllerPresetSetting() =
         androidIntSetting("QuestControllerPreset", CONTROLLER_PRESET_GAMECUBE)
 
-    fun passthroughSetting() = vrBooleanSetting("ARMode", false)
-
-    fun debugPassthroughSetting() = vrBooleanSetting("ARModeDebug", false)
-
-    fun arBackgroundAlphaSetting() = vrFloatSetting("ARBackgroundAlpha", 0.0f)
-
     fun autoImmediateXfbSetting() = vrBooleanSetting("AutoImmediateXFB", true)
 
     fun autoVbiFromHmdSetting() = vrBooleanSetting("AutoVBIFromHMD", false)
@@ -141,8 +135,6 @@ object QuestVrSettings {
         androidDirectToHmdSetting().setBoolean(settings, true)
         removeBarsSetting().setBoolean(settings, true)
         virtualScreenSetting().setBoolean(settings, false)
-        passthroughSetting().setBoolean(settings, false)
-        debugPassthroughSetting().setBoolean(settings, false)
         BooleanSetting.GFX_HACK_IMMEDIATE_XFB.setBoolean(settings, true)
         BooleanSetting.GFX_HACK_VI_SKIP.setBoolean(settings, false)
         perfDefaultsAppliedSetting().setBoolean(settings, true)

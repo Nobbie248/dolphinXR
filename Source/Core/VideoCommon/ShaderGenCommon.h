@@ -119,6 +119,16 @@ protected:
   std::string m_buffer;
 };
 
+enum class VRPassthroughCoverageShaderMode : u32
+{
+  None = 0,
+  MRT = 1,
+  Prepass = 2,
+  CoverageOnly = 3,
+};
+
+VRPassthroughCoverageShaderMode GetVRPassthroughCoverageShaderMode();
+
 /**
  * Generates a shader constant profile which can be used to query which constants are used in a
  * shader
@@ -274,6 +284,7 @@ void WriteSwitch(ShaderCode& out, APIType ApiType, std::string_view variable,
 #define I_FOGRANGE "cfogrange"
 #define I_ZSLOPE "czslope"
 #define I_EFBSCALE "cefbscale"
+#define I_VR_PASSTHROUGH_ALPHA "cvr_passthrough_alpha"
 
 #define I_POSNORMALMATRIX "cpnmtx"
 #define I_PROJECTION "cproj"

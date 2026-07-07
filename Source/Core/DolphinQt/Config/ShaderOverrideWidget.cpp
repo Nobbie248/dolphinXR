@@ -203,6 +203,8 @@ void ShaderOverrideWidget::UpdateList()
                                ovr.handling == ShaderHunter::HandlingType::Flag        ? "flag" :
                                ovr.handling == ShaderHunter::HandlingType::UnitsPerMeter ?
                                    "units_per_meter" :
+                               ovr.handling == ShaderHunter::HandlingType::Passthrough ?
+                                   "passthrough" :
                                                                                          "skip";
 
     QString label;
@@ -244,6 +246,10 @@ void ShaderOverrideWidget::UpdateList()
     else if (ovr.handling == ShaderHunter::HandlingType::UnitsPerMeter && ovr.units_per_meter > 0.0f)
     {
       label += QStringLiteral(" UPM%1").arg(ovr.units_per_meter, 0, 'f', 2);
+    }
+    else if (ovr.handling == ShaderHunter::HandlingType::Passthrough)
+    {
+      label += QStringLiteral(" O%1").arg(ovr.passthrough_opacity, 0, 'f', 2);
     }
 
     if (ovr.hash_family_match)

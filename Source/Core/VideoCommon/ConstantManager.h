@@ -60,6 +60,9 @@ struct alignas(16) PixelShaderConstants
   LogicOp logic_op_mode;
   // For custom shaders...
   u32 time_ms;
+  // Dedicated VR passthrough coverage written by game draws. 1.0 marks pixels as covered;
+  // Passthrough element overrides replace it with their configured opacity.
+  float vr_passthrough_alpha;
 };
 
 struct alignas(16) VertexShaderConstants

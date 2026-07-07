@@ -927,6 +927,10 @@ void VertexManagerBase::Flush()
   auto& xf_state_manager = system.GetXFStateManager();
   bool committed_hide_object_capture = false;
 
+  // VR passthrough: coverage defaults to fully opaque each draw; a matching
+  // Passthrough override below replaces it with the element's opacity for this draw.
+  pixel_shader_manager.SetVRPassthroughAlpha(1.0f);
+
   if (g_ActiveConfig.bGraphicMods)
   {
     const double seconds_elapsed =
@@ -1237,6 +1241,7 @@ void VertexManagerBase::Flush()
             int manual_layer = -1;
             float element_depth = -1.0f;
             float units_per_meter = -1.0f;
+            float passthrough_opacity = 0.0f;
             const MetroidHydraHudSettings metroid_hydra_hud =
                 metroid_profile_active ?
                     GetMetroidHydraHudSettings(metroid_profile, metroid_layer, m_metroid_game_id) :
@@ -1256,6 +1261,10 @@ void VertexManagerBase::Flush()
               {
                 units_per_meter = elements.GetOverrideUnitsPerMeter(*element_draw);
               }
+              else if (handling == ShaderHunter::HandlingType::Passthrough)
+              {
+                passthrough_opacity = elements.GetOverridePassthroughOpacity(*element_draw);
+              }
             }
             else if (hunter_has_overrides)
             {
@@ -1270,13 +1279,18 @@ void VertexManagerBase::Flush()
               {
                 units_per_meter = hunter.GetOverrideUnitsPerMeter(vs_hash, ps_hash, gs_hash);
               }
+              else if (handling == ShaderHunter::HandlingType::Passthrough)
+              {
+                passthrough_opacity =
+                    hunter.GetOverridePassthroughOpacity(vs_hash, ps_hash, gs_hash);
+              }
             }
             // Texture Element Override (fallback): match purely on bound texture hash, applied
             // only when neither Elements nor Shader overrides produced a handling for this draw.
             if (handling == ShaderHunter::HandlingType::Skip && texmgr_has_overrides)
             {
               handling = texmgr.GetHandlingForTextures(tex_hashes, &manual_layer, &element_depth,
-                                                       &units_per_meter);
+                                                       &units_per_meter, &passthrough_opacity);
             }
             if (handling == ShaderHunter::HandlingType::Skip && metroid_profile_active)
               handling = GetMetroidLayerBehavior(metroid_layer).handling;
@@ -1359,6 +1373,13 @@ void VertexManagerBase::Flush()
             {
               if (units_per_meter > 0.0f)
                 geometry_shader_manager.vr_units_per_meter_override = units_per_meter;
+            }
+            else if (handling == ShaderHunter::HandlingType::Passthrough)
+            {
+              // PS-side only: the draw keeps its normal projection; its pixels write the
+              // override's opacity into the coverage target, becoming a camera window.
+              pixel_shader_manager.SetVRPassthroughAlpha(
+                  std::clamp(passthrough_opacity, 0.0f, 1.0f));
             }
             else
             {
@@ -1724,6 +1745,7 @@ void VertexManagerBase::UpdatePipelineObject()
     return;
 
   m_current_pipeline_object = nullptr;
+  m_current_pipeline_is_uber = false;
   m_pipeline_config_changed = false;
 
   switch (g_ActiveConfig.iShaderCompilationMode)
@@ -1738,6 +1760,7 @@ void VertexManagerBase::UpdatePipelineObject()
   case ShaderCompilationMode::SynchronousUberShaders:
   {
     // Exclusive ubershader mode, always use ubershaders.
+    m_current_pipeline_is_uber = true;
     m_current_pipeline_object =
         g_shader_cache->GetUberPipelineForUid(m_current_uber_pipeline_config);
   }
@@ -1758,6 +1781,7 @@ void VertexManagerBase::UpdatePipelineObject()
     if (g_ActiveConfig.iShaderCompilationMode == ShaderCompilationMode::AsynchronousUberShaders)
     {
       // Specialized shaders not ready, use the ubershaders.
+      m_current_pipeline_is_uber = true;
       m_current_pipeline_object =
           g_shader_cache->GetUberPipelineForUid(m_current_uber_pipeline_config);
     }
@@ -1936,12 +1960,6 @@ void VertexManagerBase::RenderDrawCall(
   pixel_shader_manager.custom_constants = custom_pixel_shader_uniforms;
   UploadUniforms();
 
-  g_gfx->SetPipeline(current_pipeline);
-
-  // Shader Hunter pink highlight: override PS after pipeline is set (like 3DMigoto).
-  if (m_force_pink_ps && m_pink_pixel_shader)
-    g_gfx->SetForcePixelShader(m_pink_pixel_shader.get());
-
   u32 base_vertex, base_index;
   CommitBuffer(m_index_generator.GetNumVerts(),
                VertexLoaderManager::GetCurrentVertexFormat()->GetVertexStride(),
@@ -1955,6 +1973,40 @@ void VertexManagerBase::RenderDrawCall(
     // (The shader adds this after shifting right on D3D, so no need to do this)
     base_vertex <<= 2;
   }
+
+  VRPassthroughCoverageShaderMode coverage_mode =
+      m_current_pipeline_is_uber ?
+          m_current_uber_pipeline_config.ps_uid.GetUidData()->vr_coverage_mode :
+          m_current_pipeline_config.ps_uid.GetUidData()->vr_coverage_mode;
+  if (!custom_pixel_shader_contents.shaders.empty() &&
+      g_framebuffer_manager->HasEFBCoverage())
+  {
+    coverage_mode = VRPassthroughCoverageShaderMode::Prepass;
+  }
+
+  if (coverage_mode == VRPassthroughCoverageShaderMode::Prepass)
+  {
+    const AbstractPipeline* const coverage_pipeline =
+        m_current_pipeline_is_uber ?
+            g_shader_cache->GetCoverageUberPipelineForUid(m_current_uber_pipeline_config) :
+            g_shader_cache->GetCoveragePipelineForUid(m_current_pipeline_config);
+    if (coverage_pipeline)
+    {
+      g_framebuffer_manager->BindEFBCoverageFramebuffer();
+      g_gfx->SetPipeline(coverage_pipeline);
+      DrawCurrentBatch(base_index, m_index_generator.GetIndexLen(), base_vertex);
+    }
+  }
+
+  if (coverage_mode == VRPassthroughCoverageShaderMode::MRT)
+    g_framebuffer_manager->BindEFBFramebufferWithCoverage();
+  else
+    g_framebuffer_manager->BindEFBFramebuffer();
+  g_gfx->SetPipeline(current_pipeline);
+
+  // Shader Hunter pink highlight: override PS after pipeline is set (like 3DMigoto).
+  if (m_force_pink_ps && m_pink_pixel_shader)
+    g_gfx->SetForcePixelShader(m_pink_pixel_shader.get());
 
   if (PerfQueryBase::ShouldEmulate())
     g_perf_query->EnableQuery(bpmem.zcontrol.early_ztest ? PQG_ZCOMP_ZCOMPLOC : PQG_ZCOMP);
@@ -1978,6 +2030,21 @@ const AbstractPipeline* VertexManagerBase::GetCustomPipeline(
   {
     if (!custom_pixel_shader_contents.shaders.empty())
     {
+      VideoCommon::GXPipelineUid custom_pipeline_config = current_pipeline_config;
+      VideoCommon::GXUberPipelineUid custom_uber_pipeline_config =
+          current_uber_pipeline_config;
+      AbstractPipelineConfig custom_base_config = current_pipeline->m_config;
+      if (g_framebuffer_manager->HasEFBCoverage())
+      {
+        custom_pipeline_config.ps_uid.GetUidData()->vr_coverage_mode =
+            VRPassthroughCoverageShaderMode::Prepass;
+        custom_uber_pipeline_config.ps_uid.GetUidData()->vr_coverage_mode =
+            VRPassthroughCoverageShaderMode::Prepass;
+        custom_base_config.framebuffer_state =
+            g_framebuffer_manager->GetEFBFramebufferState();
+        custom_base_config.use_independent_blending = false;
+      }
+
       CustomShaderInstance custom_shaders;
       custom_shaders.pixel_contents = custom_pixel_shader_contents;
       switch (g_ActiveConfig.iShaderCompilationMode)
@@ -1986,7 +2053,7 @@ const AbstractPipeline* VertexManagerBase::GetCustomPipeline(
       case ShaderCompilationMode::AsynchronousSkipRendering:
       {
         if (auto pipeline = m_custom_shader_cache->GetPipelineAsync(
-                current_pipeline_config, custom_shaders, current_pipeline->m_config))
+                custom_pipeline_config, custom_shaders, custom_base_config))
         {
           return *pipeline;
         }
@@ -1999,7 +2066,7 @@ const AbstractPipeline* VertexManagerBase::GetCustomPipeline(
         if (!custom_pixel_shader_contents.shaders.empty())
         {
           if (auto pipeline = m_custom_shader_cache->GetPipelineAsync(
-                  current_pipeline_config, custom_shaders, current_pipeline->m_config))
+                  custom_pipeline_config, custom_shaders, custom_base_config))
           {
             return *pipeline;
           }
@@ -2010,7 +2077,7 @@ const AbstractPipeline* VertexManagerBase::GetCustomPipeline(
           if (g_backend_info.api_type == APIType::D3D)
           {
             if (auto pipeline = m_custom_shader_cache->GetPipelineAsync(
-                    current_pipeline_config, custom_shaders, current_pipeline->m_config))
+                    custom_pipeline_config, custom_shaders, custom_base_config))
             {
               return *pipeline;
             }
@@ -2018,7 +2085,7 @@ const AbstractPipeline* VertexManagerBase::GetCustomPipeline(
           else
           {
             if (auto pipeline = m_custom_shader_cache->GetPipelineAsync(
-                    current_uber_pipeline_config, custom_shaders, current_pipeline->m_config))
+                    custom_uber_pipeline_config, custom_shaders, custom_base_config))
             {
               return *pipeline;
             }
@@ -2029,7 +2096,7 @@ const AbstractPipeline* VertexManagerBase::GetCustomPipeline(
       case ShaderCompilationMode::AsynchronousUberShaders:
       {
         if (auto pipeline = m_custom_shader_cache->GetPipelineAsync(
-                current_pipeline_config, custom_shaders, current_pipeline->m_config))
+                custom_pipeline_config, custom_shaders, custom_base_config))
         {
           return *pipeline;
         }
@@ -2037,7 +2104,7 @@ const AbstractPipeline* VertexManagerBase::GetCustomPipeline(
         else if (custom_pixel_shader_contents.shaders.empty())
         {
           if (auto uber_pipeline = m_custom_shader_cache->GetPipelineAsync(
-                  current_uber_pipeline_config, custom_shaders, current_pipeline->m_config))
+                  custom_uber_pipeline_config, custom_shaders, custom_base_config))
           {
             return *uber_pipeline;
           }

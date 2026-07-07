@@ -19,6 +19,8 @@ GLenum OGLTexture::GetGLInternalFormatForTextureFormat(AbstractTextureFormat for
 {
   switch (format)
   {
+  case AbstractTextureFormat::R8:
+    return GL_R8;
   case AbstractTextureFormat::DXT1:
     return GL_COMPRESSED_RGBA_S3TC_DXT1_EXT;
   case AbstractTextureFormat::DXT3:
@@ -59,6 +61,8 @@ GLenum GetGLFormatForTextureFormat(AbstractTextureFormat format)
 {
   switch (format)
   {
+  case AbstractTextureFormat::R8:
+    return GL_RED;
   case AbstractTextureFormat::RGBA8:
     return GL_RGBA;
   case AbstractTextureFormat::BGRA8:
@@ -86,6 +90,8 @@ GLenum GetGLTypeForTextureFormat(AbstractTextureFormat format)
 {
   switch (format)
   {
+  case AbstractTextureFormat::R8:
+    return GL_UNSIGNED_BYTE;
   case AbstractTextureFormat::RGBA8:
   case AbstractTextureFormat::BGRA8:
     return GL_UNSIGNED_BYTE;

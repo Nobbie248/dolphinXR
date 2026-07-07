@@ -57,6 +57,8 @@ private:
   QLabel* m_element_depth_label;
   QDoubleSpinBox* m_units_per_meter_spin;
   QLabel* m_units_per_meter_label;
+  QDoubleSpinBox* m_passthrough_opacity_spin;
+  QLabel* m_passthrough_opacity_label;
   QLineEdit* m_flag_edit;
   QLabel* m_flag_label;
   QComboBox* m_condition_combo;

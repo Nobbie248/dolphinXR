@@ -200,6 +200,8 @@ void ShaderHunterWidget::CreateWidgets()
   m_handling_combo->addItem(tr("Flag"), static_cast<int>(ShaderHunter::HandlingType::Flag));
   m_handling_combo->addItem(tr("Units per Meter"),
                             static_cast<int>(ShaderHunter::HandlingType::UnitsPerMeter));
+  m_handling_combo->addItem(tr("Passthrough"),
+                            static_cast<int>(ShaderHunter::HandlingType::Passthrough));
   handling_layout->addWidget(m_handling_combo);
   layout->addLayout(handling_layout);
 
@@ -393,6 +395,9 @@ void ShaderHunterWidget::SaveCurrentShader()
   entry.user_defined = true;
   if (handling == ShaderHunter::HandlingType::UnitsPerMeter)
     entry.units_per_meter = static_cast<float>(m_units_per_meter_spin->value());
+  // Quick-save defaults Passthrough to fully see-through; adjust via the edit dialog.
+  if (handling == ShaderHunter::HandlingType::Passthrough)
+    entry.passthrough_opacity = 0.0f;
   if (handling == ShaderHunter::HandlingType::Flag)
     entry.flag_group = name;
 
@@ -426,6 +431,7 @@ void ShaderHunterWidget::SaveCurrentShader()
                              handling == ShaderHunter::HandlingType::Flag       ? "flag" :
                              handling == ShaderHunter::HandlingType::UnitsPerMeter ?
                                  "units_per_meter" :
+                             handling == ShaderHunter::HandlingType::Passthrough ? "passthrough" :
                                                                                   "skip";
   QString msg = tr("Saved shader override '%1' (%2, hash 0x%3, handling: %4)")
       .arg(QString::fromStdString(name))

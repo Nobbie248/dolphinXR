@@ -7,8 +7,34 @@
 
 #include "Common/FileUtil.h"
 #include "Core/ConfigManager.h"
+#include "VideoCommon/BPMemory.h"
+#include "VideoCommon/RenderState.h"
 #include "VideoCommon/VideoCommon.h"
 #include "VideoCommon/VideoConfig.h"
+
+VRPassthroughCoverageShaderMode GetVRPassthroughCoverageShaderMode()
+{
+  if (!g_ActiveConfig.VRPassthroughEnabled())
+    return VRPassthroughCoverageShaderMode::None;
+
+  BlendingState blend = {};
+  blend.Generate(bpmem);
+  if (!blend.color_update)
+    return VRPassthroughCoverageShaderMode::None;
+
+  const bool fixed_logic_op = blend.logic_op_enable;
+  // maxFragmentDualSrcAttachments limits how many color attachments the fragment shader
+  // may write while dual-source blending is in use. It is 1 on desktop GPUs, so writing
+  // the coverage attachment (2 attachments total) alongside SRC1 blending needs >= 2.
+  const bool dual_source_exceeds_mrt_limit =
+      blend.RequiresDualSrc() && g_backend_info.max_fragment_dual_src_attachments < 2;
+  const bool exact_mode =
+      g_ActiveConfig.vr_passthrough_coverage_mode == VRPassthroughCoverageMode::Exact;
+  if (fixed_logic_op || (exact_mode && dual_source_exceeds_mrt_limit))
+    return VRPassthroughCoverageShaderMode::Prepass;
+
+  return VRPassthroughCoverageShaderMode::MRT;
+}
 
 ShaderHostConfig ShaderHostConfig::GetCurrent()
 {

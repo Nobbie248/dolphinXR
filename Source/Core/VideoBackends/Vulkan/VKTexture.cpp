@@ -195,6 +195,9 @@ VkFormat VKTexture::GetVkFormatForHostTextureFormat(AbstractTextureFormat format
 {
   switch (format)
   {
+  case AbstractTextureFormat::R8:
+    return VK_FORMAT_R8_UNORM;
+
   case AbstractTextureFormat::DXT1:
     return VK_FORMAT_BC1_RGBA_UNORM_BLOCK;
 
@@ -1136,16 +1139,23 @@ CreateFramebufferInternal(VKTexture* color_attachment, VKTexture* depth_attachme
     return nullptr;
   }
   const u32 fb_layers = use_multiview ? 1u : layers;
+  const VkFormat additional_color_format =
+      additional_color_attachments.empty() ?
+          VK_FORMAT_UNDEFINED :
+          static_cast<VKTexture*>(additional_color_attachments.front())->GetVkFormat();
 
   VkRenderPass load_render_pass = g_object_cache->GetRenderPass(
       vk_color_format, vk_depth_format, samples, VK_ATTACHMENT_LOAD_OP_LOAD,
-      static_cast<u8>(additional_color_attachments.size()), use_multiview);
+      static_cast<u8>(additional_color_attachments.size()), use_multiview,
+      additional_color_format);
   VkRenderPass discard_render_pass = g_object_cache->GetRenderPass(
       vk_color_format, vk_depth_format, samples, VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-      static_cast<u8>(additional_color_attachments.size()), use_multiview);
+      static_cast<u8>(additional_color_attachments.size()), use_multiview,
+      additional_color_format);
   VkRenderPass clear_render_pass = g_object_cache->GetRenderPass(
       vk_color_format, vk_depth_format, samples, VK_ATTACHMENT_LOAD_OP_CLEAR,
-      static_cast<u8>(additional_color_attachments.size()), use_multiview);
+      static_cast<u8>(additional_color_attachments.size()), use_multiview,
+      additional_color_format);
   if (load_render_pass == VK_NULL_HANDLE || discard_render_pass == VK_NULL_HANDLE ||
       clear_render_pass == VK_NULL_HANDLE)
   {

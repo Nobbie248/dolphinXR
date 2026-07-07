@@ -65,6 +65,8 @@ public:
   // Accesses ShaderGen shader caches
   const AbstractPipeline* GetPipelineForUid(const GXPipelineUid& uid);
   const AbstractPipeline* GetUberPipelineForUid(const GXUberPipelineUid& uid);
+  const AbstractPipeline* GetCoveragePipelineForUid(const GXPipelineUid& uid);
+  const AbstractPipeline* GetCoverageUberPipelineForUid(const GXUberPipelineUid& uid);
 
   // Accesses ShaderGen shader caches asynchronously.
   // The optional will be empty if this pipeline is now background compiling.
@@ -152,7 +154,9 @@ private:
   GetGXPipelineConfig(const NativeVertexFormat* vertex_format, const AbstractShader* vertex_shader,
                       const AbstractShader* geometry_shader, const AbstractShader* pixel_shader,
                       const RasterizationState& rasterization_state, const DepthState& depth_state,
-                      const BlendingState& blending_state, AbstractPipelineUsage usage);
+                      const BlendingState& blending_state,
+                      VRPassthroughCoverageShaderMode vr_coverage_mode,
+                      AbstractPipelineUsage usage);
   std::optional<AbstractPipelineConfig> GetGXPipelineConfig(const GXPipelineUid& uid);
   std::optional<AbstractPipelineConfig> GetGXPipelineConfig(const GXUberPipelineUid& uid);
   const AbstractPipeline* InsertGXPipeline(const GXPipelineUid& config,

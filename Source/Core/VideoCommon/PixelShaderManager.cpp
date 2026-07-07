@@ -19,6 +19,7 @@ void PixelShaderManager::Init()
   // Init any initial constants which aren't zero when bpmem is zero.
   m_fog_range_adjusted_changed = true;
   m_viewport_changed = false;
+  constants.vr_passthrough_alpha = 1.0f;
 
   SetIndMatrixChanged(0);
   SetIndMatrixChanged(1);
@@ -523,6 +524,15 @@ void PixelShaderManager::SetBoundingBoxActive(bool active)
     return;
 
   constants.bounding_box = active;
+  dirty = true;
+}
+
+void PixelShaderManager::SetVRPassthroughAlpha(float alpha)
+{
+  if (constants.vr_passthrough_alpha == alpha)
+    return;
+
+  constants.vr_passthrough_alpha = alpha;
   dirty = true;
 }
 

@@ -119,6 +119,7 @@ void TextureElementOverrideWidget::UpdateList()
                 ovr.handling == HandlingType::FullscreenMono ? "fullscreen" :
         ovr.handling == HandlingType::HeadLocked    ? "headlocked" :
         ovr.handling == HandlingType::UnitsPerMeter ? "units_per_meter" :
+        ovr.handling == HandlingType::Passthrough   ? "passthrough" :
                                                       "skip";
 
     QString label = QStringLiteral("%1  (%2)  [%3 tex]")
@@ -136,6 +137,10 @@ void TextureElementOverrideWidget::UpdateList()
     else if (ovr.handling == HandlingType::UnitsPerMeter && ovr.units_per_meter > 0.0f)
     {
       label += QStringLiteral(" UPM%1").arg(ovr.units_per_meter, 0, 'f', 2);
+    }
+    else if (ovr.handling == HandlingType::Passthrough)
+    {
+      label += QStringLiteral(" O%1").arg(ovr.passthrough_opacity, 0, 'f', 2);
     }
 
     if (!ovr.texture_hashes.empty())

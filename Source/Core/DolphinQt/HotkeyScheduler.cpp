@@ -687,6 +687,8 @@ void HotkeyScheduler::Run()
           return "Flag";
         case ShaderHunter::HandlingType::UnitsPerMeter:
           return "Units Per Meter";
+        case ShaderHunter::HandlingType::Passthrough:
+          return "Passthrough";
         default:
           return "Unknown";
         }
@@ -758,6 +760,9 @@ void HotkeyScheduler::Run()
           shader_hotkey_handling = ShaderHunter::HandlingType::UnitsPerMeter;
           break;
         case ShaderHunter::HandlingType::UnitsPerMeter:
+          shader_hotkey_handling = ShaderHunter::HandlingType::Passthrough;
+          break;
+        case ShaderHunter::HandlingType::Passthrough:
         default:
           shader_hotkey_handling = ShaderHunter::HandlingType::Skip;
           break;

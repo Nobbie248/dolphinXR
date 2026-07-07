@@ -105,12 +105,15 @@ VulkanContext::PhysicalDeviceInfo::PhysicalDeviceInfo(VkPhysicalDevice device)
   bufferImageGranularity = std::max<VkDeviceSize>(properties.limits.bufferImageGranularity, 1);
   maxTexelBufferElements = properties.limits.maxTexelBufferElements;
   maxImageDimension2D = properties.limits.maxImageDimension2D;
+  maxFragmentOutputAttachments = properties.limits.maxFragmentOutputAttachments;
+  maxFragmentDualSrcAttachments = properties.limits.maxFragmentDualSrcAttachments;
   framebufferColorSampleCounts = properties.limits.framebufferColorSampleCounts;
   framebufferDepthSampleCounts = properties.limits.framebufferDepthSampleCounts;
   memcpy(pointSizeRange, properties.limits.pointSizeRange, sizeof(pointSizeRange));
   maxSamplerAnisotropy = properties.limits.maxSamplerAnisotropy;
 
   dualSrcBlend = features.dualSrcBlend != VK_FALSE;
+  independentBlend = features.independentBlend != VK_FALSE;
   geometryShader = features.geometryShader != VK_FALSE;
   samplerAnisotropy = features.samplerAnisotropy != VK_FALSE;
   logicOp = features.logicOp != VK_FALSE;
@@ -131,6 +134,7 @@ VkPhysicalDeviceFeatures VulkanContext::PhysicalDeviceInfo::features() const
   VkPhysicalDeviceFeatures features;
   memset(&features, 0, sizeof(features));
   features.dualSrcBlend = dualSrcBlend ? VK_TRUE : VK_FALSE;
+  features.independentBlend = independentBlend ? VK_TRUE : VK_FALSE;
   features.geometryShader = geometryShader ? VK_TRUE : VK_FALSE;
   features.samplerAnisotropy = samplerAnisotropy ? VK_TRUE : VK_FALSE;
   features.logicOp = logicOp ? VK_TRUE : VK_FALSE;
@@ -523,6 +527,23 @@ void VulkanContext::PopulateBackendInfoFeatures(BackendInfo* backend_info, VkPhy
   backend_info->bSupportsSSAA = info.sampleRateShading;
   backend_info->bSupportsLogicOp = info.logicOp;
   backend_info->bSupportsMultiview = info.multiview;
+  backend_info->max_fragment_dual_src_attachments = info.maxFragmentDualSrcAttachments;
+#ifdef _WIN32
+  VkImageFormatProperties r8_properties = {};
+  const VkResult r8_result = vkGetPhysicalDeviceImageFormatProperties(
+      gpu, VK_FORMAT_R8_UNORM, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL,
+      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+          VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+      0, &r8_properties);
+  backend_info->vr_passthrough_coverage_sample_counts =
+      r8_result == VK_SUCCESS ? r8_properties.sampleCounts : 0;
+  backend_info->bSupportsVRPassthroughCoverage =
+      info.independentBlend && info.maxFragmentOutputAttachments >= 2 &&
+      backend_info->vr_passthrough_coverage_sample_counts != 0;
+#else
+  backend_info->bSupportsVRPassthroughCoverage = false;
+  backend_info->vr_passthrough_coverage_sample_counts = 0;
+#endif
 
   // Metal doesn't support this.
   backend_info->bSupportsLodBiasInSampler = info.driverID != VK_DRIVER_ID_MOLTENVK;

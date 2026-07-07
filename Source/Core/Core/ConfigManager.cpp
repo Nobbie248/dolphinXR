@@ -186,9 +186,15 @@ static void ClearAppliedVRSettings()
   ClearAppliedVRSetting("ClearEFBCopies", Config::GFX_VR_CLEAR_EFB_COPIES);
   ClearAppliedVRSetting("UseVulkanMultiview", Config::GFX_VR_USE_VULKAN_MULTIVIEW);
   ClearAppliedVRSetting("AndroidDirectToHMD", Config::GFX_VR_ANDROID_DIRECT_TO_HMD);
-  ClearAppliedVRSetting("ARMode", Config::GFX_VR_AR_MODE);
-  ClearAppliedVRSetting("ARModeDebug", Config::GFX_VR_AR_MODE_DEBUG);
-  ClearAppliedVRSetting("ARBackgroundAlpha", Config::GFX_VR_AR_BACKGROUND_ALPHA);
+  ClearAppliedVRSetting("Passthrough", Config::GFX_VR_PASSTHROUGH);
+  ClearAppliedVRSetting("ARMode", Config::GFX_VR_PASSTHROUGH);
+  ClearAppliedVRSetting("PassthroughRemoveBlackBackground",
+                        Config::GFX_VR_PASSTHROUGH_REMOVE_BLACK_BG);
+  ClearAppliedVRSetting("PassthroughRemoveBlackEFBClears",
+                        Config::GFX_VR_PASSTHROUGH_REMOVE_BLACK_CLEARS);
+  ClearAppliedVRSetting("PassthroughSceneOpacity", Config::GFX_VR_PASSTHROUGH_SCENE_OPACITY);
+  ClearAppliedVRSetting("PassthroughCoverageMode",
+                        Config::GFX_VR_PASSTHROUGH_COVERAGE_MODE);
 }
 
 template <typename T>
@@ -249,9 +255,18 @@ static void ApplyGameVRConfigOverrides(std::string_view game_id, std::optional<u
   ApplyVRSetting(values, "ClearEFBCopies", Config::GFX_VR_CLEAR_EFB_COPIES);
   ApplyVRSetting(values, "UseVulkanMultiview", Config::GFX_VR_USE_VULKAN_MULTIVIEW);
   ApplyVRSetting(values, "AndroidDirectToHMD", Config::GFX_VR_ANDROID_DIRECT_TO_HMD);
-  ApplyVRSetting(values, "ARMode", Config::GFX_VR_AR_MODE);
-  ApplyVRSetting(values, "ARModeDebug", Config::GFX_VR_AR_MODE_DEBUG);
-  ApplyVRSetting(values, "ARBackgroundAlpha", Config::GFX_VR_AR_BACKGROUND_ALPHA);
+  const bool has_passthrough = values.find("Passthrough") != values.end();
+  ApplyVRSetting(values, "Passthrough", Config::GFX_VR_PASSTHROUGH);
+  // Legacy key from before the XR_FB_passthrough rework.
+  if (!has_passthrough)
+    ApplyVRSetting(values, "ARMode", Config::GFX_VR_PASSTHROUGH);
+  ApplyVRSetting(values, "PassthroughRemoveBlackBackground",
+                 Config::GFX_VR_PASSTHROUGH_REMOVE_BLACK_BG);
+  ApplyVRSetting(values, "PassthroughRemoveBlackEFBClears",
+                 Config::GFX_VR_PASSTHROUGH_REMOVE_BLACK_CLEARS);
+  ApplyVRSetting(values, "PassthroughSceneOpacity", Config::GFX_VR_PASSTHROUGH_SCENE_OPACITY);
+  ApplyVRSetting(values, "PassthroughCoverageMode",
+                 Config::GFX_VR_PASSTHROUGH_COVERAGE_MODE);
 }
 }  // namespace
 

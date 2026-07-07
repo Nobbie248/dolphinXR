@@ -200,7 +200,7 @@ void VKGfx::ClearRegion(const MathUtil::Rectangle<int>& target_rc, bool color_en
       {
         VkClearAttachment clear_attachment;
         clear_attachment.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        clear_attachment.colorAttachment = 0;
+        clear_attachment.colorAttachment = static_cast<u32>(i + 1);
         clear_attachment.clearValue = clear_color_value;
         clear_attachments.push_back(std::move(clear_attachment));
       }

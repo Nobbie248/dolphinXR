@@ -50,6 +50,9 @@ public:
   void SetZModeControl();
   void SetBlendModeChanged();
   void SetBoundingBoxActive(bool active);
+  // VR passthrough coverage for the next draw: 1.0 = opaque coverage,
+  // a Passthrough element override's opacity otherwise.
+  void SetVRPassthroughAlpha(float alpha);
 
   PixelShaderConstants constants{};
   bool dirty = false;

@@ -123,6 +123,8 @@ u32 AbstractTexture::CalculateStrideForFormat(AbstractTextureFormat format, u32 
 {
   switch (format)
   {
+  case AbstractTextureFormat::R8:
+    return static_cast<size_t>(row_length);
   case AbstractTextureFormat::DXT1:
     return static_cast<size_t>(std::max(1u, row_length / 4)) * 8;
   case AbstractTextureFormat::DXT3:
@@ -152,6 +154,8 @@ u32 AbstractTexture::GetTexelSizeForFormat(AbstractTextureFormat format)
 {
   switch (format)
   {
+  case AbstractTextureFormat::R8:
+    return 1;
   case AbstractTextureFormat::DXT1:
     return 8;
   case AbstractTextureFormat::DXT3:

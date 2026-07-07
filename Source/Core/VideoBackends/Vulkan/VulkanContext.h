@@ -35,6 +35,8 @@ public:
     VkDeviceSize bufferImageGranularity;
     u32 maxTexelBufferElements;
     u32 maxImageDimension2D;
+    u32 maxFragmentOutputAttachments;
+    u32 maxFragmentDualSrcAttachments;
     VkSampleCountFlags framebufferColorSampleCounts;
     VkSampleCountFlags framebufferDepthSampleCounts;
     float pointSizeRange[2];
@@ -42,6 +44,7 @@ public:
     u32 subgroupSize = 1;
     VkDriverId driverID = static_cast<VkDriverId>(0);
     bool dualSrcBlend;
+    bool independentBlend;
     bool geometryShader;
     bool samplerAnisotropy;
     bool logicOp;

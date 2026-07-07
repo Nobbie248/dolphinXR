@@ -33,10 +33,7 @@ object QuestGameVrConfigSettings {
         "ElementDepth",
         "ClearEFBCopies",
         "UseVulkanMultiview",
-        "AndroidDirectToHMD",
-        "ARMode",
-        "ARModeDebug",
-        "ARBackgroundAlpha"
+        "AndroidDirectToHMD"
     )
 
     fun getStoredKeys(gameId: String, revision: Int): Set<String> =

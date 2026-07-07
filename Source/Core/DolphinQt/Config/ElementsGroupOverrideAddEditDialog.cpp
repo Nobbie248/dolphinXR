@@ -232,6 +232,8 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
   m_handling_combo->addItem(
       tr("Units per Meter"),
       static_cast<int>(ElementsGroupManager::HandlingType::UnitsPerMeter));
+  m_handling_combo->addItem(
+      tr("Passthrough"), static_cast<int>(ElementsGroupManager::HandlingType::Passthrough));
 
   m_layer_label = new QLabel(tr("Layer:"));
   m_layer_spin = new QSpinBox;
@@ -254,6 +256,18 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
   m_units_per_meter_spin->setSingleStep(UPM_OVERRIDE_STEP);
   m_units_per_meter_spin->setSpecialValueText(tr("Default"));
   m_units_per_meter_spin->setValue(0.0);
+
+  m_passthrough_opacity_label = new QLabel(tr("Opacity:"));
+  m_passthrough_opacity_spin = new QDoubleSpinBox;
+  m_passthrough_opacity_spin->setRange(0.0, 1.0);
+  m_passthrough_opacity_spin->setDecimals(2);
+  m_passthrough_opacity_spin->setSingleStep(0.05);
+  m_passthrough_opacity_spin->setValue(0.0);
+  m_passthrough_opacity_spin->setToolTip(
+      tr("How opaque this element stays over the headset camera feed.\n"
+         "0.00 = fully see-through (pure passthrough window).\n"
+         "1.00 = fully opaque (no passthrough).\n"
+         "Requires the VR Passthrough setting to be enabled."));
 
   m_flag_label = new QLabel(tr("Flag Group:"));
   m_flag_edit = new QLineEdit;
@@ -341,6 +355,7 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
   form->addRow(m_layer_label, m_layer_spin);
   form->addRow(m_element_depth_label, m_element_depth_spin);
   form->addRow(m_units_per_meter_label, m_units_per_meter_spin);
+  form->addRow(m_passthrough_opacity_label, m_passthrough_opacity_spin);
   form->addRow(m_flag_label, m_flag_edit);
   form->addRow(m_condition_label, m_condition_combo);
   form->addRow(m_condition_mode_label, m_condition_mode_combo);
@@ -438,6 +453,7 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
     m_element_depth_spin->setValue(edit_override->element_depth);
     if (edit_override->units_per_meter > 0.0f)
       m_units_per_meter_spin->setValue(edit_override->units_per_meter);
+    m_passthrough_opacity_spin->setValue(edit_override->passthrough_opacity);
     m_flag_edit->setText(QString::fromStdString(edit_override->flag_group));
     {
       const QString condition = QString::fromStdString(edit_override->condition_flag);
@@ -504,6 +520,10 @@ ElementsGroupManager::ElementGroupOverride ElementsGroupOverrideAddEditDialog::G
   result.element_depth = m_element_depth_spin->value();
   result.units_per_meter = m_units_per_meter_spin->value() > 0.0 ? m_units_per_meter_spin->value() :
                                                                   -1.0f;
+  result.passthrough_opacity =
+      result.handling == ElementsGroupManager::HandlingType::Passthrough ?
+          static_cast<float>(m_passthrough_opacity_spin->value()) :
+          0.0f;
   result.texture_hashes = CollectTextureHashValues();
   result.texture_hashes_excluded =
       !result.texture_hashes.empty() && m_texture_mode_combo->currentData().toBool();
@@ -668,6 +688,7 @@ void ElementsGroupOverrideAddEditDialog::RefreshHandlingUi()
                            handling == ElementsGroupManager::HandlingType::HeadLocked);
   const bool show_units_per_meter =
       (handling == ElementsGroupManager::HandlingType::UnitsPerMeter);
+  const bool show_passthrough = (handling == ElementsGroupManager::HandlingType::Passthrough);
   const bool is_flag = (handling == ElementsGroupManager::HandlingType::Flag);
 
   m_layer_label->setVisible(show_layer);
@@ -676,6 +697,8 @@ void ElementsGroupOverrideAddEditDialog::RefreshHandlingUi()
   m_element_depth_spin->setVisible(show_layer);
   m_units_per_meter_label->setVisible(show_units_per_meter);
   m_units_per_meter_spin->setVisible(show_units_per_meter);
+  m_passthrough_opacity_label->setVisible(show_passthrough);
+  m_passthrough_opacity_spin->setVisible(show_passthrough);
   m_condition_label->setVisible(!is_flag);
   m_condition_combo->setVisible(!is_flag);
   m_condition_mode_label->setVisible(!is_flag);

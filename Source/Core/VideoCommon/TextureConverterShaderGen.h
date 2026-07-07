@@ -28,7 +28,7 @@ struct UidData
   u32 all_copy_filter_coefs_needed : 1;
   u32 copy_filter_can_overflow : 1;
   u32 apply_gamma : 1;
-  u32 vr_ar_mode : 1;
+  u32 vr_passthrough : 1;
 };
 #pragma pack()
 

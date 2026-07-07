@@ -47,6 +47,9 @@ struct AbstractPipelineConfig
   RasterizationState rasterization_state;
   DepthState depth_state;
   BlendingState blending_state;
+  // Used for every additional color attachment when independent blending is enabled.
+  BlendingState additional_blending_state;
+  bool use_independent_blending = false;
   FramebufferState framebuffer_state;
 
   AbstractPipelineUsage usage = AbstractPipelineUsage::GX;
@@ -55,18 +58,22 @@ struct AbstractPipelineConfig
   {
     return std::tie(vertex_format, vertex_shader, geometry_shader, pixel_shader,
                     rasterization_state.hex, depth_state.hex, blending_state.hex,
+                    additional_blending_state.hex, use_independent_blending,
                     framebuffer_state.hex, usage) ==
            std::tie(rhs.vertex_format, rhs.vertex_shader, rhs.geometry_shader, rhs.pixel_shader,
                     rhs.rasterization_state.hex, rhs.depth_state.hex, rhs.blending_state.hex,
+                    rhs.additional_blending_state.hex, rhs.use_independent_blending,
                     rhs.framebuffer_state.hex, rhs.usage);
   }
   bool operator<(const AbstractPipelineConfig& rhs) const
   {
     return std::tie(vertex_format, vertex_shader, geometry_shader, pixel_shader,
                     rasterization_state.hex, depth_state.hex, blending_state.hex,
+                    additional_blending_state.hex, use_independent_blending,
                     framebuffer_state.hex, usage) <
            std::tie(rhs.vertex_format, rhs.vertex_shader, rhs.geometry_shader, rhs.pixel_shader,
                     rhs.rasterization_state.hex, rhs.depth_state.hex, rhs.blending_state.hex,
+                    rhs.additional_blending_state.hex, rhs.use_independent_blending,
                     rhs.framebuffer_state.hex, rhs.usage);
   }
 };

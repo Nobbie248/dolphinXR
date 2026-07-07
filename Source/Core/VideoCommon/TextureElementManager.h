@@ -45,6 +45,7 @@ public:
     int layer = -1;                 // Manual layer for Screen/HeadLocked (-1 = auto)
     float element_depth = -1.0f;    // Per-override within-element depth (-1 = global)
     float units_per_meter = -1.0f;  // Per-override UPM for UnitsPerMeter handling (-1 = global)
+    float passthrough_opacity = 0.0f;  // Passthrough handling: element opacity (0 = fully camera)
     std::vector<u64> texture_hashes;  // The group's textures (matched when any is bound)
     bool enabled = true;
   };
@@ -68,9 +69,11 @@ public:
   // True if any bound texture maps to a Skip override.
   bool ShouldSkipByTexture(const std::array<u64, 8>& bound) const;
   // Handling for the first bound texture with a non-Skip override (Skip if none). Out-params are
-  // filled for Screen/HeadLocked (layer, element_depth) and UnitsPerMeter (units_per_meter).
+  // filled for Screen/HeadLocked (layer, element_depth), UnitsPerMeter (units_per_meter) and
+  // Passthrough (passthrough_opacity).
   HandlingType GetHandlingForTextures(const std::array<u64, 8>& bound, int* layer,
-                                      float* element_depth, float* units_per_meter) const;
+                                      float* element_depth, float* units_per_meter,
+                                      float* passthrough_opacity) const;
 
   // --- Texture Hunter browse support (global per-frame texture capture) ---
   void SetHunterActive(bool active);
@@ -100,6 +103,7 @@ private:
     int layer = -1;
     float element_depth = -1.0f;
     float units_per_meter = -1.0f;
+    float passthrough_opacity = 0.0f;
   };
 
   mutable std::mutex m_mutex;

@@ -38,7 +38,10 @@ public:
     FullscreenMono = 3,
     HeadLocked = 4,
     Flag = 5,
-    UnitsPerMeter = 6
+    UnitsPerMeter = 6,
+    // VR passthrough window: the element still draws, but its pixels write the given
+    // opacity into the dedicated coverage target.
+    Passthrough = 7
   };
 
   enum class HuntingOption
@@ -146,6 +149,7 @@ public:
     int layer = -1;          // Manual layer index for Screen handling (-1 = auto)
     float element_depth = -1.0f;  // Per-override within-element depth (-1 = use global)
     float units_per_meter = -1.0f;  // Per-override UPM for UnitsPerMeter handling (-1 = global)
+    float passthrough_opacity = 0.0f;  // Passthrough handling: element opacity (0 = fully camera)
     std::vector<u64> texture_hashes;  // Only apply when any listed texture is bound (empty = any)
     bool texture_hashes_excluded = false;  // false=Include list, true=Exclude list
     bool hash_family_match = false;  // false=exact hash, true=family signature
@@ -188,6 +192,9 @@ public:
 
   // Returns the per-override units per meter (>0 = override, -1 = use global setting).
   float GetOverrideUnitsPerMeter(u64 vs_hash, u64 ps_hash, u64 gs_hash) const;
+
+  // Returns the opacity for a Passthrough override (0 = fully see-through to the camera).
+  float GetOverridePassthroughOpacity(u64 vs_hash, u64 ps_hash, u64 gs_hash) const;
 
   // Flag system: register flag shaders and check conditions.
   void RegisterFlags(u64 vs_hash, u64 ps_hash, u64 gs_hash);
@@ -281,6 +288,7 @@ private:
   std::unordered_map<u64, float> m_units_per_meter_overrides;  // hash -> per-override UPM
   std::unordered_map<u64, int> m_screen_layers;      // hash → manual layer (-1 = auto)
   std::unordered_map<u64, float> m_element_depths;  // hash → per-override element depth (-1 = global)
+  std::unordered_map<u64, float> m_passthrough_opacities;  // hash → Passthrough opacity
   std::string m_loaded_game_id;
   std::atomic_bool m_has_overrides = false;
   std::atomic_bool m_needs_shader_family_signatures = false;
@@ -315,6 +323,7 @@ private:
     int layer;
     float element_depth;
     float units_per_meter;
+    float passthrough_opacity;
     std::vector<u64> texture_hashes;  // Only apply when any listed texture is bound (empty = any)
     bool texture_hashes_excluded;     // false=Include list, true=Exclude list
     bool hash_family_match;           // false=exact hash, true=family signature

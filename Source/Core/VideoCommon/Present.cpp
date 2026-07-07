@@ -927,8 +927,7 @@ void Presenter::PrepareNextOpenXRFrame()
   if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR && VR::g_openxr &&
       !g_ActiveConfig.vr_dont_clear_screen && g_framebuffer_manager)
   {
-    g_gfx->SetAndClearFramebuffer(g_framebuffer_manager->GetEFBFramebuffer(),
-                                  {0.f, 0.f, 0.f, 0.f}, 0.f);
+    g_framebuffer_manager->ClearEFBForOpenXR();
   }
 
   VideoCommon::OpenXROpcodeReplay::EnableCaptureForNextFrame(
@@ -987,8 +986,9 @@ void Presenter::BlitCurrentSourceToOpenXREyes(const AbstractTexture* source_text
 
   const MathUtil::Rectangle<int> eye_rect{
       0, 0, static_cast<int>(sc->GetEyeWidth()), static_cast<int>(sc->GetEyeHeight())};
-  const float clear_alpha =
-      g_ActiveConfig.vr_ar_mode ? g_ActiveConfig.vr_ar_background_alpha : 1.0f;
+  // With passthrough on, anything the game leaves transparent must stay transparent in
+  // the OpenXR swapchain so the compositor can show the camera feed there.
+  const float clear_alpha = g_ActiveConfig.VRPassthroughEnabled() ? 0.0f : 1.0f;
 
   if (sc->SupportsLayeredRendering() && m_post_processor->CanBlitFromTextureLayeredMultiview())
   {

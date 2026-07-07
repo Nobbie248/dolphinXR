@@ -19,6 +19,7 @@ struct pixel_ubershader_uid_data
   u32 per_pixel_depth : 1;
   u32 uint_output : 1;
   u32 no_dual_src : 1;
+  VRPassthroughCoverageShaderMode vr_coverage_mode : 2;
   // Bump when PS code generation logic changes to invalidate stale shader cache entries.
   u32 code_version : 4;
 

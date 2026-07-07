@@ -28,6 +28,19 @@ GXPipelineUid ApplyDriverBugs(const GXPipelineUid& in)
   pixel_shader_uid_data* ps = out.ps_uid.GetUidData();
   BlendingState& blend = out.blending_state;
 
+  // Writing the coverage attachment plus a dual-source (Index 1) output exceeds
+  // maxFragmentDualSrcAttachments (1 on desktop GPUs) — undefined behaviour that bleeds
+  // into attachment 0's colors/alpha. Exact mode already routed draws whose blending
+  // truly needs SRC1 to the coverage prepass, so stripping dual source here only
+  // removes an unused ocol1 for those; in Fast mode it also downgrades SRC1-blended
+  // draws to single-source blending (blend alpha comes from ocol0.a instead).
+  if (ps->vr_coverage_mode == VRPassthroughCoverageShaderMode::MRT &&
+      g_backend_info.max_fragment_dual_src_attachments < 2)
+  {
+    ps->no_dual_src = true;
+    blend.use_dual_src = false;
+  }
+
   if (ps->ztest == EmulatedZ::ForcedEarly && !out.depth_state.update_enable)
   {
     // No need to force early depth test if you're not writing z

@@ -61,14 +61,17 @@ public:
   // Accessors.
   AbstractTexture* GetEFBColorTexture() const { return m_efb_color_texture.get(); }
   AbstractTexture* GetEFBDepthTexture() const { return m_efb_depth_texture.get(); }
+  AbstractTexture* GetEFBCoverageTexture() const { return m_efb_coverage_texture.get(); }
   AbstractFramebuffer* GetEFBFramebuffer() const { return m_efb_framebuffer.get(); }
+  bool HasEFBCoverage() const { return m_efb_coverage_texture != nullptr; }
   u32 GetEFBWidth() const { return m_efb_color_texture->GetWidth(); }
   u32 GetEFBHeight() const { return m_efb_color_texture->GetHeight(); }
   u32 GetEFBLayers() const { return m_efb_color_texture->GetLayers(); }
   u32 GetEFBSamples() const { return m_efb_color_texture->GetSamples(); }
   bool IsEFBMultisampled() const { return m_efb_color_texture->IsMultisampled(); }
   bool IsEFBStereo() const { return m_efb_color_texture->GetLayers() > 1; }
-  FramebufferState GetEFBFramebufferState() const;
+  FramebufferState GetEFBFramebufferState(bool with_coverage = false) const;
+  FramebufferState GetEFBCoverageFramebufferState() const;
 
   // EFB coordinate conversion functions
   // Use this to convert a whole native EFB rect to backbuffer coordinates
@@ -95,9 +98,13 @@ public:
 
   // This is virtual, because D3D has both normalized and integer framebuffers.
   void BindEFBFramebuffer();
+  void BindEFBFramebufferWithCoverage();
+  void BindEFBCoverageFramebuffer();
+  void ClearEFBForOpenXR();
 
   // Resolve color/depth textures to a non-msaa texture, and return it.
   AbstractTexture* ResolveEFBColorTexture(const MathUtil::Rectangle<int>& region);
+  AbstractTexture* ResolveEFBCoverageTexture(const MathUtil::Rectangle<int>& region);
   AbstractTexture* ResolveEFBDepthTexture(const MathUtil::Rectangle<int>& region,
                                           bool force_r32f = false);
 
@@ -200,11 +207,16 @@ protected:
   std::unique_ptr<AbstractTexture> m_efb_color_texture;
   std::unique_ptr<AbstractTexture> m_efb_convert_color_texture;
   std::unique_ptr<AbstractTexture> m_efb_depth_texture;
+  std::unique_ptr<AbstractTexture> m_efb_coverage_texture;
   std::unique_ptr<AbstractTexture> m_efb_resolve_color_texture;
+  std::unique_ptr<AbstractTexture> m_efb_resolve_coverage_texture;
   std::unique_ptr<AbstractTexture> m_efb_depth_resolve_texture;
 
   std::unique_ptr<AbstractFramebuffer> m_efb_framebuffer;
   std::unique_ptr<AbstractFramebuffer> m_efb_convert_framebuffer;
+  std::unique_ptr<AbstractFramebuffer> m_efb_framebuffer_with_coverage;
+  std::unique_ptr<AbstractFramebuffer> m_efb_convert_framebuffer_with_coverage;
+  std::unique_ptr<AbstractFramebuffer> m_efb_coverage_framebuffer;
   std::unique_ptr<AbstractFramebuffer> m_efb_color_resolve_framebuffer;
   std::unique_ptr<AbstractFramebuffer> m_efb_depth_resolve_framebuffer;
   std::unique_ptr<AbstractPipeline> m_efb_color_resolve_pipeline;
@@ -212,6 +224,7 @@ protected:
 
   // Pipeline for restoring the contents of the EFB from a save state
   std::unique_ptr<AbstractPipeline> m_efb_restore_pipeline;
+  std::unique_ptr<AbstractPipeline> m_efb_coverage_restore_pipeline;
 
   // Format conversion shaders
   std::array<std::unique_ptr<AbstractPipeline>, 6> m_format_conversion_pipelines;
@@ -234,6 +247,7 @@ protected:
   // EFB poke drawing setup
   std::unique_ptr<NativeVertexFormat> m_poke_vertex_format;
   std::unique_ptr<AbstractPipeline> m_color_poke_pipeline;
+  std::unique_ptr<AbstractPipeline> m_coverage_poke_pipeline;
   std::unique_ptr<AbstractPipeline> m_depth_poke_pipeline;
   std::vector<EFBPokeVertex> m_color_poke_vertices;
   std::vector<EFBPokeVertex> m_depth_poke_vertices;

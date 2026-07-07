@@ -62,9 +62,11 @@ TextureElementOverrideAddEditDialog::TextureElementOverrideAddEditDialog(
   m_handling_combo->addItem(tr("Fullscreen"), static_cast<int>(HandlingType::Fullscreen));
   m_handling_combo->addItem(tr("Head Locked"), static_cast<int>(HandlingType::HeadLocked));
   m_handling_combo->addItem(tr("Units per Meter"), static_cast<int>(HandlingType::UnitsPerMeter));
+  m_handling_combo->addItem(tr("Passthrough"), static_cast<int>(HandlingType::Passthrough));
   m_handling_combo->setToolTip(
       tr("How every draw that binds a listed texture is handled in VR.\n"
-         "Skip = hide, Screen = world-fixed, Head Locked = follows head, Fullscreen = no VR."));
+         "Skip = hide, Screen = world-fixed, Head Locked = follows head, Fullscreen = no VR,\n"
+         "Passthrough = pixels become a see-through window to the headset camera."));
 
   m_layer_label = new QLabel(tr("Layer:"));
   m_layer_spin = new QSpinBox;
@@ -93,6 +95,18 @@ TextureElementOverrideAddEditDialog::TextureElementOverrideAddEditDialog(
   m_units_per_meter_spin->setValue(1.0);
   m_units_per_meter_spin->setToolTip(tr("Temporary per-texture scale override for VR.\n"
                                         "Higher values make these textures appear larger."));
+
+  m_passthrough_opacity_label = new QLabel(tr("Opacity:"));
+  m_passthrough_opacity_spin = new QDoubleSpinBox;
+  m_passthrough_opacity_spin->setRange(0.0, 1.0);
+  m_passthrough_opacity_spin->setDecimals(2);
+  m_passthrough_opacity_spin->setSingleStep(0.05);
+  m_passthrough_opacity_spin->setValue(0.0);
+  m_passthrough_opacity_spin->setToolTip(
+      tr("How opaque these textures stay over the headset camera feed.\n"
+         "0.00 = fully see-through (pure passthrough window).\n"
+         "1.00 = fully opaque (no passthrough).\n"
+         "Requires the VR Passthrough setting to be enabled."));
 
   m_view_textures_button = new QPushButton(tr("Texture Hunter"));
   m_view_textures_button->setToolTip(
@@ -123,6 +137,7 @@ TextureElementOverrideAddEditDialog::TextureElementOverrideAddEditDialog(
     m_element_depth_spin->setValue(edit_override->element_depth);
     if (edit_override->units_per_meter > 0.0f)
       m_units_per_meter_spin->setValue(edit_override->units_per_meter);
+    m_passthrough_opacity_spin->setValue(edit_override->passthrough_opacity);
 
     m_updating_texture_hash_fields = true;
     while (m_texture_hash_edits.size() < edit_override->texture_hashes.size())
@@ -144,6 +159,7 @@ TextureElementOverrideAddEditDialog::TextureElementOverrideAddEditDialog(
   form->addRow(m_layer_label, m_layer_spin);
   form->addRow(m_element_depth_label, m_element_depth_spin);
   form->addRow(m_units_per_meter_label, m_units_per_meter_spin);
+  form->addRow(m_passthrough_opacity_label, m_passthrough_opacity_spin);
   form->addRow(QString(), m_view_textures_button);
   form->addRow(tr("Texture Hashes:"), m_texture_hash_scroll);
   form->addRow(tr("Comments:"), m_comments_edit);
@@ -182,6 +198,9 @@ TextureElementOverride TextureElementOverrideAddEditDialog::GetResult() const
   result.units_per_meter = result.handling == HandlingType::UnitsPerMeter ?
                                static_cast<float>(m_units_per_meter_spin->value()) :
                                -1.0f;
+  result.passthrough_opacity = result.handling == HandlingType::Passthrough ?
+                                   static_cast<float>(m_passthrough_opacity_spin->value()) :
+                                   0.0f;
 
   for (const std::string& token : CollectTextureHashTokens())
   {
@@ -250,6 +269,7 @@ void TextureElementOverrideAddEditDialog::OnHandlingChanged()
   const bool show_layer =
       (handling == HandlingType::Screen || handling == HandlingType::HeadLocked);
   const bool show_units_per_meter = (handling == HandlingType::UnitsPerMeter);
+  const bool show_passthrough = (handling == HandlingType::Passthrough);
 
   m_layer_label->setVisible(show_layer);
   m_layer_spin->setVisible(show_layer);
@@ -257,6 +277,8 @@ void TextureElementOverrideAddEditDialog::OnHandlingChanged()
   m_element_depth_spin->setVisible(show_layer);
   m_units_per_meter_label->setVisible(show_units_per_meter);
   m_units_per_meter_spin->setVisible(show_units_per_meter);
+  m_passthrough_opacity_label->setVisible(show_passthrough);
+  m_passthrough_opacity_spin->setVisible(show_passthrough);
 }
 
 void TextureElementOverrideAddEditDialog::ShowTextureBrowser()

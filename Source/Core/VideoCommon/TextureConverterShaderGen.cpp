@@ -48,7 +48,7 @@ TCShaderUid GetShaderUid(EFBCopyFormat dst_format, bool is_depth_copy, bool is_i
   uid_data->copy_filter_can_overflow = TextureCacheBase::CopyFilterCanOverflow(filter_coefficients);
   // If the gamma is needed, then include that too.
   uid_data->apply_gamma = gamma_rcp != 1.0f;
-  uid_data->vr_ar_mode = g_ActiveConfig.vr_ar_mode ? 1 : 0;
+  uid_data->vr_passthrough = g_ActiveConfig.VRPassthroughEnabled() ? 1 : 0;
 
   return out;
 }
@@ -61,6 +61,7 @@ static void WriteHeader(APIType api_type, ShaderCode& out)
             "  float gamma_rcp;\n"
             "  float2 clamp_tb;\n"
             "  float pixel_height;\n"
+            "  float vr_scene_alpha;\n"
             "}};\n");
 }
 
@@ -104,6 +105,8 @@ ShaderCode GeneratePixelShader(APIType api_type, const UidData* uid_data)
   WriteHeader(api_type, out);
 
   out.Write("SAMPLER_BINDING(0) uniform sampler2DArray samp0;\n");
+  if (uid_data->vr_passthrough)
+    out.Write("SAMPLER_BINDING(1) uniform sampler2DArray samp1;\n");
   out.Write("uint4 SampleEFB(float3 uv, float y_offset) {{\n"
             "  float4 tex_sample = texture(samp0, float3(uv.x, clamp(uv.y + (y_offset * "
             "pixel_height), clamp_tb.x, clamp_tb.y), {}));\n",
@@ -244,10 +247,15 @@ ShaderCode GeneratePixelShader(APIType api_type, const UidData* uid_data)
     break;
 
   case EFBCopyFormat::XFB:
-    if (uid_data->vr_ar_mode)
-      out.Write("  ocol0 = float4(texcol_raw.rgba) / 255.0;\n");
+    if (uid_data->vr_passthrough)
+    {
+      out.Write("  ocol0 = float4(float3(texcol_raw.rgb) / 255.0,\n"
+                "                 texture(samp1, v_tex0).r * vr_scene_alpha);\n");
+    }
     else
+    {
       out.Write("  ocol0 = float4(float3(texcol_raw.rgb) / 255.0, 1.0);\n");
+    }
     break;
 
   default:

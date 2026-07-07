@@ -3052,9 +3052,17 @@ void TextureCacheBase::CopyEFBToCacheEntry(RcTcacheEntry& entry, bool is_depth_c
   AbstractTexture* src_texture =
       is_depth_copy ? g_framebuffer_manager->ResolveEFBDepthTexture(framebuffer_rect) :
                       g_framebuffer_manager->ResolveEFBColorTexture(framebuffer_rect);
+  AbstractTexture* coverage_texture = nullptr;
+  if (!is_depth_copy && dst_format == EFBCopyFormat::XFB &&
+      g_ActiveConfig.VRPassthroughEnabled())
+  {
+    coverage_texture = g_framebuffer_manager->ResolveEFBCoverageTexture(framebuffer_rect);
+  }
 
   g_gfx->BeginUtilityDrawing();
   src_texture->FinishedRendering();
+  if (coverage_texture)
+    coverage_texture->FinishedRendering();
 
   // Fill uniform buffer.
   struct Uniforms
@@ -3065,7 +3073,7 @@ void TextureCacheBase::CopyEFBToCacheEntry(RcTcacheEntry& entry, bool is_depth_c
     float clamp_top;
     float clamp_bottom;
     float pixel_height;
-    u32 padding;
+    float vr_scene_alpha;
   };
   Uniforms uniforms;
   const float rcp_efb_width = 1.0f / static_cast<float>(g_framebuffer_manager->GetEFBWidth());
@@ -3087,7 +3095,9 @@ void TextureCacheBase::CopyEFBToCacheEntry(RcTcacheEntry& entry, bool is_depth_c
   const u32 bottom_coord = (clamp_bottom ? framebuffer_rect.bottom : efb_height) - 1;
   uniforms.clamp_bottom = (static_cast<float>(bottom_coord) + .5f) * rcp_efb_height;
   uniforms.pixel_height = g_ActiveConfig.bCopyEFBScaled ? rcp_efb_height : 1.0f / EFB_HEIGHT;
-  uniforms.padding = 0;
+  uniforms.vr_scene_alpha = g_ActiveConfig.VRPassthroughEnabled() ?
+                                g_ActiveConfig.vr_passthrough_scene_opacity :
+                                1.0f;
   g_vertex_manager->UploadUtilityUniforms(&uniforms, sizeof(uniforms));
 
   // Use the copy pipeline to render the VRAM copy.
@@ -3096,7 +3106,13 @@ void TextureCacheBase::CopyEFBToCacheEntry(RcTcacheEntry& entry, bool is_depth_c
   g_gfx->SetPipeline(copy_pipeline);
   g_gfx->SetTexture(0, src_texture);
   g_gfx->SetSamplerState(0, linear_filter ? RenderState::GetLinearSamplerState() :
-                                            RenderState::GetPointSamplerState());
+                                             RenderState::GetPointSamplerState());
+  if (coverage_texture)
+  {
+    g_gfx->SetTexture(1, coverage_texture);
+    g_gfx->SetSamplerState(1, linear_filter ? RenderState::GetLinearSamplerState() :
+                                               RenderState::GetPointSamplerState());
+  }
   g_gfx->Draw(0, 3);
   g_gfx->EndUtilityDrawing();
   entry->texture->FinishedRendering();

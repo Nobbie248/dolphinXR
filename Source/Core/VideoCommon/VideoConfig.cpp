@@ -229,9 +229,13 @@ void VideoConfig::Refresh()
   vr_metroid_d3d_thermal_palette_fix =
       Config::Get(Config::GFX_VR_METROID_D3D_THERMAL_PALETTE_FIX);
   vr_lock_head_pose = Config::Get(Config::GFX_VR_LOCK_HEAD_POSE);
-  vr_ar_mode = Config::Get(Config::GFX_VR_AR_MODE);
-  vr_ar_mode_debug = Config::Get(Config::GFX_VR_AR_MODE_DEBUG);
-  vr_ar_background_alpha = std::clamp(Config::Get(Config::GFX_VR_AR_BACKGROUND_ALPHA), 0.0f, 1.0f);
+  vr_passthrough = Config::Get(Config::GFX_VR_PASSTHROUGH);
+  vr_passthrough_remove_black_bg = Config::Get(Config::GFX_VR_PASSTHROUGH_REMOVE_BLACK_BG);
+  vr_passthrough_remove_black_clears =
+      Config::Get(Config::GFX_VR_PASSTHROUGH_REMOVE_BLACK_CLEARS);
+  vr_passthrough_scene_opacity =
+      std::clamp(Config::Get(Config::GFX_VR_PASSTHROUGH_SCENE_OPACITY), 0.0f, 1.0f);
+  vr_passthrough_coverage_mode = Config::Get(Config::GFX_VR_PASSTHROUGH_COVERAGE_MODE);
   vr_gamma = std::clamp(Config::Get(Config::GFX_VR_GAMMA),
                         Config::GFX_VR_GAMMA_MIN, Config::GFX_VR_GAMMA_MAX);
   vr_layer_offset = std::clamp(Config::Get(Config::GFX_VR_LAYER_OFFSET),
@@ -386,6 +390,10 @@ void CheckForConfigChanges()
   const float old_vr_screen_distance = g_ActiveConfig.vr_screen_distance;
   const float old_vr_screen_size = g_ActiveConfig.vr_screen_size;
   const float old_vr_head_locked_curvature = g_ActiveConfig.vr_head_locked_curvature;
+  const bool old_vr_passthrough_enabled = g_ActiveConfig.VRPassthroughEnabled();
+  const bool old_vr_reveal_unrendered = g_ActiveConfig.vr_passthrough_remove_black_bg;
+  const auto old_vr_passthrough_coverage_mode =
+      g_ActiveConfig.vr_passthrough_coverage_mode;
 
   UpdateActiveConfig();
   g_vertex_manager->OnConfigChange();
@@ -446,6 +454,14 @@ void CheckForConfigChanges()
     changed_bits |= CONFIG_CHANGE_BIT_POST_PROCESSING_SHADER;
   if (old_hdr != g_ActiveConfig.bHDR)
     changed_bits |= CONFIG_CHANGE_BIT_HDR;
+  const bool vr_passthrough_resources_changed =
+      old_vr_passthrough_enabled != g_ActiveConfig.VRPassthroughEnabled() ||
+      old_vr_reveal_unrendered != g_ActiveConfig.vr_passthrough_remove_black_bg;
+  if (vr_passthrough_resources_changed ||
+      old_vr_passthrough_coverage_mode != g_ActiveConfig.vr_passthrough_coverage_mode)
+  {
+    changed_bits |= CONFIG_CHANGE_BIT_VR_PASSTHROUGH;
+  }
 
   // No changes?
   if (changed_bits == 0)
@@ -455,7 +471,8 @@ void CheckForConfigChanges()
 
   // Framebuffer changed?
   if (changed_bits & (CONFIG_CHANGE_BIT_MULTISAMPLES | CONFIG_CHANGE_BIT_STEREO_MODE |
-                      CONFIG_CHANGE_BIT_TARGET_SIZE | CONFIG_CHANGE_BIT_HDR))
+                      CONFIG_CHANGE_BIT_TARGET_SIZE | CONFIG_CHANGE_BIT_HDR) ||
+      vr_passthrough_resources_changed)
   {
     g_framebuffer_manager->RecreateEFBFramebuffer(g_ActiveConfig.iEFBScale);
   }
@@ -468,7 +485,8 @@ void CheckForConfigChanges()
   }
 
   // Reload shaders if host config has changed.
-  if (changed_bits & (CONFIG_CHANGE_BIT_HOST_CONFIG | CONFIG_CHANGE_BIT_MULTISAMPLES))
+  if (changed_bits & (CONFIG_CHANGE_BIT_HOST_CONFIG | CONFIG_CHANGE_BIT_MULTISAMPLES |
+                      CONFIG_CHANGE_BIT_VR_PASSTHROUGH))
   {
     OSD::AddMessage("Video config changed, reloading shaders.", OSD::Duration::NORMAL);
     g_gfx->WaitForGPUIdle();

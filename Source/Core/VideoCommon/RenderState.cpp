@@ -118,10 +118,6 @@ void BlendingState::Generate(const BPMemory& bp)
 
   color_update = bp.blendmode.color_update && alpha_test_may_succeed;
   alpha_update = bp.blendmode.alpha_update && target_has_alpha && alpha_test_may_succeed;
-  // VR AR mode: always allow alpha writes so the OpenXR compositor receives a usable
-  // alpha channel for passthrough composition.
-  if (g_ActiveConfig.vr_ar_mode)
-    alpha_update = true;
   const bool dst_alpha = bp.dstalpha.enable && alpha_update;
   use_dual_src = true;
 
@@ -391,6 +387,25 @@ BlendingState GetNoBlendingBlendState()
   state.src_factor_alpha = SrcBlendFactor::One;
   state.dst_factor = DstBlendFactor::Zero;
   state.dst_factor_alpha = DstBlendFactor::Zero;
+  state.logic_op_enable = false;
+  state.color_update = true;
+  state.alpha_update = true;
+  return state;
+}
+
+BlendingState GetVRCoverageBlendState()
+{
+  // "Over" operator driven by the fragment's blend alpha (written into the coverage
+  // output's alpha channel): coverage' = a * target + (1 - a) * coverage. Transparent
+  // texels of blended draws leave passthrough visible; translucent texels over opaque
+  // content cannot punch holes (1 stays 1).
+  BlendingState state = {};
+  state.use_dual_src = false;
+  state.blend_enable = true;
+  state.src_factor = SrcBlendFactor::SrcAlpha;
+  state.src_factor_alpha = SrcBlendFactor::SrcAlpha;
+  state.dst_factor = DstBlendFactor::InvSrcAlpha;
+  state.dst_factor_alpha = DstBlendFactor::InvSrcAlpha;
   state.logic_op_enable = false;
   state.color_update = true;
   state.alpha_update = true;

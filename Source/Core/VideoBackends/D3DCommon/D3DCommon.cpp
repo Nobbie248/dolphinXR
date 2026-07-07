@@ -124,6 +124,8 @@ DXGI_FORMAT GetDXGIFormatForAbstractFormat(AbstractTextureFormat format, bool ty
 {
   switch (format)
   {
+  case AbstractTextureFormat::R8:
+    return typeless ? DXGI_FORMAT_R8_TYPELESS : DXGI_FORMAT_R8_UNORM;
   case AbstractTextureFormat::DXT1:
     return DXGI_FORMAT_BC1_UNORM;
   case AbstractTextureFormat::DXT3:
@@ -161,6 +163,8 @@ DXGI_FORMAT GetSRVFormatForAbstractFormat(AbstractTextureFormat format)
 {
   switch (format)
   {
+  case AbstractTextureFormat::R8:
+    return DXGI_FORMAT_R8_UNORM;
   case AbstractTextureFormat::DXT1:
     return DXGI_FORMAT_BC1_UNORM;
   case AbstractTextureFormat::DXT3:
@@ -199,6 +203,8 @@ DXGI_FORMAT GetRTVFormatForAbstractFormat(AbstractTextureFormat format, bool int
 {
   switch (format)
   {
+  case AbstractTextureFormat::R8:
+    return integer ? DXGI_FORMAT_R8_UINT : DXGI_FORMAT_R8_UNORM;
   case AbstractTextureFormat::RGBA8:
     return integer ? DXGI_FORMAT_R8G8B8A8_UINT : DXGI_FORMAT_R8G8B8A8_UNORM;
   case AbstractTextureFormat::BGRA8:
@@ -238,6 +244,11 @@ AbstractTextureFormat GetAbstractFormatForDXGIFormat(DXGI_FORMAT format)
 {
   switch (format)
   {
+  case DXGI_FORMAT_R8_UINT:
+  case DXGI_FORMAT_R8_UNORM:
+  case DXGI_FORMAT_R8_TYPELESS:
+    return AbstractTextureFormat::R8;
+
   case DXGI_FORMAT_R8G8B8A8_UINT:
   case DXGI_FORMAT_R8G8B8A8_UNORM:
   case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:

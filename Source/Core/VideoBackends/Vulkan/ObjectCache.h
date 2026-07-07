@@ -61,7 +61,8 @@ public:
   // Render pass cache.
   VkRenderPass GetRenderPass(VkFormat color_format, VkFormat depth_format, u32 multisamples,
                              VkAttachmentLoadOp load_op, u8 additional_attachment_count = 0,
-                             bool multiview = false);
+                             bool multiview = false,
+                             VkFormat additional_color_format = VK_FORMAT_UNDEFINED);
 
   // Pipeline cache. Used when creating pipelines for drivers to store compiled programs.
   VkPipelineCache GetPipelineCache() const { return m_pipeline_cache; }
@@ -104,7 +105,7 @@ private:
 
   // Render pass cache
   using RenderPassCacheKey =
-      std::tuple<VkFormat, VkFormat, u32, VkAttachmentLoadOp, std::size_t, bool>;
+      std::tuple<VkFormat, VkFormat, u32, VkAttachmentLoadOp, std::size_t, bool, VkFormat>;
   std::map<RenderPassCacheKey, VkRenderPass> m_render_pass_cache;
 
   // pipeline cache

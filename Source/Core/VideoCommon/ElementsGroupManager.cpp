@@ -354,6 +354,7 @@ const char* GetHandlingName(ElementsGroupManager::HandlingType handling)
          handling == ElementsGroupManager::HandlingType::HeadLocked     ? "headlocked" :
          handling == ElementsGroupManager::HandlingType::Flag           ? "flag" :
          handling == ElementsGroupManager::HandlingType::UnitsPerMeter  ? "units_per_meter" :
+         handling == ElementsGroupManager::HandlingType::Passthrough    ? "passthrough" :
                                                                           "skip";
 }
 
@@ -735,6 +736,7 @@ LoadElementGroupOverridesFromINIFile(const std::string& path)
                          value == "fullscreen_mono" ? HandlingType::FullscreenMono :
                          value == "headlocked"      ? HandlingType::HeadLocked :
                          value == "flag"            ? HandlingType::Flag :
+                         value == "passthrough"     ? HandlingType::Passthrough :
                          value == "units_per_meter" || value == "upm" ?
                              HandlingType::UnitsPerMeter :
                              HandlingType::Skip;
@@ -744,6 +746,8 @@ LoadElementGroupOverridesFromINIFile(const std::string& path)
       current.element_depth = std::stof(value);
     else if (key == "units_per_meter" || key == "upm")
       current.units_per_meter = std::stof(value);
+    else if (key == "passthrough_opacity")
+      current.passthrough_opacity = std::clamp(std::stof(value), 0.0f, 1.0f);
     else if (key == "flag")
       current.flag_group = value;
     else if (key == "condition")
@@ -906,6 +910,8 @@ void ElementsGroupManager::SaveOverridesToINI(const std::string& game_id,
       out << "element_depth=" << entry.element_depth << "\n";
     if (entry.units_per_meter > 0.0f)
       out << "units_per_meter=" << entry.units_per_meter << "\n";
+    if (entry.handling == HandlingType::Passthrough)
+      out << "passthrough_opacity=" << entry.passthrough_opacity << "\n";
     if (!entry.flag_group.empty())
       out << "flag=" << entry.flag_group << "\n";
     if (!entry.condition_flag.empty())
@@ -1889,6 +1895,20 @@ float ElementsGroupManager::GetOverrideUnitsPerMeter(const DrawRecord& draw) con
       return entry.units_per_meter;
   }
   return -1.0f;
+}
+
+float ElementsGroupManager::GetOverridePassthroughOpacity(const DrawRecord& draw) const
+{
+  std::lock_guard lock(m_mutex);
+  GetStableSubMatchSignatureLocked(draw);
+  for (const auto& entry : m_overrides)
+  {
+    if (entry.handling != HandlingType::Passthrough)
+      continue;
+    if (DoesEntryMatch(entry, draw, true))
+      return std::clamp(entry.passthrough_opacity, 0.0f, 1.0f);
+  }
+  return 0.0f;  // fully see-through
 }
 
 void ElementsGroupManager::CheckClearEFBForDraw(const DrawRecord& draw)

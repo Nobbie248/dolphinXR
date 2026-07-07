@@ -162,7 +162,8 @@ constexpr Common::EnumMap<const char*, TevOutput::Color2> tev_a_output_table{
 
 constexpr Common::EnumMap<char, ColorChannel::Alpha> rgba_swizzle{'r', 'g', 'b', 'a'};
 
-static constexpr u32 PIXEL_SHADER_CODE_VERSION = 1;
+// Bumped to 4: coverage output carries the fragment blend alpha for blended draws.
+static constexpr u32 PIXEL_SHADER_CODE_VERSION = 4;
 
 PixelShaderUid GetPixelShaderUid()
 {
@@ -172,6 +173,7 @@ PixelShaderUid GetPixelShaderUid()
   uid_data->code_version = PIXEL_SHADER_CODE_VERSION;
   uid_data->useDstAlpha = bpmem.dstalpha.enable && bpmem.blendmode.alpha_update &&
                           bpmem.zcontrol.pixel_format == PixelFormat::RGBA6_Z24;
+  uid_data->vr_coverage_mode = GetVRPassthroughCoverageShaderMode();
 
   uid_data->genMode_numindstages = bpmem.genMode.numindstages;
   uid_data->genMode_numtevstages = bpmem.genMode.numtevstages;
@@ -385,6 +387,7 @@ void WritePixelShaderCommonHeader(ShaderCode& out, APIType api_type,
             "\tbool  logic_op_enable;\n"
             "\tuint  logic_op_mode;\n"
             "\tuint  time_ms;\n"
+            "\tfloat " I_VR_PASSTHROUGH_ALPHA ";\n"
             "}};\n\n");
   out.Write("#define bpmem_combiners(i) (bpmem_pack1[(i)].xy)\n"
             "#define bpmem_tevind(i) (bpmem_pack1[(i)].z)\n"
@@ -874,6 +877,9 @@ ShaderCode GeneratePixelShaderCode(APIType api_type, const ShaderHostConfig& hos
     }
   }
 
+  if (uid_data->vr_coverage_mode == VRPassthroughCoverageShaderMode::MRT)
+    out.Write("FRAGMENT_OUTPUT_LOCATION(1) out vec4 vr_coverage;\n");
+
   if (uid_data->per_pixel_depth)
     out.Write("#define depth gl_FragDepth\n");
 
@@ -1140,6 +1146,20 @@ ShaderCode GeneratePixelShaderCode(APIType api_type, const ShaderHostConfig& hos
     WriteBlend(out, uid_data);
   else if (use_framebuffer_fetch)
     out.Write("\treal_ocol0 = ocol0;\n");
+
+  // The coverage output carries the fragment's blend alpha in .a so blended draws blend
+  // their coverage the same way their color blends (see GetVRCoverageBlendState):
+  // coverage' = a * target + (1 - a) * coverage. Transparent texels leave passthrough
+  // visible; translucent texels over opaque content cannot punch holes. Opaque
+  // pipelines disable blending on the coverage attachment, so .a is ignored there.
+  if (uid_data->vr_coverage_mode == VRPassthroughCoverageShaderMode::MRT)
+  {
+    out.Write("\tvr_coverage = float4(" I_VR_PASSTHROUGH_ALPHA ", 0.0, 0.0, ocol0.a);\n");
+  }
+  else if (uid_data->vr_coverage_mode == VRPassthroughCoverageShaderMode::CoverageOnly)
+  {
+    out.Write("\tocol0 = float4(" I_VR_PASSTHROUGH_ALPHA ", 0.0, 0.0, ocol0.a);\n");
+  }
 
   if (uid_data->bounding_box)
     out.Write("\tUpdateBoundingBox(rawpos.xy);\n");

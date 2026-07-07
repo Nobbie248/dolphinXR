@@ -56,6 +56,8 @@ private:
   QLabel* m_element_depth_label;
   QDoubleSpinBox* m_units_per_meter_spin;
   QLabel* m_units_per_meter_label;
+  QDoubleSpinBox* m_passthrough_opacity_spin;
+  QLabel* m_passthrough_opacity_label;
   QPushButton* m_view_textures_button;
   QWidget* m_texture_hash_container;
   QScrollArea* m_texture_hash_scroll;

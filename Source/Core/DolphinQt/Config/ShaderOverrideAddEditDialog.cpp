@@ -95,6 +95,8 @@ ShaderOverrideAddEditDialog::ShaderOverrideAddEditDialog(
   m_handling_combo->addItem(tr("Flag"), static_cast<int>(ShaderHunter::HandlingType::Flag));
   m_handling_combo->addItem(tr("Units per Meter"),
                             static_cast<int>(ShaderHunter::HandlingType::UnitsPerMeter));
+  m_handling_combo->addItem(tr("Passthrough"),
+                            static_cast<int>(ShaderHunter::HandlingType::Passthrough));
 
   m_layer_label = new QLabel(tr("Layer:"));
   m_layer_spin = new QSpinBox;
@@ -124,6 +126,18 @@ ShaderOverrideAddEditDialog::ShaderOverrideAddEditDialog(
   m_units_per_meter_spin->setValue(1.0);
   m_units_per_meter_spin->setToolTip(tr("Temporary per-shader scale override for VR.\n"
                                          "Higher values make this shader appear larger."));
+
+  m_passthrough_opacity_label = new QLabel(tr("Opacity:"));
+  m_passthrough_opacity_spin = new QDoubleSpinBox;
+  m_passthrough_opacity_spin->setRange(0.0, 1.0);
+  m_passthrough_opacity_spin->setDecimals(2);
+  m_passthrough_opacity_spin->setSingleStep(0.05);
+  m_passthrough_opacity_spin->setValue(0.0);
+  m_passthrough_opacity_spin->setToolTip(
+      tr("How opaque this element stays over the headset camera feed.\n"
+         "0.00 = fully see-through (pure passthrough window).\n"
+         "1.00 = fully opaque (no passthrough).\n"
+         "Requires the VR Passthrough setting to be enabled."));
 
   m_flag_label = new QLabel(tr("Flag Group:"));
   m_flag_edit = new QLineEdit;
@@ -211,6 +225,7 @@ ShaderOverrideAddEditDialog::ShaderOverrideAddEditDialog(
     m_element_depth_spin->setValue(edit_override->element_depth);
     if (edit_override->units_per_meter > 0.0f)
       m_units_per_meter_spin->setValue(edit_override->units_per_meter);
+    m_passthrough_opacity_spin->setValue(edit_override->passthrough_opacity);
     m_flag_edit->setText(QString::fromStdString(edit_override->flag_group));
 
     m_hash_family_check->setChecked(edit_override->hash_family_match);
@@ -260,6 +275,7 @@ ShaderOverrideAddEditDialog::ShaderOverrideAddEditDialog(
   form->addRow(m_layer_label, m_layer_spin);
   form->addRow(m_element_depth_label, m_element_depth_spin);
   form->addRow(m_units_per_meter_label, m_units_per_meter_spin);
+  form->addRow(m_passthrough_opacity_label, m_passthrough_opacity_spin);
   form->addRow(m_flag_label, m_flag_edit);
   form->addRow(m_condition_label, m_condition_combo);
   form->addRow(m_condition_mode_label, m_condition_mode_combo);
@@ -330,6 +346,9 @@ ShaderHunter::ShaderOverride ShaderOverrideAddEditDialog::GetResult() const
   result.units_per_meter = result.handling == ShaderHunter::HandlingType::UnitsPerMeter ?
                                static_cast<float>(m_units_per_meter_spin->value()) :
                                -1.0f;
+  result.passthrough_opacity = result.handling == ShaderHunter::HandlingType::Passthrough ?
+                                   static_cast<float>(m_passthrough_opacity_spin->value()) :
+                                   0.0f;
   const auto texture_tokens = CollectTextureHashTokens();
   for (const std::string& token : texture_tokens)
   {
@@ -442,6 +461,7 @@ void ShaderOverrideAddEditDialog::OnHandlingChanged()
   const bool show_layer = (handling == ShaderHunter::HandlingType::Screen ||
                            handling == ShaderHunter::HandlingType::HeadLocked);
   const bool show_units_per_meter = (handling == ShaderHunter::HandlingType::UnitsPerMeter);
+  const bool show_passthrough = (handling == ShaderHunter::HandlingType::Passthrough);
   const bool is_flag = (handling == ShaderHunter::HandlingType::Flag);
 
   m_layer_label->setVisible(show_layer);
@@ -450,6 +470,8 @@ void ShaderOverrideAddEditDialog::OnHandlingChanged()
   m_element_depth_spin->setVisible(show_layer);
   m_units_per_meter_label->setVisible(show_units_per_meter);
   m_units_per_meter_spin->setVisible(show_units_per_meter);
+  m_passthrough_opacity_label->setVisible(show_passthrough);
+  m_passthrough_opacity_spin->setVisible(show_passthrough);
   // Flag group is always visible (optional for non-Flag handling, required for Flag)
   m_flag_label->setVisible(true);
   m_flag_edit->setVisible(true);

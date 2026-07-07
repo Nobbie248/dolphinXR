@@ -417,10 +417,13 @@ VkSampler ObjectCache::GetSampler(const SamplerState& info)
 
 VkRenderPass ObjectCache::GetRenderPass(VkFormat color_format, VkFormat depth_format,
                                         u32 multisamples, VkAttachmentLoadOp load_op,
-                                        u8 additional_attachment_count, bool multiview)
+                                        u8 additional_attachment_count, bool multiview,
+                                        VkFormat additional_color_format)
 {
+  if (additional_color_format == VK_FORMAT_UNDEFINED)
+    additional_color_format = color_format;
   auto key = std::tie(color_format, depth_format, multisamples, load_op,
-                      additional_attachment_count, multiview);
+                      additional_attachment_count, multiview, additional_color_format);
   auto it = m_render_pass_cache.find(key);
   if (it != m_render_pass_cache.end())
     return it->second;
@@ -435,7 +438,8 @@ VkRenderPass ObjectCache::GetRenderPass(VkFormat color_format, VkFormat depth_fo
     color_reference.attachment = static_cast<uint32_t>(attachments.size());
     color_reference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     color_attachment_references.push_back(std::move(color_reference));
-    attachments.push_back({0, color_format, static_cast<VkSampleCountFlagBits>(multisamples),
+    attachments.push_back({0, color_format,
+                           static_cast<VkSampleCountFlagBits>(multisamples),
                            load_op, VK_ATTACHMENT_STORE_OP_STORE, VK_ATTACHMENT_LOAD_OP_DONT_CARE,
                            VK_ATTACHMENT_STORE_OP_DONT_CARE,
                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
@@ -459,7 +463,8 @@ VkRenderPass ObjectCache::GetRenderPass(VkFormat color_format, VkFormat depth_fo
     color_reference.attachment = static_cast<uint32_t>(attachments.size());
     color_reference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     color_attachment_references.push_back(std::move(color_reference));
-    attachments.push_back({0, color_format, static_cast<VkSampleCountFlagBits>(multisamples),
+    attachments.push_back({0, additional_color_format,
+                           static_cast<VkSampleCountFlagBits>(multisamples),
                            load_op, VK_ATTACHMENT_STORE_OP_STORE, VK_ATTACHMENT_LOAD_OP_DONT_CARE,
                            VK_ATTACHMENT_STORE_OP_DONT_CARE,
                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,

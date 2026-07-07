@@ -15,6 +15,7 @@
 
 #include "Common/Config/Config.h"
 #include "Core/Config/GraphicsSettings.h"
+#include "Core/Config/MainSettings.h"
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
 #include "Core/System.h"
@@ -63,9 +64,9 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   auto* rendering_group = new QGroupBox(tr("Rendering"));
   auto* rendering_layout = new QGridLayout;
   rendering_group->setLayout(rendering_layout);
-  auto* ar_mode_group = new QGroupBox(tr("AR Mode"));
-  auto* ar_mode_layout = new QGridLayout;
-  ar_mode_group->setLayout(ar_mode_layout);
+  auto* passthrough_group = new QGroupBox(tr("Passthrough"));
+  auto* passthrough_layout = new QGridLayout;
+  passthrough_group->setLayout(passthrough_layout);
 
   m_enable_openxr = new ConfigBool(tr("Enable VR"), Config::GFX_VR_ENABLE_OPENXR);
   m_reference_space_mode = new ConfigChoiceMap<OpenXRReferenceSpaceMode>(
@@ -106,20 +107,27 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
 
   openxr_layout->addWidget(m_enable_openxr, 0, 0, 1, 3);
 
-  m_ar_mode = new ConfigBool(tr("AR Mode (Passthrough)"), Config::GFX_VR_AR_MODE);
-
-  m_ar_background_alpha =
-      new ConfigFloatSlider(Config::GFX_VR_AR_BACKGROUND_ALPHA_MIN,
-                            Config::GFX_VR_AR_BACKGROUND_ALPHA_MAX,
-                            Config::GFX_VR_AR_BACKGROUND_ALPHA,
-                            Config::GFX_VR_AR_BACKGROUND_ALPHA_STEP);
-  m_ar_background_alpha_value = new QLabel();
-  m_ar_background_alpha_value->setText(
-      QString::asprintf("%.2f", m_ar_background_alpha->GetValue()));
-  connect(m_ar_background_alpha, &ConfigFloatSlider::valueChanged, this, [this] {
-    m_ar_background_alpha_value->setText(
-        QString::asprintf("%.2f", m_ar_background_alpha->GetValue()));
+  m_passthrough = new ConfigBool(tr("Enable Passthrough"), Config::GFX_VR_PASSTHROUGH);
+  m_passthrough_remove_black_bg =
+      new ConfigBool(tr("Reveal Unrendered Areas"), Config::GFX_VR_PASSTHROUGH_REMOVE_BLACK_BG);
+  m_passthrough_remove_black_clears = new ConfigBool(
+      tr("Remove Black EFB Clears"), Config::GFX_VR_PASSTHROUGH_REMOVE_BLACK_CLEARS);
+  m_passthrough_scene_opacity =
+      new ConfigFloatSlider(Config::GFX_VR_PASSTHROUGH_SCENE_OPACITY_MIN,
+                            Config::GFX_VR_PASSTHROUGH_SCENE_OPACITY_MAX,
+                            Config::GFX_VR_PASSTHROUGH_SCENE_OPACITY,
+                            Config::GFX_VR_PASSTHROUGH_SCENE_OPACITY_STEP);
+  m_passthrough_scene_opacity_value = new QLabel();
+  m_passthrough_scene_opacity_value->setText(
+      QString::asprintf("%.2f", m_passthrough_scene_opacity->GetValue()));
+  connect(m_passthrough_scene_opacity, &ConfigFloatSlider::valueChanged, this, [this] {
+    m_passthrough_scene_opacity_value->setText(
+        QString::asprintf("%.2f", m_passthrough_scene_opacity->GetValue()));
   });
+  m_passthrough_coverage_mode = new ConfigChoiceMap<VRPassthroughCoverageMode>(
+      {{tr("Exact"), VRPassthroughCoverageMode::Exact},
+       {tr("Fast"), VRPassthroughCoverageMode::Fast}},
+      Config::GFX_VR_PASSTHROUGH_COVERAGE_MODE);
 
   openxr_layout->addWidget(new ConfigFloatLabel(tr("Units per Meter:"), m_units_per_meter), 1, 0);
   openxr_layout->addWidget(m_units_per_meter, 1, 1);
@@ -377,8 +385,6 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   update_layered_palette_conversion_path(m_layered_palette_conversion_path->isChecked());
   m_lock_head_pose =
       new ConfigBool(tr("Lock Head Pose Per Frame"), Config::GFX_VR_LOCK_HEAD_POSE);
-  m_ar_mode_debug =
-      new ConfigBool(tr("Fake AR Mode (Debug)"), Config::GFX_VR_AR_MODE_DEBUG);
 
   hacks_group_layout->addWidget(m_use_vulkan_multiview);
   hacks_group_layout->addWidget(m_auto_immediate_xfb);
@@ -391,13 +397,26 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   hacks_group_layout->addWidget(m_layered_palette_conversion_path);
   hack_layout->addWidget(hacks_group);
 
-  ar_mode_layout->addWidget(m_ar_mode, 0, 0, 1, 3);
-  ar_mode_layout->addWidget(
-      new ConfigFloatLabel(tr("AR Background Alpha:"), m_ar_background_alpha), 1, 0);
-  ar_mode_layout->addWidget(m_ar_background_alpha, 1, 1);
-  ar_mode_layout->addWidget(m_ar_background_alpha_value, 1, 2);
-  ar_mode_layout->addWidget(m_ar_mode_debug, 2, 0, 1, 3);
-  hack_layout->addWidget(ar_mode_group);
+  passthrough_layout->addWidget(m_passthrough, 0, 0, 1, 3);
+  passthrough_layout->addWidget(m_passthrough_remove_black_bg, 1, 0, 1, 3);
+  passthrough_layout->addWidget(m_passthrough_remove_black_clears, 2, 0, 1, 3);
+  passthrough_layout->addWidget(
+      new ConfigFloatLabel(tr("Scene Opacity:"), m_passthrough_scene_opacity), 3, 0);
+  passthrough_layout->addWidget(m_passthrough_scene_opacity, 3, 1);
+  passthrough_layout->addWidget(m_passthrough_scene_opacity_value, 3, 2);
+  passthrough_layout->addWidget(new QLabel(tr("Coverage Mode:")), 4, 0);
+  passthrough_layout->addWidget(m_passthrough_coverage_mode, 4, 1, 1, 2);
+#if defined(_WIN32)
+  const auto update_passthrough_backend = [passthrough_group] {
+    passthrough_group->setEnabled(Config::Get(Config::MAIN_GFX_BACKEND) == "Vulkan");
+  };
+  connect(&Settings::Instance(), &Settings::ConfigChanged, passthrough_group,
+          update_passthrough_backend);
+  update_passthrough_backend();
+#else
+  passthrough_group->setVisible(false);
+#endif
+  hack_layout->addWidget(passthrough_group);
 
   // Lock Head Pose is incompatible with Immediately Present XFB — when enabled,
   // force-disable both Auto-enable Immediate XFB (local) and the Graphics Hacks
@@ -738,27 +757,43 @@ void VRPane::AddDescriptions()
       "<br><br>Disable this if your runtime or headset has trouble with the temporary binding "
       "scene."
       "<br><br><dolphin_emphasis>If unsure, leave this checked.</dolphin_emphasis>");
-  static constexpr char TR_AR_MODE_DEBUG_DESCRIPTION[] = QT_TR_NOOP(
-      "Debug aid for AR Mode development on headsets that do <b>not</b> support passthrough."
-      "<br><br>Clears the per-eye OpenXR swapchain to <b>solid magenta</b> instead of "
-      "transparent black, so the regions that <i>would</i> be see-through in real AR Mode "
-      "become clearly visible. The OpenXR composition state is left as <code>OPAQUE</code>, "
-      "so this works on any headset and never triggers "
-      "<code>XR_ERROR_ENVIRONMENT_BLEND_MODE_UNSUPPORTED</code>."
-      "<br><br>Use this to verify that the eye framebuffer clear path, layer flag wiring, "
-      "and game-geometry-on-empty-background composition all behave correctly without "
-      "needing a passthrough-capable runtime."
+  static constexpr char TR_PASSTHROUGH_DESCRIPTION[] = QT_TR_NOOP(
+      "Shows the headset camera feed through the dedicated coverage mask. This is supported "
+      "only by Windows Vulkan OpenXR."
+      "<br><br>Meta Horizon Link uses <code>XR_FB_passthrough</code> when <b>Passthrough over "
+      "Meta Horizon Link</b> is enabled. Other runtimes may use the <code>ALPHA_BLEND</code> "
+      "environment blend mode."
       "<br><br><dolphin_emphasis>If unsure, leave this unchecked.</dolphin_emphasis>");
-  static constexpr char TR_AR_MODE_DESCRIPTION[] = QT_TR_NOOP(
-      "Submits the OpenXR projection layer with alpha-blended composition so that empty "
-      "(transparent) pixels reveal the headset passthrough feed, making game geometry float "
-      "over the real world."
-      "<br><br>Requires a headset and runtime that support "
-      "<code>XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND</code> (e.g. Quest 3, Vive XR Elite, "
-      "Varjo, HoloLens). On opaque-only PCVR headsets (Index, Vive Pro) enabling this will "
-      "cause <code>xrEndFrame</code> to fail; disable it again if the VR session stops "
-      "submitting frames."
-      "<br><br><dolphin_emphasis>If unsure, leave this unchecked.</dolphin_emphasis>");
+  static constexpr char TR_PASSTHROUGH_REMOVE_BLACK_BG_DESCRIPTION[] = QT_TR_NOOP(
+      "Reveals only EFB regions that no accepted game color fragment or color clear touched. "
+      "Black game clears remain opaque unless <b>Remove Black EFB Clears</b> is enabled."
+      "<br><br>Disable this to keep the whole scene opaque and control passthrough "
+      "manually — only elements marked with a <b>Passthrough</b> override (Shader / "
+      "Elements Group / Texture Element tools) become camera windows. Useful for games "
+      "that explicitly draw their menu backgrounds."
+      "<br><br><dolphin_emphasis>If unsure, leave this checked.</dolphin_emphasis>");
+  static constexpr char TR_PASSTHROUGH_REMOVE_BLACK_CLEARS_DESCRIPTION[] = QT_TR_NOOP(
+      "Treats (near-)black EFB color clears as unrendered instead of covered."
+      "<br><br>Most games clear the whole screen to black every frame, which normally "
+      "marks everything as covered — the void around menus or behind a removed skybox "
+      "stays opaque black. With this enabled, those cleared regions reveal the camera "
+      "feed until the game draws over them. Colored clears (skies, white menu "
+      "backgrounds) always stay opaque."
+      "<br><br>Content the game actually draws — even pure black art, FMVs or letterbox "
+      "bars drawn as geometry — is unaffected."
+      "<br><br><dolphin_emphasis>If unsure, leave this checked.</dolphin_emphasis>");
+  static constexpr char TR_PASSTHROUGH_SCENE_OPACITY_DESCRIPTION[] = QT_TR_NOOP(
+      "Blends the entire rendered scene over the camera feed."
+      "<br><br>1.00 shows the game fully opaque; lower values make everything on screen "
+      "progressively see-through until only the real world remains at 0.00. Passthrough "
+      "windows and the black void are unaffected (they are already fully transparent)."
+      "<br><br><dolphin_emphasis>If unsure, leave this at 1.00.</dolphin_emphasis>");
+  static constexpr char TR_PASSTHROUGH_COVERAGE_MODE_DESCRIPTION[] = QT_TR_NOOP(
+      "Exact preserves game blending and logic operations by using a coverage prepass when "
+      "the draw cannot safely write the coverage MRT."
+      "<br><br>Fast may disable dual-source blending where required. Incompatible logic and "
+      "custom draws still use a prepass."
+      "<br><br><dolphin_emphasis>If unsure, select Exact.</dolphin_emphasis>");
 
   m_enable_openxr->SetDescription(tr(TR_ENABLE_OPENXR_DESCRIPTION));
   m_use_vulkan_multiview->SetDescription(tr(TR_USE_VULKAN_MULTIVIEW_DESCRIPTION));
@@ -793,8 +828,13 @@ void VRPane::AddDescriptions()
   m_hud_thickness->SetDescription(tr(TR_HUD_THICKNESS_DESCRIPTION));
   m_load_custom_shaders->SetDescription(tr(TR_LOAD_CUSTOM_SHADERS_DESCRIPTION));
   m_enable_openxr_config_scene->SetDescription(tr(TR_ENABLE_OPENXR_CONFIG_SCENE_DESCRIPTION));
-  m_ar_mode->SetDescription(tr(TR_AR_MODE_DESCRIPTION));
-  m_ar_mode_debug->SetDescription(tr(TR_AR_MODE_DEBUG_DESCRIPTION));
+  m_passthrough->SetDescription(tr(TR_PASSTHROUGH_DESCRIPTION));
+  m_passthrough_remove_black_bg->SetDescription(tr(TR_PASSTHROUGH_REMOVE_BLACK_BG_DESCRIPTION));
+  m_passthrough_remove_black_clears->SetDescription(
+      tr(TR_PASSTHROUGH_REMOVE_BLACK_CLEARS_DESCRIPTION));
+  m_passthrough_scene_opacity->SetDescription(tr(TR_PASSTHROUGH_SCENE_OPACITY_DESCRIPTION));
+  m_passthrough_coverage_mode->SetDescription(
+      tr(TR_PASSTHROUGH_COVERAGE_MODE_DESCRIPTION));
 }
 
 void VRPane::OnEmulationStateChanged(Core::State state)

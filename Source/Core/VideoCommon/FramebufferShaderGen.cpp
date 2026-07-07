@@ -664,6 +664,22 @@ std::string GenerateEFBRestorePixelShader()
   return code.GetBuffer();
 }
 
+std::string GenerateEFBCoverageRestorePixelShader(bool multiview)
+{
+  ShaderCode code;
+  if (multiview && GetAPIType() == APIType::Vulkan)
+    code.Write("#extension GL_EXT_multiview : require\n");
+  EmitSamplerDeclarations(code, 0, 1, false);
+  EmitPixelMainDeclaration(code, 1, 0);
+  code.Write("{{\n"
+             "  ocol0 = ");
+  EmitSampleTexture(code, 0,
+                    multiview ? "float3(v_tex0.xy, float(gl_ViewIndex))" : "v_tex0");
+  code.Write(";\n"
+             "}}\n");
+  return code.GetBuffer();
+}
+
 std::string GenerateImGuiVertexShader()
 {
   ShaderCode code;

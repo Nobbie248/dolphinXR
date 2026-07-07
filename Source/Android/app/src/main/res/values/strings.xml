@@ -820,12 +820,6 @@ It can efficiently compress both junk data and encrypted Wii data.
     <string name="quest_show_mirror_surface_description">Keeps the Android surface visible while OpenXR is active for debugging and capture.</string>
     <string name="quest_show_perf_hud">Show performance HUD</string>
     <string name="quest_show_perf_hud_description">Displays Dolphin frame rate statistics in the headset mirror.</string>
-    <string name="quest_passthrough">Enable passthrough</string>
-    <string name="quest_passthrough_description">Submits the OpenXR layer with transparent background so headset passthrough can show through empty regions.</string>
-    <string name="quest_passthrough_debug">Passthrough debug tint</string>
-    <string name="quest_passthrough_debug_description">Uses a solid debug clear color to make passthrough masking issues obvious.</string>
-    <string name="quest_ar_background_alpha">AR Background Alpha</string>
-    <string name="quest_ar_background_alpha_description">Controls the alpha used for the OpenXR background when passthrough composition is active.</string>
     <string name="quest_lock_head_pose">Lock head pose per frame</string>
     <string name="quest_lock_head_pose_description">Keeps pose updates aligned with emulation frame boundaries for more stable stereo output.</string>
     <string name="quest_detect_skybox">Detect Skybox</string>

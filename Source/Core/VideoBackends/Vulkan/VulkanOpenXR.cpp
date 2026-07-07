@@ -23,12 +23,14 @@
 #include "Common/ScopeGuard.h"
 #include "Common/Timer.h"
 
+#include "Core/Config/GraphicsSettings.h"
 #include "VideoBackends/Vulkan/CommandBufferManager.h"
 #include "VideoBackends/Vulkan/StateTracker.h"
 #include "VideoBackends/Vulkan/VKTexture.h"
 #include "VideoBackends/Vulkan/VulkanContext.h"
 #include "VideoCommon/TextureConfig.h"
 #include "VideoCommon/VideoConfig.h"
+#include "VideoCommon/OnScreenDisplay.h"
 #include "VideoCommon/VR/OpenXRManager.h"
 
 #ifdef _WIN32
@@ -515,6 +517,22 @@ bool VulkanOpenXR::Initialize()
 
     VR::g_openxr = std::move(mgr);
   }
+
+#if defined(_WIN32)
+  g_backend_info.bSupportsVRPassthroughCoverage &=
+      VR::g_openxr->SupportsPassthrough();
+  if (g_ActiveConfig.vr_passthrough &&
+      !g_backend_info.bSupportsVRPassthroughCoverage)
+  {
+    OSD::AddMessage("Passthrough disabled: this OpenXR runtime does not expose a compatible "
+                    "passthrough mode.",
+                    OSD::Duration::VERY_LONG);
+    Config::SetBaseOrCurrent(Config::GFX_VR_PASSTHROUGH, false);
+    g_ActiveConfig.vr_passthrough = false;
+  }
+#else
+  g_backend_info.bSupportsVRPassthroughCoverage = false;
+#endif
 
   INFO_LOG_FMT(VIDEO, "OpenXR Vulkan: Creating session...");
   if (!CreateSessionVulkan())
@@ -1309,11 +1327,7 @@ bool VulkanOpenXR::SubmitFrame()
     pending_frame.should_render = VR::g_openxr->ShouldRender();
     pending_frame.space = VR::g_openxr->GetReferenceSpace();
 
-    if (pending_frame.environment_blend_mode == XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND)
-    {
-      pending_frame.layer_flags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT |
-                                  XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT;
-    }
+    pending_frame.layer_flags = VR::g_openxr->GetProjectionLayerExtraFlags();
 
     const auto& eye_views = VR::g_openxr->GetSubmittedEyeViews();
     const bool submit_layered =
@@ -1431,12 +1445,7 @@ bool VulkanOpenXR::SubmitFrame()
   m_projection_layer.space = VR::g_openxr->GetReferenceSpace();
   m_projection_layer.viewCount = 2;
   m_projection_layer.views = m_projection_views.data();
-
-  if (VR::g_openxr->GetActiveBlendMode() == XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND)
-  {
-    m_projection_layer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT |
-                                    XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT;
-  }
+  m_projection_layer.layerFlags = VR::g_openxr->GetProjectionLayerExtraFlags();
 
   const std::vector<XrCompositionLayerBaseHeader*> layers = {
       reinterpret_cast<XrCompositionLayerBaseHeader*>(&m_projection_layer)};

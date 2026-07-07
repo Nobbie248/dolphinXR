@@ -116,6 +116,7 @@ void ElementsGroupOverrideWidget::UpdateList()
                                                  entry.handling == ShaderHunter::HandlingType::HeadLocked   ? "headlocked" :
                                                  entry.handling == ShaderHunter::HandlingType::Flag         ? "flag" :
                                                  entry.handling == ShaderHunter::HandlingType::UnitsPerMeter ? "units_per_meter" :
+                                                 entry.handling == ShaderHunter::HandlingType::Passthrough ? "passthrough" :
                                                                                                              "skip"));
     if (entry.match_kind == ElementsGroupManager::MatchKind::ProfileLayer)
     {

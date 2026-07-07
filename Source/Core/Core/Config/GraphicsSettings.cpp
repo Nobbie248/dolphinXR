@@ -237,9 +237,15 @@ const Info<bool> GFX_VR_METROID_THERMAL_VISOR_FIX{
 const Info<bool> GFX_VR_METROID_D3D_THERMAL_PALETTE_FIX{
     {System::GFX, "VR", "MetroidD3DThermalPaletteFix"}, true};
 const Info<bool> GFX_VR_LOCK_HEAD_POSE{{System::GFX, "VR", "LockHeadPosePerFrame"}, false};
-const Info<bool> GFX_VR_AR_MODE{{System::GFX, "VR", "ARMode"}, false};
-const Info<bool> GFX_VR_AR_MODE_DEBUG{{System::GFX, "VR", "ARModeDebug"}, false};
-const Info<float> GFX_VR_AR_BACKGROUND_ALPHA{{System::GFX, "VR", "ARBackgroundAlpha"}, 0.0f};
+const Info<bool> GFX_VR_PASSTHROUGH{{System::GFX, "VR", "Passthrough"}, false};
+const Info<bool> GFX_VR_PASSTHROUGH_REMOVE_BLACK_BG{
+    {System::GFX, "VR", "PassthroughRemoveBlackBackground"}, true};
+const Info<bool> GFX_VR_PASSTHROUGH_REMOVE_BLACK_CLEARS{
+    {System::GFX, "VR", "PassthroughRemoveBlackEFBClears"}, true};
+const Info<float> GFX_VR_PASSTHROUGH_SCENE_OPACITY{
+    {System::GFX, "VR", "PassthroughSceneOpacity"}, 1.0f};
+const Info<VRPassthroughCoverageMode> GFX_VR_PASSTHROUGH_COVERAGE_MODE{
+    {System::GFX, "VR", "PassthroughCoverageMode"}, VRPassthroughCoverageMode::Exact};
 const Info<float> GFX_VR_GAMMA{{System::GFX, "VR", "Gamma"}, 1.0f};
 const Info<int> GFX_VR_CLEAR_EFB_COPIES{{System::GFX, "VR", "ClearEFBCopies"}, 0};
 const Info<bool> GFX_VR_USE_VULKAN_MULTIVIEW{{System::GFX, "VR", "UseVulkanMultiview"}, true};

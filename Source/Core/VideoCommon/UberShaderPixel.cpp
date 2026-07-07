@@ -16,7 +16,9 @@
 
 namespace UberShader
 {
-static constexpr u32 UBER_PIXEL_SHADER_CODE_VERSION = 1;
+// Bumped to 3: dedicated VR passthrough coverage output modes.
+// Bumped to 4: coverage output carries the fragment blend alpha for blended draws.
+static constexpr u32 UBER_PIXEL_SHADER_CODE_VERSION = 4;
 
 PixelShaderUid GetPixelShaderUid()
 {
@@ -24,6 +26,7 @@ PixelShaderUid GetPixelShaderUid()
 
   pixel_ubershader_uid_data* const uid_data = out.GetUidData();
   uid_data->code_version = UBER_PIXEL_SHADER_CODE_VERSION;
+  uid_data->vr_coverage_mode = GetVRPassthroughCoverageShaderMode();
   uid_data->num_texgens = xfmem.numTexGen.numTexGens;
   uid_data->early_depth = bpmem.GetEmulatedZ() == EmulatedZ::Early &&
                           (g_ActiveConfig.bFastDepthCalc ||
@@ -50,11 +53,20 @@ void ClearUnusedPixelShaderUidBits(APIType api_type, const ShaderHostConfig& hos
   else if (!DriverDetails::HasBug(DriverDetails::BUG_BROKEN_DUAL_SOURCE_BLENDING))
     uid_data->no_dual_src = 0;
 
+  // The MRT coverage output cannot coexist with a dual-source (Index 1) output when
+  // maxFragmentDualSrcAttachments < 2 (it is 1 on desktop GPUs). This must override the
+  // reset above — ApplyDriverBugs already stripped use_dual_src from the blend state,
+  // and this runs after it.
+  if (uid_data->vr_coverage_mode == VRPassthroughCoverageShaderMode::MRT &&
+      g_backend_info.max_fragment_dual_src_attachments < 2)
+    uid_data->no_dual_src = 1;
+
   // OpenGL and Vulkan convert implicitly normalized color outputs to their uint representation.
   // Therefore, it is not necessary to use a uint output on these backends. We also disable the
   // uint output when logic op is not supported (i.e. driver/device does not support D3D11.1).
   if (api_type != APIType::D3D || !host_config.backend_logic_op)
     uid_data->uint_output = 0;
+
 }
 
 ShaderCode GenPixelShader(APIType api_type, const ShaderHostConfig& host_config,
@@ -68,7 +80,9 @@ ShaderCode GenPixelShader(APIType api_type, const ShaderHostConfig& host_config,
   const bool use_dual_source = host_config.backend_dual_source_blend && !uid_data->no_dual_src;
   const bool early_depth = uid_data->early_depth != 0;
   const bool per_pixel_depth = uid_data->per_pixel_depth != 0;
-  const bool bounding_box = host_config.bounding_box;
+  const bool bounding_box =
+      host_config.bounding_box &&
+      uid_data->vr_coverage_mode != VRPassthroughCoverageShaderMode::CoverageOnly;
   const u32 numTexgen = uid_data->num_texgens;
   ShaderCode out;
 
@@ -130,6 +144,9 @@ ShaderCode GenPixelShader(APIType api_type, const ShaderHostConfig& host_config,
                 uid_data->uint_output ? "uvec4" : "vec4");
     }
   }
+
+  if (uid_data->vr_coverage_mode == VRPassthroughCoverageShaderMode::MRT)
+    out.Write("FRAGMENT_OUTPUT_LOCATION(1) out vec4 vr_coverage;\n");
 
   if (per_pixel_depth)
     out.Write("#define depth gl_FragDepth\n");
@@ -1223,6 +1240,7 @@ ShaderCode GenPixelShader(APIType api_type, const ShaderHostConfig& host_config,
                 "  // the alpha from ocol0 will be written to the framebuffer.\n"
                 "  ocol1 = float4(0.0, 0.0, 0.0, float(TevResult.a) / 255.0);\n");
     }
+
   }
 
   if (bounding_box)
@@ -1310,7 +1328,16 @@ ShaderCode GenPixelShader(APIType api_type, const ShaderHostConfig& host_config,
     out.Write("  }} else {{\n"
               "    real_ocol0 = ocol0;\n"
               "  }}\n");
+
   }
+
+  // The coverage output carries the fragment's blend alpha in .a so blended draws blend
+  // their coverage the same way their color blends (see GetVRCoverageBlendState); opaque
+  // pipelines disable blending on the coverage attachment, so .a is ignored there.
+  if (uid_data->vr_coverage_mode == VRPassthroughCoverageShaderMode::MRT)
+    out.Write("  vr_coverage = float4(" I_VR_PASSTHROUGH_ALPHA ", 0.0, 0.0, ocol0.a);\n");
+  else if (uid_data->vr_coverage_mode == VRPassthroughCoverageShaderMode::CoverageOnly)
+    out.Write("  ocol0 = float4(" I_VR_PASSTHROUGH_ALPHA ", 0.0, 0.0, ocol0.a);\n");
 
   out.Write("}}\n"
             "\n"

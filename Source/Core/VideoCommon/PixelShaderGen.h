@@ -62,6 +62,7 @@ struct pixel_shader_uid_data
   u32 emulate_logic_op_with_blend : 1;        // Only used with logic op blend emulation
   u32 logic_op_enable : 1;                    // Only used with shader_framebuffer_fetch logic ops
   u32 logic_op_mode : 4;  // Only used with shader_framebuffer_fetch logic ops and blend emulation
+  VRPassthroughCoverageShaderMode vr_coverage_mode : 2;
 
   u32 texMtxInfo_n_projection : 8;  // 8x1 bit
   u32 tevindref_bi0 : 3;

@@ -2697,27 +2697,6 @@ class SettingsFragmentPresenter(
             R.string.quest_android_direct_to_hmd,
             R.string.quest_android_direct_to_hmd_description
         )
-        addBoolean(
-            "ARMode",
-            false,
-            R.string.quest_passthrough,
-            R.string.quest_passthrough_description
-        )
-        addBoolean(
-            "ARModeDebug",
-            false,
-            R.string.quest_passthrough_debug,
-            R.string.quest_passthrough_debug_description
-        )
-        addFloat(
-            "ARBackgroundAlpha",
-            0.0f,
-            R.string.quest_ar_background_alpha,
-            R.string.quest_ar_background_alpha_description,
-            0.0f,
-            1.0f,
-            0.05f
-        )
     }
 
     private fun addQuestVrSettings(sl: ArrayList<SettingsItem>) {
@@ -2846,35 +2825,6 @@ class SettingsFragmentPresenter(
                 R.string.quest_opcode_replay_description,
                 R.array.questOpcodeReplayEntries,
                 R.array.questOpcodeReplayValues
-            )
-        )
-        sl.add(
-            SwitchSetting(
-                context,
-                QuestVrSettings.passthroughSetting(),
-                R.string.quest_passthrough,
-                R.string.quest_passthrough_description
-            )
-        )
-        sl.add(
-            SwitchSetting(
-                context,
-                QuestVrSettings.debugPassthroughSetting(),
-                R.string.quest_passthrough_debug,
-                R.string.quest_passthrough_debug_description
-            )
-        )
-        sl.add(
-            FloatSliderSetting(
-                context,
-                QuestVrSettings.arBackgroundAlphaSetting(),
-                R.string.quest_ar_background_alpha,
-                R.string.quest_ar_background_alpha_description,
-                0.0f,
-                1.0f,
-                "",
-                0.05f,
-                true
             )
         )
         sl.add(

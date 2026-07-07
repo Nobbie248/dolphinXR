@@ -415,29 +415,10 @@ bool ClearScreen(FramebufferManager* frame_buffer_manager, const MathUtil::Recta
     alpha_enable = false;
   }
 
-  // VR AR mode: force alpha clears so the EFB background starts at alpha=0, allowing
-  // the OpenXR compositor to show the headset passthrough through cleared regions.
-  // Debug AR mode forces a clear to opaque magenta so we can see the same regions on
-  // any headset (composition stays OPAQUE; no passthrough required).
-  if (g_ActiveConfig.vr_ar_mode || g_ActiveConfig.vr_ar_mode_debug)
-  {
-    color_enable = true;
-    alpha_enable = true;
-  }
-
   if (color_enable || alpha_enable || z_enable)
   {
     u32 color = (clear_color_ar << 16) | clear_color_gb;
     u32 z = clear_z_value;
-
-    // VR AR debug: paint the would-be-transparent background opaque magenta so we can
-    // see exactly which pixels passthrough would reveal, on any headset.
-    if (g_ActiveConfig.vr_ar_mode_debug)
-      color = 0xFFFF00FF;
-    // VR AR mode: force the cleared alpha byte to 0 (transparent) regardless of the
-    // game's requested clear color, so the passthrough background shows through.
-    else if (g_ActiveConfig.vr_ar_mode)
-      color &= 0x00FFFFFF;
 
     VideoCommon::OpenXROpcodeReplay::ApplyReplayClearState(frame_just_rendered, &color_enable,
                                                            &alpha_enable, &z_enable,

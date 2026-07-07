@@ -69,6 +69,8 @@ private:
   QLabel* m_element_depth_label = nullptr;
   QDoubleSpinBox* m_units_per_meter_spin = nullptr;
   QLabel* m_units_per_meter_label = nullptr;
+  QDoubleSpinBox* m_passthrough_opacity_spin = nullptr;
+  QLabel* m_passthrough_opacity_label = nullptr;
   QLineEdit* m_flag_edit = nullptr;
   QLabel* m_flag_label = nullptr;
   QComboBox* m_condition_combo = nullptr;

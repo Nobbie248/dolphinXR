@@ -23,6 +23,7 @@ enum class OpenXROpcodeReplayMode : int;
 enum class OpenXRMirrorView : int;
 enum class OpenXRReferenceSpaceMode : int;
 enum class OpenXRTrackingMode : int;
+enum class VRPassthroughCoverageMode : int;
 
 namespace Config
 {
@@ -213,12 +214,14 @@ extern const Info<bool> GFX_VR_DETECT_SKYBOX;
 extern const Info<bool> GFX_VR_METROID_THERMAL_VISOR_FIX;
 extern const Info<bool> GFX_VR_METROID_D3D_THERMAL_PALETTE_FIX;
 extern const Info<bool> GFX_VR_LOCK_HEAD_POSE;
-extern const Info<bool> GFX_VR_AR_MODE;
-extern const Info<bool> GFX_VR_AR_MODE_DEBUG;
-extern const Info<float> GFX_VR_AR_BACKGROUND_ALPHA;
-static constexpr float GFX_VR_AR_BACKGROUND_ALPHA_MIN = 0.0f;
-static constexpr float GFX_VR_AR_BACKGROUND_ALPHA_MAX = 1.0f;
-static constexpr float GFX_VR_AR_BACKGROUND_ALPHA_STEP = 0.05f;
+extern const Info<bool> GFX_VR_PASSTHROUGH;
+extern const Info<bool> GFX_VR_PASSTHROUGH_REMOVE_BLACK_BG;
+extern const Info<bool> GFX_VR_PASSTHROUGH_REMOVE_BLACK_CLEARS;
+extern const Info<float> GFX_VR_PASSTHROUGH_SCENE_OPACITY;
+extern const Info<VRPassthroughCoverageMode> GFX_VR_PASSTHROUGH_COVERAGE_MODE;
+static constexpr float GFX_VR_PASSTHROUGH_SCENE_OPACITY_MIN = 0.0f;
+static constexpr float GFX_VR_PASSTHROUGH_SCENE_OPACITY_MAX = 1.0f;
+static constexpr float GFX_VR_PASSTHROUGH_SCENE_OPACITY_STEP = 0.05f;
 extern const Info<float> GFX_VR_GAMMA;
 extern const Info<int> GFX_VR_CLEAR_EFB_COPIES;
 static constexpr int GFX_VR_CLEAR_EFB_MIN = 0;

@@ -133,6 +133,8 @@ const char* HandlingToString(HandlingType handling)
     return "headlocked";
   case HandlingType::UnitsPerMeter:
     return "units_per_meter";
+  case HandlingType::Passthrough:
+    return "passthrough";
   default:
     return "skip";
   }
@@ -148,6 +150,8 @@ HandlingType HandlingFromString(const std::string& value)
     return HandlingType::HeadLocked;
   if (value == "units_per_meter" || value == "unitspermeter" || value == "upm")
     return HandlingType::UnitsPerMeter;
+  if (value == "passthrough")
+    return HandlingType::Passthrough;
   return HandlingType::Skip;
 }
 
@@ -250,6 +254,8 @@ ParsedTextureOverrideFile LoadTextureOverridesFromINIFile(const std::string& pat
         current.element_depth = std::stof(value);
       else if (key == "units_per_meter" || key == "upm")
         current.units_per_meter = std::stof(value);
+      else if (key == "passthrough_opacity")
+        current.passthrough_opacity = std::clamp(std::stof(value), 0.0f, 1.0f);
       else if (key == "comments")
         current.comments = value;
       else if (key == "texture")
@@ -357,6 +363,8 @@ void TextureElementManager::SaveOverridesToINI(
       out << "element_depth=" << ovr.element_depth << "\n";
     if (ovr.handling == HandlingType::UnitsPerMeter && ovr.units_per_meter > 0.0f)
       out << "units_per_meter=" << ovr.units_per_meter << "\n";
+    if (ovr.handling == HandlingType::Passthrough)
+      out << "passthrough_opacity=" << ovr.passthrough_opacity << "\n";
     if (!ovr.comments.empty())
     {
       // Keep comments single-line so they don't corrupt the section.
@@ -397,7 +405,8 @@ void TextureElementManager::LoadOverrides(const std::string& game_id)
     has_overrides = true;
 
     const ResolvedHandling resolved{ovr.handling, ovr.layer, ovr.element_depth,
-                                    ovr.units_per_meter};
+                                    ovr.units_per_meter,
+                                    std::clamp(ovr.passthrough_opacity, 0.0f, 1.0f)};
     for (u64 texture_hash : ovr.texture_hashes)
     {
       // First enabled override that lists a texture wins.
@@ -451,7 +460,8 @@ bool TextureElementManager::ShouldSkipByTexture(const std::array<u64, 8>& bound)
 }
 
 TextureElementManager::HandlingType TextureElementManager::GetHandlingForTextures(
-    const std::array<u64, 8>& bound, int* layer, float* element_depth, float* units_per_meter) const
+    const std::array<u64, 8>& bound, int* layer, float* element_depth, float* units_per_meter,
+    float* passthrough_opacity) const
 {
   if (m_texture_handling.empty())
     return HandlingType::Skip;
@@ -470,6 +480,8 @@ TextureElementManager::HandlingType TextureElementManager::GetHandlingForTexture
       *element_depth = it->second.element_depth;
     if (units_per_meter != nullptr)
       *units_per_meter = it->second.units_per_meter;
+    if (passthrough_opacity != nullptr)
+      *passthrough_opacity = it->second.passthrough_opacity;
     return it->second.handling;
   }
   return HandlingType::Skip;

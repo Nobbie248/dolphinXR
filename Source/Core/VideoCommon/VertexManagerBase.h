@@ -214,6 +214,7 @@ protected:
   VideoCommon::GXPipelineUid m_current_pipeline_config;
   VideoCommon::GXUberPipelineUid m_current_uber_pipeline_config;
   const AbstractPipeline* m_current_pipeline_object = nullptr;
+  bool m_current_pipeline_is_uber = false;
   PrimitiveType m_current_primitive_type = PrimitiveType::Points;
   bool m_pipeline_config_changed = true;
   bool m_rasterization_state_changed = true;

@@ -95,6 +95,7 @@ public:
     int layer = -1;
     float element_depth = -1.0f;
     float units_per_meter = -1.0f;
+    float passthrough_opacity = 0.0f;  // Passthrough handling: element opacity (0 = fully camera)
     std::vector<u64> texture_hashes;
     bool texture_hashes_excluded = false;
     std::vector<SelectedSubgroupSignature> selected_match_filter;
@@ -196,6 +197,8 @@ public:
   int GetOverrideLayer(const DrawRecord& draw) const;
   float GetOverrideElementDepth(const DrawRecord& draw) const;
   float GetOverrideUnitsPerMeter(const DrawRecord& draw) const;
+  // Returns the opacity for a Passthrough override (0 = fully see-through to the camera).
+  float GetOverridePassthroughOpacity(const DrawRecord& draw) const;
   // Clear EFB: arm a pending clear when a draw matches a clear_efb override; ShouldClearEFBCopy is
   // consumed by the next EFB-to-texture copy (see TextureCacheBase).
   void CheckClearEFBForDraw(const DrawRecord& draw);

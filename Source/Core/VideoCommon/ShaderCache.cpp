@@ -166,6 +166,43 @@ const AbstractPipeline* ShaderCache::GetUberPipelineForUid(const GXUberPipelineU
   return InsertGXUberPipeline(uid, std::move(pipeline));
 }
 
+const AbstractPipeline* ShaderCache::GetCoveragePipelineForUid(const GXPipelineUid& uid)
+{
+  GXPipelineUid coverage_uid = uid;
+  pixel_shader_uid_data* const ps = coverage_uid.ps_uid.GetUidData();
+  ps->vr_coverage_mode = VRPassthroughCoverageShaderMode::CoverageOnly;
+  ps->useDstAlpha = false;
+  ps->no_dual_src = true;
+  ps->uint_output = false;
+  ps->blend_enable = false;
+  ps->emulate_logic_op_with_blend = false;
+  ps->logic_op_enable = false;
+  ps->bounding_box = false;
+  coverage_uid.depth_state.update_enable = false;
+  // Mirror the original draw's transparency: blended draws blend their coverage by the
+  // fragment alpha (see GetVRCoverageBlendState), opaque draws replace it.
+  coverage_uid.blending_state = uid.blending_state.blend_enable ?
+                                    RenderState::GetVRCoverageBlendState() :
+                                    RenderState::GetNoBlendingBlendState();
+  return GetPipelineForUid(coverage_uid);
+}
+
+const AbstractPipeline* ShaderCache::GetCoverageUberPipelineForUid(const GXUberPipelineUid& uid)
+{
+  GXUberPipelineUid coverage_uid = uid;
+  UberShader::pixel_ubershader_uid_data* const ps = coverage_uid.ps_uid.GetUidData();
+  ps->vr_coverage_mode = VRPassthroughCoverageShaderMode::CoverageOnly;
+  ps->no_dual_src = true;
+  ps->uint_output = false;
+  coverage_uid.depth_state.update_enable = false;
+  // Mirror the original draw's transparency: blended draws blend their coverage by the
+  // fragment alpha (see GetVRCoverageBlendState), opaque draws replace it.
+  coverage_uid.blending_state = uid.blending_state.blend_enable ?
+                                    RenderState::GetVRCoverageBlendState() :
+                                    RenderState::GetNoBlendingBlendState();
+  return GetUberPipelineForUid(coverage_uid);
+}
+
 void ShaderCache::WaitForAsyncCompiler()
 {
   bool running = true;
@@ -650,7 +687,8 @@ AbstractPipelineConfig ShaderCache::GetGXPipelineConfig(
     const NativeVertexFormat* vertex_format, const AbstractShader* vertex_shader,
     const AbstractShader* geometry_shader, const AbstractShader* pixel_shader,
     const RasterizationState& rasterization_state, const DepthState& depth_state,
-    const BlendingState& blending_state, AbstractPipelineUsage usage)
+    const BlendingState& blending_state, VRPassthroughCoverageShaderMode vr_coverage_mode,
+    AbstractPipelineUsage usage)
 {
   AbstractPipelineConfig config = {};
   config.usage = usage;
@@ -661,7 +699,24 @@ AbstractPipelineConfig ShaderCache::GetGXPipelineConfig(
   config.rasterization_state = rasterization_state;
   config.depth_state = depth_state;
   config.blending_state = blending_state;
-  config.framebuffer_state = g_framebuffer_manager->GetEFBFramebufferState();
+  if (vr_coverage_mode == VRPassthroughCoverageShaderMode::MRT)
+  {
+    // Blended draws blend their coverage by the fragment alpha (carried in the coverage
+    // output's .a) so transparent texels don't stamp full coverage; opaque draws replace.
+    config.additional_blending_state = blending_state.blend_enable ?
+                                           RenderState::GetVRCoverageBlendState() :
+                                           RenderState::GetNoBlendingBlendState();
+    config.use_independent_blending = true;
+    config.framebuffer_state = g_framebuffer_manager->GetEFBFramebufferState(true);
+  }
+  else if (vr_coverage_mode == VRPassthroughCoverageShaderMode::CoverageOnly)
+  {
+    config.framebuffer_state = g_framebuffer_manager->GetEFBCoverageFramebufferState();
+  }
+  else
+  {
+    config.framebuffer_state = g_framebuffer_manager->GetEFBFramebufferState();
+  }
   return config;
 }
 
@@ -702,7 +757,8 @@ ShaderCache::GetGXPipelineConfig(const GXPipelineUid& config_in)
   }
 
   return GetGXPipelineConfig(config.vertex_format, vs, gs, ps, config.rasterization_state,
-                             config.depth_state, config.blending_state, AbstractPipelineUsage::GX);
+                             config.depth_state, config.blending_state,
+                             ps_uid.GetUidData()->vr_coverage_mode, AbstractPipelineUsage::GX);
 }
 
 /// Edits the UID based on driver bugs and other special configurations
@@ -715,6 +771,18 @@ static GXUberPipelineUid ApplyDriverBugs(const GXUberPipelineUid& in)
   memcpy(static_cast<void*>(&out), static_cast<const void*>(&in), sizeof(out));  // Copy padding
   if (g_backend_info.bSupportsDynamicVertexLoader)
     out.vertex_format = nullptr;
+
+  // Writing the coverage attachment plus a dual-source (Index 1) output exceeds
+  // maxFragmentDualSrcAttachments (1 on desktop GPUs) — undefined behaviour that bleeds
+  // into attachment 0's colors/alpha. Strip dual source from every MRT coverage draw;
+  // draws whose blending truly needs SRC1 either went to the prepass (Exact) or accept
+  // single-source blending from ocol0.a (Fast).
+  if (out.ps_uid.GetUidData()->vr_coverage_mode == VRPassthroughCoverageShaderMode::MRT &&
+      g_backend_info.max_fragment_dual_src_attachments < 2)
+  {
+    out.blending_state.use_dual_src = false;
+    out.ps_uid.GetUidData()->no_dual_src = true;
+  }
 
   // If framebuffer fetch is available, we can emulate logic ops in the fragment shader
   // and don't need the below blend approximation
@@ -793,6 +861,7 @@ ShaderCache::GetGXPipelineConfig(const GXUberPipelineUid& config_in)
 
   return GetGXPipelineConfig(config.vertex_format, vs, gs, ps, config.rasterization_state,
                              config.depth_state, config.blending_state,
+                             ps_uid.GetUidData()->vr_coverage_mode,
                              AbstractPipelineUsage::GXUber);
 }
 
