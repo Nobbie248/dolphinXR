@@ -1056,8 +1056,13 @@ void VertexManagerBase::Flush()
         const bool texmgr_has_overrides = texmgr.HasOverrides();
         const bool texmgr_hunter_active = texmgr.IsHunterActive();
         const bool texmgr_active = texmgr_has_overrides || texmgr_hunter_active;
-        if (hunter_enabled || hunter_has_overrides || hunter_debug_logging ||
-            elements_runtime_active || texmgr_active)
+        // In flat 2D "cinema" mode the game renders mono exactly like a normal flat game. The
+        // Shader/Elements/Textures overrides (and the hunter) only skip or reproject draws for
+        // stereo VR, so running them here would corrupt the flat image and waste work — skip the
+        // whole override/hunter pass when the panel path is active.
+        const bool vr_flat_mode = g_ActiveConfig.vr_flat_screen;
+        if (!vr_flat_mode && (hunter_enabled || hunter_has_overrides || hunter_debug_logging ||
+                              elements_runtime_active || texmgr_active))
         {
           const auto& vs = m_current_pipeline_config.vs_uid;
           const auto& ps = m_current_pipeline_config.ps_uid;
