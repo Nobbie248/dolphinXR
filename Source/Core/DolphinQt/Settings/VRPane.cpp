@@ -69,6 +69,7 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   passthrough_group->setLayout(passthrough_layout);
 
   m_enable_openxr = new ConfigBool(tr("Enable VR"), Config::GFX_VR_ENABLE_OPENXR);
+  m_flat_screen = new ConfigBool(tr("Flat Screen (2D, no stereo)"), Config::GFX_VR_FLAT_SCREEN);
   m_reference_space_mode = new ConfigChoiceMap<OpenXRReferenceSpaceMode>(
       {{tr("LOCAL"), OpenXRReferenceSpaceMode::Local},
        {tr("STAGE + Height"), OpenXRReferenceSpaceMode::StageHeight},
@@ -141,6 +142,8 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
       Config::GFX_VR_MIRROR_VIEW);
   openxr_layout->addWidget(new QLabel(tr("Desktop Mirror View:")), 2, 0);
   openxr_layout->addWidget(m_mirror_view, 2, 1, 1, 2);
+
+  openxr_layout->addWidget(m_flat_screen, 3, 0, 1, 3);
 
   camera_layout->addWidget(new ConfigFloatLabel(tr("Lean Back Angle (deg):"), m_lean_back_angle), 0,
                            0);
@@ -558,6 +561,14 @@ void VRPane::AddDescriptions()
       "<br><br>When enabled, Dolphin uses OpenXR instead of Stereoscopic 3D output modes."
       "<br><br>This setting cannot be changed while emulation is active."
       "<br><br><dolphin_emphasis>If unsure, leave this unchecked.</dolphin_emphasis>");
+  static constexpr char TR_FLAT_SCREEN_DESCRIPTION[] = QT_TR_NOOP(
+      "Shows the game on a flat 2D screen floating in the VR scene instead of rendering in "
+      "stereoscopic 3D."
+      "<br><br>Requires Enable VR. Uses the Screen Distance and Screen Size settings below to "
+      "position and size the panel. The screen is world-locked; use Recenter to bring it back "
+      "in front of you."
+      "<br><br>This setting cannot be changed while emulation is active."
+      "<br><br><dolphin_emphasis>If unsure, leave this unchecked.</dolphin_emphasis>");
   static constexpr char TR_USE_VULKAN_MULTIVIEW_DESCRIPTION[] = QT_TR_NOOP(
       "Uses Vulkan multiview for OpenXR stereo rendering when the GPU and runtime support it."
       "<br><br>This renders both eyes through a multiview render pass instead of using "
@@ -796,6 +807,7 @@ void VRPane::AddDescriptions()
       "<br><br><dolphin_emphasis>If unsure, select Exact.</dolphin_emphasis>");
 
   m_enable_openxr->SetDescription(tr(TR_ENABLE_OPENXR_DESCRIPTION));
+  m_flat_screen->SetDescription(tr(TR_FLAT_SCREEN_DESCRIPTION));
   m_use_vulkan_multiview->SetDescription(tr(TR_USE_VULKAN_MULTIVIEW_DESCRIPTION));
   m_auto_immediate_xfb->SetDescription(tr(TR_AUTO_IMMEDIATE_XFB_DESCRIPTION));
   m_reference_space_mode->SetDescription(tr(TR_REFERENCE_SPACE_MODE_DESCRIPTION));
@@ -841,6 +853,7 @@ void VRPane::OnEmulationStateChanged(Core::State state)
 {
   const bool running = state != Core::State::Uninitialized;
   m_enable_openxr->setEnabled(!running);
+  m_flat_screen->setEnabled(!running);
   m_reference_space_mode->setEnabled(!running);
   m_use_vulkan_multiview->setEnabled(!running);
   m_reset_general_settings->setEnabled(!running);
@@ -852,6 +865,8 @@ void VRPane::ResetGeneralSettings()
 
   Config::SetBaseOrCurrent(Config::GFX_VR_ENABLE_OPENXR,
                            Config::GFX_VR_ENABLE_OPENXR.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_FLAT_SCREEN,
+                           Config::GFX_VR_FLAT_SCREEN.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_REFERENCE_SPACE_MODE,
                            Config::GFX_VR_REFERENCE_SPACE_MODE.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_TRACKING_MODE,

@@ -137,6 +137,12 @@ private:
   void PrepareNextOpenXRFrame();
   void BlitCurrentSourceToOpenXREyes(const AbstractTexture* source_texture,
                                      const MathUtil::Rectangle<int>& source_rc);
+  // Flat mono panel path: blit the mono XFB into the flat swapchain image and set the quad aspect.
+  void BlitCurrentSourceToOpenXRFlat(const AbstractTexture* source_texture,
+                                     const MathUtil::Rectangle<int>& source_rc);
+  // True when an OpenXR session is running but the game is shown as a flat mono panel
+  // (StereoMode::Off + vr_flat_screen) rather than per-eye stereo.
+  bool IsOpenXRFlat() const;
   bool SubmitOpenXRFrameFromCurrentSource(const AbstractTexture* source_texture,
                                           const MathUtil::Rectangle<int>& source_rc,
                                           bool blit_source);

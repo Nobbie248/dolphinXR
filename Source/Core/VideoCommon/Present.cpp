@@ -132,7 +132,7 @@ bool Presenter::Initialize()
   // never starts sessions for GLES contexts bound to a window surface — but the presenter
   // must still fully initialize (post processor for the eye blits) and present each frame
   // (Present() drives the XR frame lifecycle).
-  const bool xr_headless_present = g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
+  const bool xr_headless_present = g_ActiveConfig.VRSessionActive() &&
                                    g_backend_info.api_type == APIType::OpenGL;
 #else
   constexpr bool xr_headless_present = false;
@@ -861,7 +861,7 @@ bool Presenter::StartOpenXRFrameNow(double* wait_frame_ms, double* locate_views_
   if (locate_views_ms)
     *locate_views_ms = 0.0;
 
-  if (g_ActiveConfig.stereo_mode != StereoMode::OpenXR || !VR::g_openxr)
+  if (!g_ActiveConfig.VRSessionActive() || !VR::g_openxr)
     return false;
 
   const auto wait_begin_start = std::chrono::high_resolution_clock::now();
@@ -906,7 +906,7 @@ bool Presenter::StartOpenXRFrameNow(double* wait_frame_ms, double* locate_views_
 bool Presenter::PrepareOpenXRFrame(OpenXRFrameOwner owner)
 {
   m_openxr_frame_owner = OpenXRFrameOwner::None;
-  if (g_ActiveConfig.stereo_mode != StereoMode::OpenXR || !VR::g_openxr)
+  if (!g_ActiveConfig.VRSessionActive() || !VR::g_openxr)
     return false;
 
   // Replay frames: skip LocateViews — render with the same eye poses as the real frame.
@@ -1031,6 +1031,45 @@ void Presenter::BlitCurrentSourceToOpenXREyes(const AbstractTexture* source_text
   restore_post_process_state();
 }
 
+bool Presenter::IsOpenXRFlat() const
+{
+  return VR::g_openxr && g_ActiveConfig.vr_flat_screen &&
+         g_ActiveConfig.stereo_mode != StereoMode::OpenXR;
+}
+
+void Presenter::BlitCurrentSourceToOpenXRFlat(const AbstractTexture* source_texture,
+                                              const MathUtil::Rectangle<int>& source_rc)
+{
+  if (!source_texture || !VR::g_openxr || !VR::g_openxr->GetSwapchain() ||
+      !VR::g_openxr->ShouldRender())
+  {
+    return;
+  }
+
+  VR::IOpenXRSwapchain* sc = VR::g_openxr->GetSwapchain();
+  AbstractFramebuffer* flat_fb = sc->AcquireFlatFramebuffer();
+  if (!flat_fb)
+    return;
+
+  AbstractFramebuffer* saved_fb = g_gfx->GetCurrentFramebuffer();
+
+  // The game aspect drives the world size of the quad; the mono frame is stretched to fill the
+  // (roughly square) eye-0 image, and the non-square quad undoes the stretch.
+  const int src_w = source_rc.GetWidth();
+  const int src_h = source_rc.GetHeight();
+  if (src_w > 0 && src_h > 0)
+    VR::g_openxr->SetFlatScreenAspect(static_cast<float>(src_w) / static_cast<float>(src_h));
+
+  const MathUtil::Rectangle<int> flat_rect{
+      0, 0, static_cast<int>(sc->GetEyeWidth()), static_cast<int>(sc->GetEyeHeight())};
+  g_gfx->SetAndClearFramebuffer(flat_fb, {0.f, 0.f, 0.f, 1.f});
+  m_post_processor->BlitFromTexture(flat_rect, source_rc, source_texture, 0);
+  sc->ReleaseFlatTexture();
+
+  if (saved_fb)
+    g_gfx->SetFramebuffer(saved_fb);
+}
+
 bool Presenter::SubmitOpenXRFrameFromCurrentSource(const AbstractTexture* source_texture,
                                                    const MathUtil::Rectangle<int>& source_rc,
                                                    bool blit_source)
@@ -1038,11 +1077,20 @@ bool Presenter::SubmitOpenXRFrameFromCurrentSource(const AbstractTexture* source
   if (!VR::g_openxr)
     return false;
 
-  if (VR::g_openxr->GetSwapchain())
+  if (VR::IOpenXRSwapchain* sc = VR::g_openxr->GetSwapchain())
   {
+    if (IsOpenXRFlat())
+    {
+      // Flat mode always (re)blits at submit time: on PC the earlier RenderXFBToScreen path
+      // only mirrors to the desktop window, and on Quest the direct-to-HMD branch skips the
+      // stereo eye blit for flat mode.
+      BlitCurrentSourceToOpenXRFlat(source_texture, source_rc);
+      return sc->SubmitFlatFrame();
+    }
+
     if (blit_source)
       BlitCurrentSourceToOpenXREyes(source_texture, source_rc);
-    return VR::g_openxr->GetSwapchain()->SubmitFrame();
+    return sc->SubmitFrame();
   }
 
   return VR::g_openxr->EndFrame({});
@@ -1242,7 +1290,7 @@ void Presenter::Present(PresentInfo* present_info)
 #ifdef ENABLE_VR
   // See Initialize(): the Android GLES OpenXR path runs with a headless GL context, but
   // Present() must still run — it pumps the XR event loop and performs the eye blits.
-  const bool xr_headless_present = g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
+  const bool xr_headless_present = g_ActiveConfig.VRSessionActive() &&
                                    g_backend_info.api_type == APIType::OpenGL;
 #else
   constexpr bool xr_headless_present = false;
@@ -1287,13 +1335,13 @@ void Presenter::Present(PresentInfo* present_info)
   // First real frame: if no pre-begun frame exists, start it here.
   const bool is_replay_present = VideoCommon::OpenXROpcodeReplay::IsReplaying();
 #if defined(ANDROID)
-  const bool openxr_direct_to_hmd = g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
+  const bool openxr_direct_to_hmd = g_ActiveConfig.VRSessionActive() &&
                                     VR::g_openxr && g_ActiveConfig.vr_android_direct_to_hmd;
 #else
   constexpr bool openxr_direct_to_hmd = false;
 #endif
   bool vr_frame_started = false;
-  if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR && VR::g_openxr)
+  if (g_ActiveConfig.VRSessionActive() && VR::g_openxr)
   {
     if (is_replay_present)
     {
@@ -1348,8 +1396,11 @@ void Presenter::Present(PresentInfo* present_info)
     RenderXFBToScreen(render_target_rc, m_xfb_entry->texture.get(), render_source_rc);
   }
 #ifdef ENABLE_VR
-  else if ((is_replay_present || openxr_direct_to_hmd) && vr_frame_started && m_xfb_entry)
+  else if ((is_replay_present || openxr_direct_to_hmd) && vr_frame_started && m_xfb_entry &&
+           !IsOpenXRFlat())
   {
+    // Stereo direct-to-HMD/replay path. Flat mode blits at submit time
+    // (SubmitOpenXRFrameFromCurrentSource) instead, so it is skipped here.
     auto replay_target_rc = GetTargetRectangle();
     auto replay_source_rc = m_xfb_rect;
     AdjustRectanglesToFitBounds(&replay_target_rc, &replay_source_rc, m_backbuffer_width,
@@ -1369,7 +1420,7 @@ void Presenter::Present(PresentInfo* present_info)
   {
     std::lock_guard<std::mutex> guard(m_swap_mutex);
 
-    if (present_info != nullptr && g_ActiveConfig.stereo_mode != StereoMode::OpenXR)
+    if (present_info != nullptr && !g_ActiveConfig.VRSessionActive())
     {
       const auto present_time = GetUpdatedPresentationTime(present_info->intended_present_time);
 

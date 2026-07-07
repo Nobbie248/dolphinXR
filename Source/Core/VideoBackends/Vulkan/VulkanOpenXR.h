@@ -133,6 +133,12 @@ public:
 
   const XRVkEyeSwapchain& GetEyeSwapchain(uint32_t eye) const { return m_eye_swapchains[eye]; }
 
+  // Flat mono panel path reuses eye swapchain #0 (layered multiview is stereo-only). Acquire and
+  // release go through the base defaults; SubmitFlatFrame is overridden to submit the mono blit
+  // and advance the Vulkan frame (direct-to-HMD skips PresentBackbuffer()).
+  XrSwapchain GetFlatSwapchain() const override { return m_eye_swapchains[0].swapchain; }
+  bool SubmitFlatFrame() override;
+
 private:
   struct PendingXRFrame
   {

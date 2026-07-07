@@ -38,6 +38,7 @@ private:
   void ResetGeneralSettings();
 
   ConfigBool* m_enable_openxr = nullptr;
+  ConfigBool* m_flat_screen = nullptr;
   ConfigChoiceMap<OpenXRReferenceSpaceMode>* m_reference_space_mode = nullptr;
   ConfigChoiceMap<OpenXRTrackingMode>* m_tracking_mode = nullptr;
   ConfigBool* m_auto_immediate_xfb = nullptr;

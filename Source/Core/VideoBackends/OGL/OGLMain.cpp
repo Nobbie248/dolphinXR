@@ -212,7 +212,7 @@ bool VideoBackend::Initialize(const WindowSystemInfo& wsi)
 {
   WindowSystemInfo gl_wsi = wsi;
 #if defined(ANDROID) && defined(ENABLE_VR)
-  if (g_Config.stereo_mode == StereoMode::OpenXR)
+  if (g_Config.VRSessionActive())
   {
     // Meta's GLES OpenXR path (inherited from VrApi) requires that the app's EGL
     // context is NOT current on an Android window surface — the compositor owns the
@@ -252,7 +252,7 @@ bool VideoBackend::Initialize(const WindowSystemInfo& wsi)
   // OpenXR init must run after InitializeShared(): creating the eye-swapchain wrappers
   // goes through OGLFramebuffer::Create() / ~OGLTexture(), which dereference the g_gfx
   // global (null until InitializeShared assigns it).
-  if (g_Config.stereo_mode == StereoMode::OpenXR)
+  if (g_Config.VRSessionActive())
   {
     auto openxr = std::make_unique<OGLOpenXR>();
     if (!openxr->Initialize(GetOGLGfx()->GetMainGLContext()))

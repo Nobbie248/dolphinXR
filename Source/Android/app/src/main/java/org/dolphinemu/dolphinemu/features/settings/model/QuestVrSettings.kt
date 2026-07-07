@@ -35,6 +35,8 @@ object QuestVrSettings {
 
     fun launchInVrSetting() = androidBooleanSetting("QuestLaunchInVr", true)
 
+    fun flatScreenSetting() = vrBooleanSetting("FlatScreen", false)
+
     fun recenterOnLaunchSetting() = androidBooleanSetting("QuestRecenterOnLaunch", true)
 
     fun leftHandedSetting() = androidBooleanSetting("QuestLeftHanded", false)
@@ -111,7 +113,14 @@ object QuestVrSettings {
             return true
         }
 
-        return showMirrorSurfaceSetting().boolean || !isLaunchInVrEnabled()
+        // Flat-in-VR is still an immersive OpenXR session (no 2D Android surface), so key the
+        // mirror surface off whether we launch immersively, not off stereo vs. flat.
+        return showMirrorSurfaceSetting().boolean || !isOpenXrImmersiveEnabled()
+    }
+
+    // True when we launch an immersive OpenXR session at all (either stereo 3D or flat panel).
+    fun isOpenXrImmersiveEnabled(): Boolean {
+        return BuildConfig.IS_QUEST && openXrEnabledSetting().boolean
     }
 
     fun isLaunchInVrEnabled(): Boolean {
@@ -156,11 +165,17 @@ object QuestVrSettings {
 
         StringSetting.MAIN_GFX_BACKEND.setString(settings, "Vulkan")
 
-        val launchInVr = isLaunchInVrEnabled()
-        openXrRuntimeSetting().setBoolean(settings, launchInVr)
+        // The OpenXR immersive session runs whenever the runtime is enabled. "Launch games in VR"
+        // then chooses stereo 3D (StereoMode::OpenXR) vs. a flat mono panel in the VR scene.
+        val immersive = isOpenXrImmersiveEnabled()
+        val stereo = isLaunchInVrEnabled()
+        openXrRuntimeSetting().setBoolean(settings, immersive)
+        flatScreenSetting().setBoolean(settings, immersive && !stereo)
 
-        if (launchInVr) {
-            IntSetting.GFX_STEREO_MODE.setInt(settings, STEREO_MODE_OPENXR)
+        if (immersive) {
+            // Native side maps EnableOpenXR + FlatScreen to the stereo mode; keep GFX_STEREO_MODE
+            // set to OpenXR only for the stereo path so a stale value can't force stereo in flat.
+            IntSetting.GFX_STEREO_MODE.setInt(settings, if (stereo) STEREO_MODE_OPENXR else 0)
             if (!backendMultithreadingReenabledSetting().boolean) {
                 BooleanSetting.GFX_BACKEND_MULTITHREADING.setBoolean(settings, true)
                 backendMultithreadingReenabledSetting().setBoolean(settings, true)
@@ -173,8 +188,11 @@ object QuestVrSettings {
                 BooleanSetting.GFX_HACK_IMMEDIATE_XFB.setBoolean(settings, true)
             }
             BooleanSetting.GFX_HACK_VI_SKIP.setBoolean(settings, false)
-        } else if (IntSetting.GFX_STEREO_MODE.int == STEREO_MODE_OPENXR) {
-            IntSetting.GFX_STEREO_MODE.setInt(settings, 0)
+        } else {
+            // flatScreen already set false above (immersive is false here).
+            if (IntSetting.GFX_STEREO_MODE.int == STEREO_MODE_OPENXR) {
+                IntSetting.GFX_STEREO_MODE.setInt(settings, 0)
+            }
         }
 
         if (launchSystemMenu) {

@@ -1455,6 +1455,42 @@ bool VulkanOpenXR::SubmitFrame()
   return result;
 }
 
+bool VulkanOpenXR::SubmitFlatFrame()
+{
+  ASSERT(VR::g_openxr != nullptr);
+
+#if defined(ANDROID)
+  // On Android the per-eye ReleaseEyeTexture only ends the render pass; the command-buffer
+  // submit and xrReleaseSwapchainImage are deferred to submit time. Flat mode has a single
+  // image, so do that here synchronously. advance_to_next_frame recycles descriptor pools
+  // because the Quest direct-to-HMD path skips PresentBackbuffer(). The spec only requires the
+  // writes to be submitted (not completed) before release; the shared graphics queue preserves
+  // ordering, so we do not wait for the GPU.
+  if (m_image_acquired[0])
+  {
+    StateTracker::GetInstance()->EndRenderPass();
+    g_command_buffer_mgr->SubmitCommandBuffer(false, false, true);
+    StateTracker::GetInstance()->InvalidateCachedState();
+
+    XrSwapchainImageReleaseInfo release_info{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+    XrResult result = XR_SUCCESS;
+    {
+      auto queue_lock = AcquireGraphicsQueueLock();
+      result = xrReleaseSwapchainImage(m_eye_swapchains[0].swapchain, &release_info);
+    }
+    if (XR_FAILED(result))
+    {
+      WARN_LOG_FMT(VIDEO, "OpenXR: xrReleaseSwapchainImage failed for flat panel ({}).",
+                   static_cast<int>(result));
+    }
+    m_image_acquired[0] = false;
+  }
+#endif
+
+  return VR::g_openxr->SubmitFlatQuadFrame(m_eye_swapchains[0].swapchain,
+                                           m_eye_swapchains[0].width, m_eye_swapchains[0].height);
+}
+
 }  // namespace Vulkan
 
 #endif  // ENABLE_VR

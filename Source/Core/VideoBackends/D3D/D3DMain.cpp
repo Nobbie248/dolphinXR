@@ -156,9 +156,11 @@ bool VideoBackend::Initialize(const WindowSystemInfo& wsi)
   UpdateActiveConfig();
 
 #ifdef ENABLE_VR
-  INFO_LOG_FMT(VIDEO, "VR: stereo_mode={} (OpenXR={})", static_cast<int>(g_ActiveConfig.stereo_mode),
-               g_ActiveConfig.stereo_mode == StereoMode::OpenXR ? "YES" : "NO");
-  if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR)
+  INFO_LOG_FMT(VIDEO, "VR: stereo_mode={} (session_active={}, flat={})",
+               static_cast<int>(g_ActiveConfig.stereo_mode),
+               g_ActiveConfig.VRSessionActive() ? "YES" : "NO",
+               g_ActiveConfig.vr_flat_screen ? "YES" : "NO");
+  if (g_ActiveConfig.VRSessionActive())
   {
     auto openxr = std::make_unique<DX11::D3DOpenXR>();
     if (!openxr->Initialize())

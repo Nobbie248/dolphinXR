@@ -83,6 +83,9 @@ public:
   uint32_t GetEyeWidth() const override { return m_eye_swapchains[0].width; }
   uint32_t GetEyeHeight() const override { return m_eye_swapchains[0].height; }
 
+  // Flat mono panel path reuses eye swapchain #0; the base class handles acquire/release/submit.
+  XrSwapchain GetFlatSwapchain() const override { return m_eye_swapchains[0].swapchain; }
+
 private:
   // Creates XrSession with the platform-specific GL graphics binding
   // (Win32/WGL, Xlib/GLX or Android/EGL).

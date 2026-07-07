@@ -1200,7 +1200,9 @@ class EmulationActivity : AppCompatActivity(), ThemeProvider {
         }
 
         private fun startEmulationActivity(activity: FragmentActivity, launcher: Intent) {
-            if (QuestVrSettings.isLaunchInVrEnabled()) {
+            // Launch immersively whenever OpenXR is enabled — both stereo 3D and the flat-panel
+            // ("Launch games in VR" off) path present through the XR compositor.
+            if (QuestVrSettings.isOpenXrImmersiveEnabled()) {
                 launcher.addCategory("com.oculus.intent.category.VR")
                 launcher.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 activity.startActivity(launcher)
