@@ -305,6 +305,34 @@ bool D3DOpenXR::SubmitFrame()
 {
   ASSERT(VR::g_openxr != nullptr);
 
+  if (g_ActiveConfig.vr_cinema_mode)
+  {
+    const auto& sc = m_eye_swapchains[0];
+    const float height = g_ActiveConfig.vr_screen_size;
+    const float width = height * (16.0f / 9.0f);
+
+    XrCompositionLayerQuad cinema_layer{XR_TYPE_COMPOSITION_LAYER_QUAD};
+    cinema_layer.space = VR::g_openxr->GetReferenceSpace();
+    cinema_layer.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+    cinema_layer.pose = {{0.0f, 0.0f, 0.0f, 1.0f},
+                         {0.0f, 0.0f, -g_ActiveConfig.vr_screen_distance}};
+    cinema_layer.size = {width, height};
+    cinema_layer.subImage.swapchain = sc.swapchain;
+    cinema_layer.subImage.imageArrayIndex = 0;
+    cinema_layer.subImage.imageRect = {
+        {0, 0}, {static_cast<int32_t>(sc.width), static_cast<int32_t>(sc.height)}};
+
+    if (VR::g_openxr->GetActiveBlendMode() == XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND)
+    {
+      cinema_layer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT |
+                                XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT;
+    }
+
+    const std::vector<XrCompositionLayerBaseHeader*> layers = {
+        reinterpret_cast<XrCompositionLayerBaseHeader*>(&cinema_layer)};
+    return VR::g_openxr->EndFrame(layers);
+  }
+
   // Use the submit snapshot captured when the GS pose cache was last refreshed. Using
   // live m_eye_views here would pick up LocateViews that ran between the last draw and
   // xrEndFrame, causing ATW to reproject against the wrong pose.

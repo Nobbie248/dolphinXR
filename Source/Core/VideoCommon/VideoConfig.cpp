@@ -197,6 +197,8 @@ void VideoConfig::Refresh()
                                 Config::GFX_VR_CAMERA_HEIGHT_MIN,
                                 Config::GFX_VR_CAMERA_HEIGHT_MAX);
   vr_virtual_screen = Config::Get(Config::GFX_VR_VIRTUAL_SCREEN);
+  vr_cinema_mode = Config::Get(Config::GFX_VR_CINEMA_MODE);
+  vr_cinema_disable_overrides = Config::Get(Config::GFX_VR_CINEMA_DISABLE_OVERRIDES);
   vr_screen_distance = std::clamp(Config::Get(Config::GFX_VR_SCREEN_DISTANCE),
                                   Config::GFX_VR_SCREEN_DISTANCE_MIN,
                                   Config::GFX_VR_SCREEN_DISTANCE_MAX);

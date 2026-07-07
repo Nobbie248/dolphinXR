@@ -141,6 +141,8 @@ private:
     bool should_render = false;
     XrSpace space = XR_NULL_HANDLE;
     XrCompositionLayerFlags layer_flags = 0;
+    bool cinema_mode = false;
+    XrCompositionLayerQuad cinema_layer{XR_TYPE_COMPOSITION_LAYER_QUAD};
     std::array<XrCompositionLayerProjectionView, 2> projection_views{};
     uint64_t debug_frame_id = 0;
     uint64_t queued_time_us = 0;

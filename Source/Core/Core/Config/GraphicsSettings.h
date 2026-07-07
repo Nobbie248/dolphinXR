@@ -188,6 +188,8 @@ static constexpr float GFX_VR_CAMERA_HEIGHT_MAX = 20.0f;
 static constexpr float GFX_VR_CAMERA_HEIGHT_STEP = 0.1f;
 
 extern const Info<bool> GFX_VR_VIRTUAL_SCREEN;
+extern const Info<bool> GFX_VR_CINEMA_MODE;
+extern const Info<bool> GFX_VR_CINEMA_DISABLE_OVERRIDES;
 extern const Info<float> GFX_VR_SCREEN_DISTANCE;
 extern const Info<float> GFX_VR_SCREEN_SIZE;
 extern const Info<float> GFX_VR_HEAD_LOCKED_CURVATURE;

@@ -356,6 +356,8 @@ struct VideoConfig final
   bool vr_enable_camera_height = true;
   float vr_camera_height = 0.0f;
   bool vr_virtual_screen = true;
+  bool vr_cinema_mode = false;
+  bool vr_cinema_disable_overrides = true;
   float vr_screen_distance = 1.5f;
   float vr_screen_size = 1.5f;
   float vr_hud_thickness = 0.0f;  // World-space depth (m) spread across a 2D layer's ortho-Z (0 = flat)

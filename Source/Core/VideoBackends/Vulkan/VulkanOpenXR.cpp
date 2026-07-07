@@ -314,13 +314,19 @@ void VulkanOpenXR::FinalizePendingXRFrame(PendingXRFrame frame)
   }
 
   XrCompositionLayerProjection projection_layer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
-  projection_layer.layerFlags = frame.layer_flags;
-  projection_layer.space = frame.space;
-  projection_layer.viewCount = static_cast<uint32_t>(frame.projection_views.size());
-  projection_layer.views = frame.projection_views.data();
-
-  const std::vector<XrCompositionLayerBaseHeader*> layers = {
-      reinterpret_cast<XrCompositionLayerBaseHeader*>(&projection_layer)};
+  std::vector<XrCompositionLayerBaseHeader*> layers;
+  if (frame.cinema_mode)
+  {
+    layers.push_back(reinterpret_cast<XrCompositionLayerBaseHeader*>(&frame.cinema_layer));
+  }
+  else
+  {
+    projection_layer.layerFlags = frame.layer_flags;
+    projection_layer.space = frame.space;
+    projection_layer.viewCount = static_cast<uint32_t>(frame.projection_views.size());
+    projection_layer.views = frame.projection_views.data();
+    layers.push_back(reinterpret_cast<XrCompositionLayerBaseHeader*>(&projection_layer));
+  }
 
   const uint64_t end_frame_start_us = Common::Timer::NowUs();
   if (!VR::g_openxr ||
@@ -1286,6 +1292,25 @@ bool VulkanOpenXR::SubmitFrame()
 {
   ASSERT(VR::g_openxr != nullptr);
 
+  const auto build_cinema_layer = [this](XrCompositionLayerFlags layer_flags) {
+    const auto& sc = m_eye_swapchains[0];
+    const float height = g_ActiveConfig.vr_screen_size;
+    const float width = height * (16.0f / 9.0f);
+
+    XrCompositionLayerQuad layer{XR_TYPE_COMPOSITION_LAYER_QUAD};
+    layer.layerFlags = layer_flags;
+    layer.space = VR::g_openxr->GetReferenceSpace();
+    layer.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+    layer.pose = {{0.0f, 0.0f, 0.0f, 1.0f},
+                  {0.0f, 0.0f, -g_ActiveConfig.vr_screen_distance}};
+    layer.size = {width, height};
+    layer.subImage.swapchain = sc.swapchain;
+    layer.subImage.imageArrayIndex = 0;
+    layer.subImage.imageRect = {
+        {0, 0}, {static_cast<int32_t>(sc.width), static_cast<int32_t>(sc.height)}};
+    return layer;
+  };
+
 #if defined(ANDROID)
   static unsigned int s_openxr_vk_submit_frame_log_count = 0;
   static uint64_t s_openxr_vk_async_frame_id = 0;
@@ -1315,32 +1340,40 @@ bool VulkanOpenXR::SubmitFrame()
                                   XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT;
     }
 
-    const auto& eye_views = VR::g_openxr->GetSubmittedEyeViews();
-    const bool submit_layered =
-        m_frame_uses_layered_swapchain && m_use_layered_swapchain &&
-        m_layered_swapchain.swapchain != XR_NULL_HANDLE;
-
-    for (uint32_t eye = 0; eye < 2; ++eye)
+    bool submit_layered = false;
+    if (g_ActiveConfig.vr_cinema_mode)
     {
-      auto& pv = pending_frame.projection_views[eye];
-      pv = {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};
-      pv.pose = eye_views[eye].pose;
-      pv.fov = eye_views[eye].fov;
-      if (submit_layered)
+      pending_frame.cinema_mode = true;
+      pending_frame.cinema_layer = build_cinema_layer(pending_frame.layer_flags);
+    }
+    else
+    {
+      const auto& eye_views = VR::g_openxr->GetSubmittedEyeViews();
+      submit_layered = m_frame_uses_layered_swapchain && m_use_layered_swapchain &&
+                       m_layered_swapchain.swapchain != XR_NULL_HANDLE;
+
+      for (uint32_t eye = 0; eye < 2; ++eye)
       {
-        pv.subImage.swapchain = m_layered_swapchain.swapchain;
-        pv.subImage.imageArrayIndex = eye;
-        pv.subImage.imageRect = {{0, 0},
-                                 {static_cast<int32_t>(m_layered_swapchain.width),
-                                  static_cast<int32_t>(m_layered_swapchain.height)}};
-      }
-      else
-      {
-        pv.subImage.swapchain = m_eye_swapchains[eye].swapchain;
-        pv.subImage.imageArrayIndex = 0;
-        pv.subImage.imageRect = {{0, 0},
-                                 {static_cast<int32_t>(m_eye_swapchains[eye].width),
-                                  static_cast<int32_t>(m_eye_swapchains[eye].height)}};
+        auto& pv = pending_frame.projection_views[eye];
+        pv = {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};
+        pv.pose = eye_views[eye].pose;
+        pv.fov = eye_views[eye].fov;
+        if (submit_layered)
+        {
+          pv.subImage.swapchain = m_layered_swapchain.swapchain;
+          pv.subImage.imageArrayIndex = eye;
+          pv.subImage.imageRect = {{0, 0},
+                                   {static_cast<int32_t>(m_layered_swapchain.width),
+                                    static_cast<int32_t>(m_layered_swapchain.height)}};
+        }
+        else
+        {
+          pv.subImage.swapchain = m_eye_swapchains[eye].swapchain;
+          pv.subImage.imageArrayIndex = 0;
+          pv.subImage.imageRect = {{0, 0},
+                                   {static_cast<int32_t>(m_eye_swapchains[eye].width),
+                                    static_cast<int32_t>(m_eye_swapchains[eye].height)}};
+        }
       }
     }
 
@@ -1396,6 +1429,24 @@ bool VulkanOpenXR::SubmitFrame()
     return true;
   }
 #endif
+
+  if (g_ActiveConfig.vr_cinema_mode)
+  {
+    XrCompositionLayerFlags layer_flags = 0;
+    if (VR::g_openxr->GetActiveBlendMode() == XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND)
+    {
+      layer_flags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT |
+                    XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT;
+    }
+
+    XrCompositionLayerQuad cinema_layer = build_cinema_layer(layer_flags);
+    const std::vector<XrCompositionLayerBaseHeader*> layers = {
+        reinterpret_cast<XrCompositionLayerBaseHeader*>(&cinema_layer)};
+
+    const bool result = VR::g_openxr->EndFrame(layers);
+    m_frame_uses_layered_swapchain = false;
+    return result;
+  }
 
   const auto& eye_views = VR::g_openxr->GetSubmittedEyeViews();
   const bool submit_layered =

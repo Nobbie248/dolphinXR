@@ -942,9 +942,6 @@ void Presenter::BlitCurrentSourceToOpenXREyes(const AbstractTexture* source_text
   {
     return;
   }
-  if (source_texture->GetLayers() < 2)
-    return;
-
   VR::IOpenXRSwapchain* sc = VR::g_openxr->GetSwapchain();
   AbstractFramebuffer* saved_fb = g_gfx->GetCurrentFramebuffer();
 
@@ -974,6 +971,28 @@ void Presenter::BlitCurrentSourceToOpenXREyes(const AbstractTexture* source_text
     if (saved_fb)
       g_gfx->SetFramebuffer(saved_fb);
   };
+
+  if (g_ActiveConfig.vr_cinema_mode)
+  {
+    const MathUtil::Rectangle<int> cinema_rect{
+        0, 0, static_cast<int>(sc->GetEyeWidth()), static_cast<int>(sc->GetEyeHeight())};
+    AbstractFramebuffer* cinema_fb = sc->AcquireEyeFramebuffer(0);
+    if (cinema_fb)
+    {
+      g_gfx->SetAndClearFramebuffer(cinema_fb, {0.f, 0.f, 0.f, 1.f});
+      m_post_processor->BlitFromTexture(cinema_rect, source_rc, source_texture, 0);
+      sc->ReleaseEyeTexture(0);
+    }
+
+    restore_post_process_state();
+    return;
+  }
+
+  if (source_texture->GetLayers() < 2)
+  {
+    restore_post_process_state();
+    return;
+  }
 
   const MathUtil::Rectangle<int> eye_rect{
       0, 0, static_cast<int>(sc->GetEyeWidth()), static_cast<int>(sc->GetEyeHeight())};

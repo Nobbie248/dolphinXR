@@ -419,6 +419,14 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
           vr_stereo_override = std::numeric_limits<float>::quiet_NaN();
         }
 
+        if (g_ActiveConfig.vr_cinema_mode)
+        {
+          // Cinema mode presents the final flat game image on an OpenXR compositor quad.
+          // Keep HMD tracking out of the game render itself: no perspective VR projection,
+          // no world-fixed virtual screen for 2D/menu draws, and no head-locked HUD path.
+          constants.stereoparams[3] = 0.0f;
+        }
+
         const bool perspective_hud =
             perspective && VR::g_openxr && VR::g_openxr->IsSessionRunning() &&
             constants.stereoparams[3] < -2.5f;

@@ -194,6 +194,9 @@ const Info<float> GFX_VR_CAMERA_FORWARD{{System::GFX, "VR", "CameraForward"}, 0.
 const Info<bool> GFX_VR_ENABLE_CAMERA_HEIGHT{{System::GFX, "VR", "EnableCameraHeight"}, true};
 const Info<float> GFX_VR_CAMERA_HEIGHT{{System::GFX, "VR", "CameraHeight"}, 0.0f};
 const Info<bool> GFX_VR_VIRTUAL_SCREEN{{System::GFX, "VR", "VirtualScreen"}, true};
+const Info<bool> GFX_VR_CINEMA_MODE{{System::GFX, "VR", "CinemaMode"}, false};
+const Info<bool> GFX_VR_CINEMA_DISABLE_OVERRIDES{
+    {System::GFX, "VR", "CinemaDisableOverrides"}, true};
 const Info<float> GFX_VR_SCREEN_DISTANCE{{System::GFX, "VR", "ScreenDistance"}, 1.5f};
 const Info<float> GFX_VR_SCREEN_SIZE{{System::GFX, "VR", "ScreenSize"}, 1.5f};
 const Info<float> GFX_VR_HEAD_LOCKED_CURVATURE{{System::GFX, "VR", "HeadLockedCurvature"}, 0.0f};

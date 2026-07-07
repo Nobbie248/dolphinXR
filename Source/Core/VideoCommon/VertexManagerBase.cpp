@@ -1045,13 +1045,19 @@ void VertexManagerBase::Flush()
         const bool elements_has_overrides = elements.HasOverrides();
         const bool metroid_profile_active =
             GetCachedMetroidProfile() != MetroidElementProfile::None;
+        const bool cinema_disable_overrides =
+            g_ActiveConfig.vr_cinema_mode && g_ActiveConfig.vr_cinema_disable_overrides;
+        const bool apply_hunter_overrides = hunter_has_overrides && !cinema_disable_overrides;
+        const bool apply_elements_overrides = elements_has_overrides && !cinema_disable_overrides;
+        const bool apply_texture_overrides = texmgr.HasOverrides() && !cinema_disable_overrides;
+        const bool apply_metroid_vr_handling =
+            metroid_profile_active && !cinema_disable_overrides;
         const bool elements_runtime_active =
             elements_popup_open || elements_has_overrides || metroid_profile_active;
         const bool hunter_needs_families = hunter.NeedsShaderFamilySignatures();
         const bool hunter_needs_textures = hunter.NeedsTextureHashes();
-        const bool texmgr_has_overrides = texmgr.HasOverrides();
         const bool texmgr_hunter_active = texmgr.IsHunterActive();
-        const bool texmgr_active = texmgr_has_overrides || texmgr_hunter_active;
+        const bool texmgr_active = apply_texture_overrides || texmgr_hunter_active;
         if (hunter_enabled || hunter_has_overrides || hunter_debug_logging ||
             elements_runtime_active || texmgr_active)
         {
@@ -1194,22 +1200,22 @@ void VertexManagerBase::Flush()
           }
 
           // Register flag shaders (must be before skip/handling checks)
-          if (hunter_has_overrides)
+          if (apply_hunter_overrides)
             hunter.RegisterFlags(vs_hash, ps_hash, gs_hash);
-          if (elements_runtime_active)
+          if (elements_popup_open || apply_elements_overrides || apply_metroid_vr_handling)
             elements.RegisterFlagsForDraw(*element_draw);
 
-          if (!hunter_skip && !elements_skip && elements_has_overrides)
+          if (!hunter_skip && !elements_skip && apply_elements_overrides)
             elements_skip = elements.ShouldSkipByOverride(*element_draw);
 
-          if (!hunter_skip && !elements_skip && metroid_profile_active)
+          if (!hunter_skip && !elements_skip && apply_metroid_vr_handling)
             elements_skip = GetMetroidLayerBehavior(metroid_layer).skip;
 
-          if (!hunter_skip && !elements_skip && hunter_has_overrides)
+          if (!hunter_skip && !elements_skip && apply_hunter_overrides)
             hunter_skip = hunter.ShouldSkipByOverride(vs_hash, ps_hash, gs_hash);
 
           // Texture Element Override skip: match purely on bound texture hash (fallback).
-          if (!hunter_skip && !elements_skip && texmgr_has_overrides)
+          if (!hunter_skip && !elements_skip && apply_texture_overrides)
             texmgr_skip = texmgr.ShouldSkipByTexture(tex_hashes);
 
           // Live preview while the Texture Hunter browser is open: skip or pink-highlight draws
@@ -1234,7 +1240,7 @@ void VertexManagerBase::Flush()
                     GetMetroidHydraHudSettings(metroid_profile, metroid_layer, m_metroid_game_id) :
                     MetroidHydraHudSettings{};
 
-            if (elements_has_overrides)
+            if (apply_elements_overrides)
               handling = elements.GetOverrideHandling(*element_draw);
             if (handling != ShaderHunter::HandlingType::Skip)
             {
@@ -1249,7 +1255,7 @@ void VertexManagerBase::Flush()
                 units_per_meter = elements.GetOverrideUnitsPerMeter(*element_draw);
               }
             }
-            else if (hunter_has_overrides)
+            else if (apply_hunter_overrides)
             {
               handling = hunter.GetOverrideHandling(vs_hash, ps_hash, gs_hash);
               if (handling == ShaderHunter::HandlingType::Screen ||
@@ -1265,19 +1271,20 @@ void VertexManagerBase::Flush()
             }
             // Texture Element Override (fallback): match purely on bound texture hash, applied
             // only when neither Elements nor Shader overrides produced a handling for this draw.
-            if (handling == ShaderHunter::HandlingType::Skip && texmgr_has_overrides)
+            if (handling == ShaderHunter::HandlingType::Skip && apply_texture_overrides)
             {
               handling = texmgr.GetHandlingForTextures(tex_hashes, &manual_layer, &element_depth,
                                                        &units_per_meter);
             }
-            if (handling == ShaderHunter::HandlingType::Skip && metroid_profile_active)
+            if (handling == ShaderHunter::HandlingType::Skip && apply_metroid_vr_handling)
               handling = GetMetroidLayerBehavior(metroid_layer).handling;
-            if (handling == ShaderHunter::HandlingType::Skip && uses_mp2_dark_copy)
+            if (handling == ShaderHunter::HandlingType::Skip && apply_metroid_vr_handling &&
+                uses_mp2_dark_copy)
             {
               handling = ShaderHunter::HandlingType::Fullscreen;
             }
-            if (handling == ShaderHunter::HandlingType::Skip && uses_mp2_dark_highlight_copy &&
-                !metroid_metrics.perspective)
+            if (handling == ShaderHunter::HandlingType::Skip && apply_metroid_vr_handling &&
+                uses_mp2_dark_highlight_copy && !metroid_metrics.perspective)
             {
               handling = ShaderHunter::HandlingType::Fullscreen;
             }
@@ -1361,7 +1368,7 @@ void VertexManagerBase::Flush()
 
           // ClearEFB is an independent flag, checked regardless of handling type.
           // This lets an element be e.g. Skip+ClearEFB or Screen+ClearEFB.
-          if (elements_has_overrides)
+          if (apply_elements_overrides)
             elements.CheckClearEFBForDraw(*element_draw);
 
           // VR Draw Debug Logging: log every draw call's projection, viewport, scissor, and

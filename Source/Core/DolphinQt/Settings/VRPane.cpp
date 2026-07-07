@@ -54,9 +54,12 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   auto* camera_group = new QGroupBox(tr("Camera"));
   auto* camera_layout = new QGridLayout;
   camera_group->setLayout(camera_layout);
-  auto* virtual_screen_group = new QGroupBox(tr("Virtual Screen"));
+  auto* virtual_screen_group = new QGroupBox(tr("2D Content"));
   auto* virtual_screen_layout = new QGridLayout;
   virtual_screen_group->setLayout(virtual_screen_layout);
+  auto* cinema_mode_group = new QGroupBox(tr("Cinema Mode"));
+  auto* cinema_mode_layout = new QGridLayout;
+  cinema_mode_group->setLayout(cinema_mode_layout);
   auto* framerate_group = new QGroupBox(tr("Framerate"));
   auto* framerate_layout = new QGridLayout;
   framerate_group->setLayout(framerate_layout);
@@ -172,6 +175,11 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   m_virtual_screen =
       new ConfigBool(tr("Virtual Screen for 2D Content"), Config::GFX_VR_VIRTUAL_SCREEN);
   virtual_screen_layout->addWidget(m_virtual_screen, 0, 0, 1, 3);
+  m_cinema_mode = new ConfigBool(tr("Cinema Mode"), Config::GFX_VR_CINEMA_MODE);
+  cinema_mode_layout->addWidget(m_cinema_mode, 0, 0, 1, 3);
+  m_cinema_disable_overrides = new ConfigBool(tr("Disable Element and Shader Overrides"),
+                                              Config::GFX_VR_CINEMA_DISABLE_OVERRIDES);
+  cinema_mode_layout->addWidget(m_cinema_disable_overrides, 1, 0, 1, 3);
 
   m_screen_distance = new ConfigFloatSlider(Config::GFX_VR_SCREEN_DISTANCE_MIN,
                                             Config::GFX_VR_SCREEN_DISTANCE_MAX,
@@ -190,18 +198,17 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
                             Config::GFX_VR_HEAD_LOCKED_CURVATURE_STEP);
   m_head_locked_curvature_value = new QLabel();
 
+  cinema_mode_layout->addWidget(new ConfigFloatLabel(tr("Screen Distance (m):"), m_screen_distance),
+                                2, 0);
+  cinema_mode_layout->addWidget(m_screen_distance, 2, 1);
+  cinema_mode_layout->addWidget(m_screen_distance_value, 2, 2);
+  cinema_mode_layout->addWidget(new ConfigFloatLabel(tr("Screen Size (m):"), m_screen_size), 3, 0);
+  cinema_mode_layout->addWidget(m_screen_size, 3, 1);
+  cinema_mode_layout->addWidget(m_screen_size_value, 3, 2);
   virtual_screen_layout->addWidget(
-      new ConfigFloatLabel(tr("Screen Distance (m):"), m_screen_distance), 1, 0);
-  virtual_screen_layout->addWidget(m_screen_distance, 1, 1);
-  virtual_screen_layout->addWidget(m_screen_distance_value, 1, 2);
-  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("Screen Size (m):"), m_screen_size), 2,
-                                   0);
-  virtual_screen_layout->addWidget(m_screen_size, 2, 1);
-  virtual_screen_layout->addWidget(m_screen_size_value, 2, 2);
-  virtual_screen_layout->addWidget(
-      new ConfigFloatLabel(tr("Head Locked Curvature:"), m_head_locked_curvature), 3, 0);
-  virtual_screen_layout->addWidget(m_head_locked_curvature, 3, 1);
-  virtual_screen_layout->addWidget(m_head_locked_curvature_value, 3, 2);
+      new ConfigFloatLabel(tr("Head Locked Curvature:"), m_head_locked_curvature), 1, 0);
+  virtual_screen_layout->addWidget(m_head_locked_curvature, 1, 1);
+  virtual_screen_layout->addWidget(m_head_locked_curvature_value, 1, 2);
 
   m_screen_distance_value->setText(QString::asprintf("%.1f", m_screen_distance->GetValue()));
   connect(m_screen_distance, &ConfigFloatSlider::valueChanged, this, [this] {
@@ -290,17 +297,17 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   // Auto Layer Spread
   m_auto_layer_spread =
       new ConfigBool(tr("Auto Layer Spread"), Config::GFX_VR_AUTO_LAYER_SPREAD);
-  virtual_screen_layout->addWidget(m_auto_layer_spread, 4, 0, 1, 3);
+  virtual_screen_layout->addWidget(m_auto_layer_spread, 2, 0, 1, 3);
 
   m_layer_offset = new ConfigFloatSlider(Config::GFX_VR_LAYER_OFFSET_MIN,
                                           Config::GFX_VR_LAYER_OFFSET_MAX,
                                           Config::GFX_VR_LAYER_OFFSET,
                                           Config::GFX_VR_LAYER_OFFSET_STEP);
   m_layer_offset_value = new QLabel();
-  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("Layer Offset:"), m_layer_offset), 5,
+  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("Layer Offset:"), m_layer_offset), 3,
                                    0);
-  virtual_screen_layout->addWidget(m_layer_offset, 5, 1);
-  virtual_screen_layout->addWidget(m_layer_offset_value, 5, 2);
+  virtual_screen_layout->addWidget(m_layer_offset, 3, 1);
+  virtual_screen_layout->addWidget(m_layer_offset_value, 3, 2);
 
   m_layer_offset_value->setText(QString::asprintf("%.4f", m_layer_offset->GetValue()));
   connect(m_layer_offset, &ConfigFloatSlider::valueChanged, this, [this] {
@@ -312,10 +319,10 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
                                            Config::GFX_VR_ELEMENT_DEPTH,
                                            Config::GFX_VR_ELEMENT_DEPTH_STEP);
   m_element_depth_value = new QLabel();
-  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("Element Depth:"), m_element_depth), 6,
+  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("Element Depth:"), m_element_depth), 4,
                                    0);
-  virtual_screen_layout->addWidget(m_element_depth, 6, 1);
-  virtual_screen_layout->addWidget(m_element_depth_value, 6, 2);
+  virtual_screen_layout->addWidget(m_element_depth, 4, 1);
+  virtual_screen_layout->addWidget(m_element_depth_value, 4, 2);
 
   m_element_depth_value->setText(QString::asprintf("%.4f", m_element_depth->GetValue()));
   connect(m_element_depth, &ConfigFloatSlider::valueChanged, this, [this] {
@@ -327,10 +334,10 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
                                           Config::GFX_VR_HUD_THICKNESS,
                                           Config::GFX_VR_HUD_THICKNESS_STEP);
   m_hud_thickness_value = new QLabel();
-  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("HUD Thickness:"), m_hud_thickness), 7,
+  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("HUD Thickness:"), m_hud_thickness), 5,
                                    0);
-  virtual_screen_layout->addWidget(m_hud_thickness, 7, 1);
-  virtual_screen_layout->addWidget(m_hud_thickness_value, 7, 2);
+  virtual_screen_layout->addWidget(m_hud_thickness, 5, 1);
+  virtual_screen_layout->addWidget(m_hud_thickness_value, 5, 2);
 
   auto update_hud_thickness_label = [this] {
     const float val = m_hud_thickness->GetValue();
@@ -342,6 +349,7 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   general_layout->addWidget(openxr_group);
   general_layout->addWidget(camera_group);
   general_layout->addWidget(virtual_screen_group);
+  general_layout->addWidget(cinema_mode_group);
   general_layout->addWidget(framerate_group);
   general_layout->addWidget(rendering_group);
   auto* general_actions_layout = new QHBoxLayout;
@@ -580,11 +588,24 @@ void VRPane::AddDescriptions()
   static constexpr char TR_VIRTUAL_SCREEN_DESCRIPTION[] = QT_TR_NOOP(
       "Places 2D content (menus, FMV, in-game HUD) on a virtual screen floating in 3D space."
       "<br><br>Disable for games that rely on full-screen EFB effects that don't work with a virtual screen.");
+  static constexpr char TR_CINEMA_MODE_DESCRIPTION[] = QT_TR_NOOP(
+      "Plays the game on a fixed floating screen in OpenXR instead of filling the headset view."
+      "<br><br>The screen is placed in the OpenXR reference space, so you can turn your head "
+      "without the image staying glued to your view. Use Screen Distance and Screen Size to "
+      "adjust where the screen sits and how large it appears."
+      "<br><br><dolphin_emphasis>If unsure, leave this unchecked.</dolphin_emphasis>");
+  static constexpr char TR_CINEMA_DISABLE_OVERRIDES_DESCRIPTION[] = QT_TR_NOOP(
+      "Ignores persistent Element Group, Shader, Texture Element, and built-in VR handling "
+      "overrides while Cinema Mode is active."
+      "<br><br>This keeps the game image flat and unmodified before it is placed on the cinema "
+      "screen. Disable this if a specific game still needs its VR override rules while using "
+      "Cinema Mode."
+      "<br><br><dolphin_emphasis>If unsure, leave this checked.</dolphin_emphasis>");
   static constexpr char TR_SCREEN_DISTANCE_DESCRIPTION[] = QT_TR_NOOP(
-      "Distance in meters to the virtual screen used for 2D content (menus, FMV, HUD)."
+      "Distance in meters to the floating screen used by Cinema Mode and 2D virtual-screen content."
       "<br><br>The screen is fixed in space like a TV — it stays in place when you turn your head.");
   static constexpr char TR_SCREEN_SIZE_DESCRIPTION[] = QT_TR_NOOP(
-      "Height in meters of the virtual screen used for 2D content."
+      "Height in meters of the floating screen used by Cinema Mode and 2D virtual-screen content."
       "<br><br>Larger values make the screen bigger, smaller values make it more compact.");
   static constexpr char TR_HEAD_LOCKED_CURVATURE_DESCRIPTION[] = QT_TR_NOOP(
       "Curves the virtual screen used by Head Locked shader overrides."
@@ -771,6 +792,8 @@ void VRPane::AddDescriptions()
   m_camera_forward->SetDescription(tr(TR_CAMERA_FORWARD_DESCRIPTION));
   m_camera_height->SetDescription(tr(TR_CAMERA_HEIGHT_DESCRIPTION));
   m_virtual_screen->SetDescription(tr(TR_VIRTUAL_SCREEN_DESCRIPTION));
+  m_cinema_mode->SetDescription(tr(TR_CINEMA_MODE_DESCRIPTION));
+  m_cinema_disable_overrides->SetDescription(tr(TR_CINEMA_DISABLE_OVERRIDES_DESCRIPTION));
   m_screen_distance->SetDescription(tr(TR_SCREEN_DISTANCE_DESCRIPTION));
   m_screen_size->SetDescription(tr(TR_SCREEN_SIZE_DESCRIPTION));
   m_head_locked_curvature->SetDescription(tr(TR_HEAD_LOCKED_CURVATURE_DESCRIPTION));
@@ -832,6 +855,10 @@ void VRPane::ResetGeneralSettings()
                            Config::GFX_VR_CAMERA_HEIGHT.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_VIRTUAL_SCREEN,
                            Config::GFX_VR_VIRTUAL_SCREEN.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_CINEMA_MODE,
+                           Config::GFX_VR_CINEMA_MODE.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_CINEMA_DISABLE_OVERRIDES,
+                           Config::GFX_VR_CINEMA_DISABLE_OVERRIDES.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_SCREEN_DISTANCE,
                            Config::GFX_VR_SCREEN_DISTANCE.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_SCREEN_SIZE,

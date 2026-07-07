@@ -49,6 +49,8 @@ private:
   ConfigFloatSlider* m_camera_height = nullptr;
   QLabel* m_camera_height_value = nullptr;
   ConfigBool* m_virtual_screen = nullptr;
+  ConfigBool* m_cinema_mode = nullptr;
+  ConfigBool* m_cinema_disable_overrides = nullptr;
   ConfigFloatSlider* m_screen_distance = nullptr;
   QLabel* m_screen_distance_value = nullptr;
   ConfigFloatSlider* m_screen_size = nullptr;
