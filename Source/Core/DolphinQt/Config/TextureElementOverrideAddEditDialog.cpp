@@ -5,13 +5,16 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
+#include <QFileInfo>
 #include <QFormLayout>
 #include <QFrame>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -21,12 +24,16 @@
 #include <QScrollArea>
 #include <QSignalBlocker>
 #include <QSpinBox>
+#include <QStringList>
 #include <QVBoxLayout>
 #include <QWidget>
 
 #include <fmt/format.h>
 
+#include "Common/FileUtil.h"
+
 #include "DolphinQt/Config/TextureHashBrowserDialog.h"
+#include "DolphinQt/QtUtils/DolphinFileDialog.h"
 
 namespace
 {
@@ -35,14 +42,37 @@ constexpr double UPM_OVERRIDE_MAX = 1000.0;
 constexpr double UPM_OVERRIDE_STEP = 0.01;
 constexpr int MAX_VISIBLE_TEXTURE_HASH_ROWS = 10;
 constexpr int TEXTURE_HASH_ROW_HEIGHT = 28;
+
+// Extract the texture's XXH64 hash from a dumped texture filename such as
+// "tex1_128x128_017fce12e592f4da_14.png". This mirrors ParseXXH64FromTextureName() in
+// TextureCacheBase.cpp, which the override matcher uses on the bound texture, so an imported
+// filename resolves to the exact same hash the game will match against at runtime.
+u64 ParseHashFromDumpFilename(const std::string& filename)
+{
+  // Skip past "tex1_WxH_" to the hash: find the second underscore, then read 16 hex chars.
+  size_t pos = filename.find('_');
+  if (pos == std::string::npos)
+    return 0;
+  pos = filename.find('_', pos + 1);
+  if (pos == std::string::npos || pos + 17 > filename.size())
+    return 0;
+
+  const std::string hex = filename.substr(pos + 1, 16);
+  for (char c : hex)
+  {
+    if (!std::isxdigit(static_cast<unsigned char>(c)))
+      return 0;
+  }
+  return std::strtoull(hex.c_str(), nullptr, 16);
+}
 }  // namespace
 
 using HandlingType = TextureElementManager::HandlingType;
 using TextureElementOverride = TextureElementManager::TextureElementOverride;
 
 TextureElementOverrideAddEditDialog::TextureElementOverrideAddEditDialog(
-    QWidget* parent, const TextureElementOverride* edit_override)
-    : QDialog(parent)
+    QWidget* parent, std::string game_id, const TextureElementOverride* edit_override)
+    : QDialog(parent), m_game_id(std::move(game_id))
 {
   setWindowTitle(edit_override ? tr("Edit Texture Element Override") :
                                  tr("Add Texture Element Override"));
@@ -54,7 +84,7 @@ TextureElementOverrideAddEditDialog::TextureElementOverrideAddEditDialog(
   m_comments_edit = new QPlainTextEdit;
   m_comments_edit->setPlaceholderText(tr("Optional notes..."));
   m_comments_edit->setTabChangesFocus(true);
-  m_comments_edit->setMinimumHeight(70);
+  // m_comments_edit->setMinimumHeight(30);
 
   m_handling_combo = new QComboBox;
   m_handling_combo->addItem(tr("Skip"), static_cast<int>(HandlingType::Skip));
@@ -112,6 +142,11 @@ TextureElementOverrideAddEditDialog::TextureElementOverrideAddEditDialog(
   m_view_textures_button->setToolTip(
       tr("Browse currently-loaded textures and check the ones to add to this override."));
 
+  m_import_textures_button = new QPushButton(tr("Import Texture"));
+  m_import_textures_button->setToolTip(
+      tr("Add textures by picking dumped texture files. Their hashes are read from the file names\n"
+         "and merged into the list below. Opens the game's texture dump folder by default."));
+
   m_texture_hash_container = new QWidget;
   m_texture_hash_layout = new QVBoxLayout(m_texture_hash_container);
   m_texture_hash_layout->setContentsMargins(0, 0, 0, 0);
@@ -161,6 +196,7 @@ TextureElementOverrideAddEditDialog::TextureElementOverrideAddEditDialog(
   form->addRow(m_units_per_meter_label, m_units_per_meter_spin);
   form->addRow(m_passthrough_opacity_label, m_passthrough_opacity_spin);
   form->addRow(QString(), m_view_textures_button);
+  form->addRow(QString(), m_import_textures_button);
   form->addRow(tr("Texture Hashes:"), m_texture_hash_scroll);
   form->addRow(tr("Comments:"), m_comments_edit);
 
@@ -172,6 +208,8 @@ TextureElementOverrideAddEditDialog::TextureElementOverrideAddEditDialog(
           &TextureElementOverrideAddEditDialog::OnHandlingChanged);
   connect(m_view_textures_button, &QPushButton::clicked, this,
           &TextureElementOverrideAddEditDialog::ShowTextureBrowser);
+  connect(m_import_textures_button, &QPushButton::clicked, this,
+          &TextureElementOverrideAddEditDialog::OnImportTextures);
 
   auto* layout = new QVBoxLayout;
   layout->addLayout(form);
@@ -313,6 +351,54 @@ void TextureElementOverrideAddEditDialog::ShowTextureBrowser()
   auto* dlg = ShowTextureHashBrowserDialog(this, browser_config);
   connect(dlg, &QObject::destroyed, this,
           []() { TextureElementManager::GetInstance().SetHunterActive(false); });
+}
+
+void TextureElementOverrideAddEditDialog::OnImportTextures()
+{
+  // Default to the game's texture dump folder (…/Dump/Textures/<GameID>) when it exists, falling
+  // back to the base dump folder otherwise.
+  QString start_dir;
+  if (!m_game_id.empty())
+  {
+    const std::string game_dump_dir = File::GetUserPath(D_DUMPTEXTURES_IDX) + m_game_id;
+    if (File::IsDirectory(game_dump_dir))
+      start_dir = QString::fromStdString(game_dump_dir);
+  }
+  if (start_dir.isEmpty())
+    start_dir = QString::fromStdString(File::GetUserPath(D_DUMPTEXTURES_IDX));
+
+  const QStringList files = DolphinFileDialog::getOpenFileNames(
+      this, tr("Import Textures"), start_dir,
+      QStringLiteral("%1 (*.png *.dds);;%2 (*)").arg(tr("Texture Files")).arg(tr("All Files")));
+  if (files.isEmpty())
+    return;
+
+  std::vector<u64> imported_hashes;
+  QStringList unparsed_files;
+  for (const QString& path : files)
+  {
+    const std::string filename = QFileInfo(path).fileName().toStdString();
+    const u64 hash = ParseHashFromDumpFilename(filename);
+    if (hash != 0)
+      imported_hashes.push_back(hash);
+    else
+      unparsed_files.append(QFileInfo(path).fileName());
+  }
+
+  // Merge the imported hashes into whatever is already in the fields, then de-duplicate.
+  std::vector<u64> merged = CollectTextureHashValues();
+  merged.insert(merged.end(), imported_hashes.begin(), imported_hashes.end());
+  std::sort(merged.begin(), merged.end());
+  merged.erase(std::unique(merged.begin(), merged.end()), merged.end());
+  SetTextureHashFields(merged);
+
+  if (!unparsed_files.isEmpty())
+  {
+    QMessageBox::warning(
+        this, tr("Import Textures"),
+        tr("Could not read a texture hash from the following file name(s):\n\n%1")
+            .arg(unparsed_files.join(QLatin1Char('\n'))));
+  }
 }
 
 std::vector<std::string> TextureElementOverrideAddEditDialog::CollectTextureHashTokens() const

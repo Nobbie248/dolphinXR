@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <string>
 #include <vector>
 
 #include <QDialog>
@@ -29,8 +30,9 @@ class TextureElementOverrideAddEditDialog : public QDialog
   Q_OBJECT
 public:
   // edit_override != nullptr → edit mode (pre-fills fields); nullptr → add mode.
+  // game_id is used to locate the game's texture dump directory for the Import Texture button.
   explicit TextureElementOverrideAddEditDialog(
-      QWidget* parent,
+      QWidget* parent, std::string game_id,
       const TextureElementManager::TextureElementOverride* edit_override = nullptr);
 
   TextureElementManager::TextureElementOverride GetResult() const;
@@ -43,6 +45,7 @@ private:
   void EnsureTextureHashFieldRows();
   void SanitizeTextureHashField(QLineEdit* edit);
   void ShowTextureBrowser();
+  void OnImportTextures();
 
   void OnAccept();
   void OnHandlingChanged();
@@ -59,9 +62,11 @@ private:
   QDoubleSpinBox* m_passthrough_opacity_spin;
   QLabel* m_passthrough_opacity_label;
   QPushButton* m_view_textures_button;
+  QPushButton* m_import_textures_button;
   QWidget* m_texture_hash_container;
   QScrollArea* m_texture_hash_scroll;
   QVBoxLayout* m_texture_hash_layout;
   std::vector<QLineEdit*> m_texture_hash_edits;
   bool m_updating_texture_hash_fields = false;
+  std::string m_game_id;
 };

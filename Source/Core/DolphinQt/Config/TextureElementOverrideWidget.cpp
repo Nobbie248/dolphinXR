@@ -7,15 +7,25 @@
 
 #include <QColor>
 #include <QDialog>
+#include <QDir>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QListWidget>
 #include <QPushButton>
+#include <QShowEvent>
 #include <QStringList>
+#include <QStyle>
 #include <QVBoxLayout>
+
+#include "Common/Config/Config.h"
+#include "Common/FileUtil.h"
+
+#include "Core/Config/GraphicsSettings.h"
 
 #include "DolphinQt/Config/TextureElementOverrideAddEditDialog.h"
 #include "DolphinQt/QtUtils/NonDefaultQPushButton.h"
+#include "DolphinQt/QtUtils/QtUtils.h"
+#include "DolphinQt/Settings.h"
 #include "VideoCommon/TextureElementManager.h"
 
 using HandlingType = TextureElementManager::HandlingType;
@@ -44,6 +54,16 @@ void TextureElementOverrideWidget::CreateWidgets()
          "Fullscreen = no VR. Applied as a fallback after Shader and Elements Group overrides."));
   info_label->setWordWrap(true);
 
+  // Warning shown when neither the texture preview nor the Import Texture button can find any
+  // textures to work with: the game has no dumped textures and Dump Textures is disabled, so the
+  // Texture Hunter has nothing to enumerate. See UpdateDumpWarning() for the exact condition.
+  m_dump_warning_text = new QLabel(
+      tr("To see the texture preview, enable \"Dump Textures\" in the Graphics settings."));
+  m_dump_warning_text->setWordWrap(true);
+  m_dump_warning =
+      QtUtils::CreateIconWarning(this, QStyle::SP_MessageBoxWarning, m_dump_warning_text);
+  m_dump_warning->setHidden(true);
+
   m_code_add = new NonDefaultQPushButton(tr("&Add Texture Hash"));
   m_code_edit = new NonDefaultQPushButton(tr("&Edit Texture"));
   m_code_edit->setEnabled(false);
@@ -62,6 +82,7 @@ void TextureElementOverrideWidget::CreateWidgets()
 
   auto* layout = new QVBoxLayout{this};
   layout->addWidget(info_label);
+  layout->addWidget(m_dump_warning);
   layout->addWidget(m_code_list);
   layout->addLayout(button_layout);
 }
@@ -80,6 +101,10 @@ void TextureElementOverrideWidget::ConnectWidgets()
           &TextureElementOverrideWidget::OnRefreshClicked);
   connect(m_code_reload, &QPushButton::clicked, this,
           &TextureElementOverrideWidget::OnReloadClicked);
+
+  // Refresh the warning when Dump Textures (or any other setting) is toggled elsewhere.
+  connect(&Settings::Instance(), &Settings::ConfigChanged, this,
+          &TextureElementOverrideWidget::UpdateDumpWarning);
 }
 
 void TextureElementOverrideWidget::LoadOverrides()
@@ -91,6 +116,7 @@ void TextureElementOverrideWidget::LoadOverrides()
   m_code_edit->setEnabled(false);
 
   UpdateList();
+  UpdateDumpWarning();
 }
 
 void TextureElementOverrideWidget::SaveOverrides()
@@ -187,7 +213,7 @@ void TextureElementOverrideWidget::OnSelectionChanged()
 
 void TextureElementOverrideWidget::OnAddClicked()
 {
-  TextureElementOverrideAddEditDialog dialog(this, nullptr);
+  TextureElementOverrideAddEditDialog dialog(this, m_game_id, nullptr);
   if (dialog.exec() != QDialog::Accepted)
     return;
 
@@ -207,7 +233,7 @@ void TextureElementOverrideWidget::OnEditClicked()
   if (idx < 0 || idx >= static_cast<int>(m_overrides.size()))
     return;
 
-  TextureElementOverrideAddEditDialog dialog(this, &m_overrides[idx]);
+  TextureElementOverrideAddEditDialog dialog(this, m_game_id, &m_overrides[idx]);
   if (dialog.exec() != QDialog::Accepted)
     return;
 
@@ -247,4 +273,37 @@ void TextureElementOverrideWidget::OnRefreshClicked()
 void TextureElementOverrideWidget::OnReloadClicked()
 {
   ReloadRuntime();
+}
+
+void TextureElementOverrideWidget::showEvent(QShowEvent* event)
+{
+  QWidget::showEvent(event);
+  // Re-scan the dump folder each time the pane is shown (dumps may have been created meanwhile).
+  UpdateDumpWarning();
+}
+
+bool TextureElementOverrideWidget::HasTextureDumps() const
+{
+  if (m_game_id.empty())
+    return false;
+
+  const QString dump_dir =
+      QString::fromStdString(File::GetUserPath(D_DUMPTEXTURES_IDX) + m_game_id);
+  QDir dir(dump_dir);
+  if (!dir.exists())
+    return false;
+
+  static const QStringList filters{QStringLiteral("*.png"), QStringLiteral("*.dds")};
+  return !dir.entryList(filters, QDir::Files).isEmpty();
+}
+
+void TextureElementOverrideWidget::UpdateDumpWarning()
+{
+  // Show the warning only when there is nothing to preview or import: the game has no dumped
+  // textures AND Dump Textures is disabled (so the Texture Hunter can't enumerate any either).
+  // If dumps already exist, or dumping is enabled, the tools have textures to work with → no
+  // warning.
+  const bool dumping_enabled = Config::Get(Config::GFX_DUMP_TEXTURES);
+  const bool show_warning = !dumping_enabled && !HasTextureDumps();
+  m_dump_warning->setHidden(!show_warning);
 }

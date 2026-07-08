@@ -11,9 +11,11 @@
 
 #include "VideoCommon/TextureElementManager.h"
 
+class QLabel;
 class QListWidget;
 class QListWidgetItem;
 class QPushButton;
+class QShowEvent;
 
 // Per-game Properties pane for Texture Element Overrides: reclassify VR draws based purely on the
 // bound texture hash, across all shaders/elements. Modeled on ShaderOverrideWidget.
@@ -25,6 +27,9 @@ public:
                                         std::optional<u16> revision = std::nullopt);
   ~TextureElementOverrideWidget() override;
 
+protected:
+  void showEvent(QShowEvent* event) override;
+
 private:
   void CreateWidgets();
   void ConnectWidgets();
@@ -32,6 +37,8 @@ private:
   void LoadOverrides();
   void SaveOverrides();
   void ReloadRuntime();
+  void UpdateDumpWarning();
+  bool HasTextureDumps() const;
 
   void OnItemChanged(QListWidgetItem* item);
   void OnSelectionChanged();
@@ -44,6 +51,8 @@ private:
   std::string m_game_id;
   std::optional<u16> m_revision;
 
+  QWidget* m_dump_warning;
+  QLabel* m_dump_warning_text;
   QListWidget* m_code_list;
   QPushButton* m_code_add;
   QPushButton* m_code_edit;
