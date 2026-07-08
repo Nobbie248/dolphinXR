@@ -357,7 +357,7 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   general_layout->addWidget(rendering_group);
   auto* general_actions_layout = new QHBoxLayout;
   general_actions_layout->addStretch();
-  m_reset_general_settings = new QPushButton(tr("Reset Settings"));
+  m_reset_general_settings = new QPushButton(tr("Reset VR Settings"));
   connect(m_reset_general_settings, &QPushButton::clicked, this, &VRPane::ResetGeneralSettings);
   general_actions_layout->addWidget(m_reset_general_settings);
   general_layout->addLayout(general_actions_layout);
@@ -856,7 +856,6 @@ void VRPane::OnEmulationStateChanged(Core::State state)
   m_flat_screen->setEnabled(!running);
   m_reference_space_mode->setEnabled(!running);
   m_use_vulkan_multiview->setEnabled(!running);
-  m_reset_general_settings->setEnabled(!running);
 }
 
 void VRPane::ResetGeneralSettings()
