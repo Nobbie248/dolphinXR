@@ -383,7 +383,7 @@ struct VideoConfig final
   OpenXRTrackingMode vr_tracking_mode = OpenXRTrackingMode::Full6DoF;
   int vr_opcode_replay_target_refresh_rate = -1;
   bool vr_use_openxr_play_space_center = false;
-  bool vr_auto_layer_spread = true;
+  bool vr_auto_layer_spread = false;
   bool vr_remove_bars = true;       // Expand scissor/viewport to remove cinematic letterbox bars
   bool vr_ortho_scissor_fix = true;  // Expand scissor for orthographic VR draws
   bool vr_detect_skybox = false;     // Treat objects drawn at camera origin (0,0,0) as skyboxes
