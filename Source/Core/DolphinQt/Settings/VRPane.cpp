@@ -85,10 +85,12 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   m_auto_immediate_xfb =
       new ConfigBool(tr("Force Immediately Present XFB"),
                      Config::GFX_VR_AUTO_IMMEDIATE_XFB);
+  // Exponential scale: precise near the minimum, while still reaching large values at the far end.
   m_units_per_meter = new ConfigFloatSlider(Config::GFX_VR_UNITS_PER_METER_MIN,
                                             Config::GFX_VR_UNITS_PER_METER_MAX,
                                             Config::GFX_VR_UNITS_PER_METER,
-                                            Config::GFX_VR_UNITS_PER_METER_STEP);
+                                            Config::GFX_VR_UNITS_PER_METER_STEP, nullptr,
+                                            ConfigFloatSlider::ScaleMode::Exponential);
   m_units_per_meter_value = new QLabel();
   m_lean_back_angle = new ConfigFloatSlider(Config::GFX_VR_LEAN_BACK_ANGLE_MIN,
                                             Config::GFX_VR_LEAN_BACK_ANGLE_MAX,
@@ -156,10 +158,16 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   camera_layout->addWidget(m_camera_height, 2, 1);
   camera_layout->addWidget(m_camera_height_value, 2, 2);
 
-  m_units_per_meter_value->setText(QString::asprintf("%.1f", m_units_per_meter->GetValue()));
-  connect(m_units_per_meter, &ConfigFloatSlider::valueChanged, this, [this] {
-    m_units_per_meter_value->setText(QString::asprintf("%.1f", m_units_per_meter->GetValue()));
-  });
+  // With the exponential scale, small values need more decimals to read meaningfully while large
+  // values don't; adapt the precision to the magnitude.
+  const auto units_per_meter_text = [](float value) {
+    return QString::asprintf(value < 10.0f ? "%.2f" : (value < 100.0f ? "%.1f" : "%.0f"), value);
+  };
+  m_units_per_meter_value->setText(units_per_meter_text(m_units_per_meter->GetValue()));
+  connect(m_units_per_meter, &ConfigFloatSlider::valueChanged, this,
+          [this, units_per_meter_text] {
+            m_units_per_meter_value->setText(units_per_meter_text(m_units_per_meter->GetValue()));
+          });
   m_lean_back_angle_value->setText(QString::asprintf("%.1f", m_lean_back_angle->GetValue()));
   connect(m_lean_back_angle, &ConfigFloatSlider::valueChanged, this, [this] {
     m_lean_back_angle_value->setText(QString::asprintf("%.1f", m_lean_back_angle->GetValue()));

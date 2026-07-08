@@ -1,44 +1,73 @@
 // Copyright 2023 Dolphin Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <algorithm>
+#include <cmath>
+
 #include <QPointer>
 
 #include "DolphinQt/Config/ConfigControls/ConfigFloatSlider.h"
 
 ConfigFloatSlider::ConfigFloatSlider(float minimum, float maximum,
                                      const Config::Info<float>& setting, float step,
-                                     Config::Layer* layer)
-    : ConfigControl(Qt::Horizontal, setting.GetLocation(), layer), m_minimum(minimum), m_step(step),
-      m_setting(setting)
+                                     Config::Layer* layer, ScaleMode scale)
+    : ConfigControl(Qt::Horizontal, setting.GetLocation(), layer), m_minimum(minimum),
+      m_maximum(maximum), m_step(step), m_scale(scale), m_setting(setting)
 {
   const float range = maximum - minimum;
   const int steps = std::round(range / step);
   const int interval = std::round(range / steps);
-  const int current_value = std::round((ReadValue(setting) - minimum) / step);
 
   setMinimum(0);
   setMaximum(steps);
   setTickInterval(interval);
-  setValue(current_value);
+  setValue(ValueToPosition(ReadValue(setting)));
 
   connect(this, &ConfigFloatSlider::valueChanged, this, &ConfigFloatSlider::Update);
 }
 
 void ConfigFloatSlider::Update(int value)
 {
-  const float current_value = (m_step * value) + m_minimum;
-
-  SaveValue(m_setting, current_value);
+  SaveValue(m_setting, PositionToValue(value));
 }
 
 float ConfigFloatSlider::GetValue() const
 {
-  return (m_step * value()) + m_minimum;
+  return PositionToValue(value());
 }
 
 void ConfigFloatSlider::OnConfigChanged()
 {
-  setValue(std::round((ReadValue(m_setting) - m_minimum) / m_step));
+  setValue(ValueToPosition(ReadValue(m_setting)));
+}
+
+float ConfigFloatSlider::PositionToValue(int position) const
+{
+  if (m_scale == ScaleMode::Exponential)
+  {
+    const int steps = maximum();
+    if (steps <= 0 || m_minimum <= 0.f)
+      return m_minimum;
+    const double t = static_cast<double>(position) / steps;
+    return static_cast<float>(m_minimum * std::pow(m_maximum / m_minimum, t));
+  }
+
+  return (m_step * position) + m_minimum;
+}
+
+int ConfigFloatSlider::ValueToPosition(float value) const
+{
+  if (m_scale == ScaleMode::Exponential)
+  {
+    const int steps = maximum();
+    if (steps <= 0 || m_minimum <= 0.f)
+      return 0;
+    const double clamped = std::clamp(value, m_minimum, m_maximum);
+    const double t = std::log(clamped / m_minimum) / std::log(m_maximum / m_minimum);
+    return static_cast<int>(std::lround(t * steps));
+  }
+
+  return static_cast<int>(std::lround((value - m_minimum) / m_step));
 }
 
 ConfigFloatLabel::ConfigFloatLabel(const QString& text, ConfigFloatSlider* widget) : QLabel(text)

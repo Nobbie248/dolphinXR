@@ -177,7 +177,7 @@ extern const Info<bool> GFX_VR_ENABLE_CAMERA_HEIGHT;
 extern const Info<float> GFX_VR_CAMERA_HEIGHT;
 
 static constexpr float GFX_VR_UNITS_PER_METER_MIN = 0.1f;
-static constexpr float GFX_VR_UNITS_PER_METER_MAX = 500.0f;
+static constexpr float GFX_VR_UNITS_PER_METER_MAX = 2000.0f;
 static constexpr float GFX_VR_UNITS_PER_METER_STEP = 0.1f;
 static constexpr float GFX_VR_LEAN_BACK_ANGLE_MIN = -45.0f;
 static constexpr float GFX_VR_LEAN_BACK_ANGLE_MAX = 45.0f;
