@@ -4,6 +4,7 @@
 #pragma once
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <QDialog>
@@ -46,6 +47,8 @@ private:
   void SanitizeTextureHashField(QLineEdit* edit);
   void ShowTextureBrowser();
   void OnImportTextures();
+  void EnsureDumpIndex();
+  void UpdateTextureHashPreview(QLineEdit* edit, QLabel* preview);
 
   void OnAccept();
   void OnHandlingChanged();
@@ -67,6 +70,13 @@ private:
   QScrollArea* m_texture_hash_scroll;
   QVBoxLayout* m_texture_hash_layout;
   std::vector<QLineEdit*> m_texture_hash_edits;
+  std::vector<QLabel*> m_texture_hash_previews;
+  std::vector<QWidget*> m_texture_hash_rows;
   bool m_updating_texture_hash_fields = false;
   std::string m_game_id;
+
+  // Lazily-built index of the game's dumped textures: hash -> absolute file path, used to show a
+  // thumbnail beside each hash field.
+  std::unordered_map<u64, std::string> m_dump_hash_to_path;
+  bool m_dump_index_built = false;
 };

@@ -10,6 +10,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
+#include <QDir>
 #include <QDoubleSpinBox>
 #include <QFileInfo>
 #include <QFormLayout>
@@ -18,6 +19,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QPixmap>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRegularExpression>
@@ -40,8 +42,9 @@ namespace
 constexpr double UPM_OVERRIDE_MIN = 0.01;
 constexpr double UPM_OVERRIDE_MAX = 1000.0;
 constexpr double UPM_OVERRIDE_STEP = 0.01;
-constexpr int MAX_VISIBLE_TEXTURE_HASH_ROWS = 10;
-constexpr int TEXTURE_HASH_ROW_HEIGHT = 28;
+constexpr int MAX_VISIBLE_TEXTURE_HASH_ROWS = 6;
+constexpr int TEXTURE_HASH_PREVIEW_SIZE = 40;  // Thumbnail square, in pixels.
+constexpr int TEXTURE_HASH_ROW_HEIGHT = TEXTURE_HASH_PREVIEW_SIZE + 6;
 
 // Extract the texture's XXH64 hash from a dumped texture filename such as
 // "tex1_128x128_017fce12e592f4da_14.png". This mirrors ParseXXH64FromTextureName() in
@@ -486,13 +489,31 @@ void TextureElementOverrideAddEditDialog::AddTextureHashField(const QString& tex
          "Enter one hash per line; a new line is added automatically.\n"
          "You can also paste multiple hashes separated by comma, semicolon, or spaces."));
   edit->setText(text);
-  m_texture_hash_layout->addWidget(edit);
-  m_texture_hash_edits.push_back(edit);
 
-  connect(edit, &QLineEdit::textChanged, this, [this, edit](const QString&) {
+  // Thumbnail of the matching dumped texture, shown beside the hash.
+  auto* preview = new QLabel;
+  preview->setFixedSize(TEXTURE_HASH_PREVIEW_SIZE, TEXTURE_HASH_PREVIEW_SIZE);
+  preview->setAlignment(Qt::AlignCenter);
+
+  auto* row = new QWidget;
+  auto* row_layout = new QHBoxLayout(row);
+  row_layout->setContentsMargins(0, 0, 0, 0);
+  row_layout->setSpacing(6);
+  row_layout->addWidget(edit, 1);
+  row_layout->addWidget(preview);
+
+  m_texture_hash_layout->addWidget(row);
+  m_texture_hash_edits.push_back(edit);
+  m_texture_hash_previews.push_back(preview);
+  m_texture_hash_rows.push_back(row);
+
+  connect(edit, &QLineEdit::textChanged, this, [this, edit, preview](const QString&) {
     SanitizeTextureHashField(edit);
     EnsureTextureHashFieldRows();
+    UpdateTextureHashPreview(edit, preview);
   });
+
+  UpdateTextureHashPreview(edit, preview);
 }
 
 void TextureElementOverrideAddEditDialog::EnsureTextureHashFieldRows()
@@ -516,10 +537,12 @@ void TextureElementOverrideAddEditDialog::EnsureTextureHashFieldRows()
 
   while (static_cast<int>(m_texture_hash_edits.size()) > desired_rows)
   {
-    QLineEdit* edit = m_texture_hash_edits.back();
+    QWidget* row = m_texture_hash_rows.back();
+    m_texture_hash_rows.pop_back();
     m_texture_hash_edits.pop_back();
-    m_texture_hash_layout->removeWidget(edit);
-    delete edit;
+    m_texture_hash_previews.pop_back();
+    m_texture_hash_layout->removeWidget(row);
+    delete row;  // Deletes its child edit and preview label too.
   }
 
   const int visible_rows = std::min(desired_rows, MAX_VISIBLE_TEXTURE_HASH_ROWS);
@@ -528,6 +551,70 @@ void TextureElementOverrideAddEditDialog::EnsureTextureHashFieldRows()
   m_texture_hash_scroll->setMaximumHeight(viewport_height);
 
   m_updating_texture_hash_fields = false;
+}
+
+void TextureElementOverrideAddEditDialog::EnsureDumpIndex()
+{
+  if (m_dump_index_built)
+    return;
+  m_dump_index_built = true;  // Build once; keep true even on failure so we don't rescan.
+
+  if (m_game_id.empty())
+    return;
+
+  const QString dump_dir =
+      QString::fromStdString(File::GetUserPath(D_DUMPTEXTURES_IDX) + m_game_id);
+  QDir dir(dump_dir);
+  if (!dir.exists())
+    return;
+
+  static const QStringList filters{QStringLiteral("*.png"), QStringLiteral("*.dds")};
+  const QStringList files = dir.entryList(filters, QDir::Files, QDir::Name);
+  for (const QString& filename : files)
+  {
+    const u64 hash = ParseHashFromDumpFilename(filename.toStdString());
+    if (hash == 0)
+      continue;
+    // entryList is sorted by name, so the base texture ("…_14.png") is seen before its "_mip"/
+    // "_arb" variants; emplace keeps that first (base) match.
+    m_dump_hash_to_path.emplace(hash, dir.absoluteFilePath(filename).toStdString());
+  }
+}
+
+void TextureElementOverrideAddEditDialog::UpdateTextureHashPreview(QLineEdit* edit, QLabel* preview)
+{
+  if (edit == nullptr || preview == nullptr)
+    return;
+
+  EnsureDumpIndex();
+
+  // Preview the first hash-looking token in the field.
+  u64 hash = 0;
+  const QRegularExpression hex_token(QStringLiteral("[0-9A-Fa-f]{1,16}"));
+  const auto match = hex_token.match(edit->text());
+  if (match.hasMatch())
+    hash = std::strtoull(match.captured(0).toLower().toStdString().c_str(), nullptr, 16);
+
+  const auto it = hash != 0 ? m_dump_hash_to_path.find(hash) : m_dump_hash_to_path.end();
+  if (it == m_dump_hash_to_path.end())
+  {
+    preview->clear();
+    preview->setToolTip(hash != 0 ? tr("No dumped texture found for this hash.") : QString());
+    return;
+  }
+
+  const QString path = QString::fromStdString(it->second);
+  const QPixmap pixmap(path);
+  if (pixmap.isNull())
+  {
+    preview->clear();
+    preview->setToolTip(QFileInfo(path).fileName());
+    return;
+  }
+
+  preview->setPixmap(
+      pixmap.scaled(preview->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+  preview->setToolTip(QFileInfo(path).fileName());
 }
 
 void TextureElementOverrideAddEditDialog::SanitizeTextureHashField(QLineEdit* edit)
