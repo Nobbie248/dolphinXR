@@ -92,6 +92,15 @@ public:
   virtual void ClearRegion(const MathUtil::Rectangle<int>& target_rc, bool colorEnable,
                            bool alphaEnable, bool zEnable, u32 color, u32 z);
 
+  // Clears only the additional (index >= 1) color attachments of the current framebuffer,
+  // preferably within the current render pass (used for the VR passthrough coverage
+  // attachment so EFB clears don't force render pass restarts on tiler GPUs).
+  // Returns false when the backend/framebuffer cannot service the request.
+  virtual bool ClearAdditionalColorAttachments(const MathUtil::Rectangle<int>& target_rc, u32 color)
+  {
+    return false;
+  }
+
   // Drawing with currently-bound pipeline state.
   virtual void Draw(u32 base_vertex, u32 num_vertices) {}
   virtual void DrawIndexed(u32 base_index, u32 num_indices, u32 base_vertex) {}

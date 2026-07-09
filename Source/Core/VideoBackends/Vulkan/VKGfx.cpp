@@ -229,6 +229,55 @@ void VKGfx::ClearRegion(const MathUtil::Rectangle<int>& target_rc, bool color_en
   AbstractGfx::ClearRegion(target_rc, color_enable, alpha_enable, z_enable, color, z);
 }
 
+bool VKGfx::ClearAdditionalColorAttachments(const MathUtil::Rectangle<int>& target_rc, u32 color)
+{
+  auto* vk_frame_buffer = static_cast<VKFramebuffer*>(m_current_framebuffer);
+  if (!vk_frame_buffer || vk_frame_buffer->GetNumberOfAdditonalAttachments() == 0)
+    return false;
+
+  // Same driver constraint as ClearRegion: vkCmdClearAttachments with MSAA is broken there.
+  if (g_ActiveConfig.iMultisamples > 1 &&
+      DriverDetails::HasBug(DriverDetails::BUG_BROKEN_MSAA_CLEAR))
+  {
+    return false;
+  }
+
+  const VkRect2D target_vk_rc = {
+      {target_rc.left, target_rc.top},
+      {static_cast<uint32_t>(target_rc.GetWidth()), static_cast<uint32_t>(target_rc.GetHeight())}};
+
+  VkClearValue clear_value = {};
+  clear_value.color.float32[0] = static_cast<float>((color >> 16) & 0xFF) / 255.0f;
+  clear_value.color.float32[1] = static_cast<float>((color >> 8) & 0xFF) / 255.0f;
+  clear_value.color.float32[2] = static_cast<float>((color >> 0) & 0xFF) / 255.0f;
+  clear_value.color.float32[3] = static_cast<float>((color >> 24) & 0xFF) / 255.0f;
+
+  std::vector<VkClearAttachment> clear_attachments;
+  for (std::size_t i = 0; i < vk_frame_buffer->GetNumberOfAdditonalAttachments(); i++)
+  {
+    VkClearAttachment clear_attachment;
+    clear_attachment.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    clear_attachment.colorAttachment = static_cast<u32>(i + 1);
+    clear_attachment.clearValue = clear_value;
+    clear_attachments.push_back(std::move(clear_attachment));
+  }
+
+  const VkClearRect vk_rect = {target_vk_rc, 0, g_framebuffer_manager->GetEFBLayers()};
+  if (!StateTracker::GetInstance()->IsWithinRenderArea(target_vk_rc.offset.x,
+                                                       target_vk_rc.offset.y,
+                                                       target_vk_rc.extent.width,
+                                                       target_vk_rc.extent.height))
+  {
+    StateTracker::GetInstance()->EndClearRenderPass();
+  }
+  StateTracker::GetInstance()->BeginRenderPass();
+
+  vkCmdClearAttachments(g_command_buffer_mgr->GetCurrentCommandBuffer(),
+                        static_cast<uint32_t>(clear_attachments.size()), clear_attachments.data(),
+                        1, &vk_rect);
+  return true;
+}
+
 void VKGfx::Flush()
 {
   ExecuteCommandBuffer(true, false);
