@@ -2697,6 +2697,33 @@ class SettingsFragmentPresenter(
             R.string.quest_android_direct_to_hmd,
             R.string.quest_android_direct_to_hmd_description
         )
+        addBoolean(
+            "Passthrough",
+            false,
+            R.string.quest_passthrough,
+            R.string.quest_passthrough_description
+        )
+        addBoolean(
+            "PassthroughRemoveBlackBackground",
+            true,
+            R.string.quest_passthrough_reveal_unrendered,
+            R.string.quest_passthrough_reveal_unrendered_description
+        )
+        addBoolean(
+            "PassthroughRemoveBlackEFBClears",
+            true,
+            R.string.quest_passthrough_remove_black_clears,
+            R.string.quest_passthrough_remove_black_clears_description
+        )
+        addFloat(
+            "PassthroughSceneOpacity",
+            1.0f,
+            R.string.quest_passthrough_scene_opacity,
+            R.string.quest_passthrough_scene_opacity_description,
+            0.0f,
+            1.0f,
+            0.05f
+        )
     }
 
     private fun addQuestVrSettings(sl: ArrayList<SettingsItem>) {
@@ -2825,6 +2852,43 @@ class SettingsFragmentPresenter(
                 R.string.quest_opcode_replay_description,
                 R.array.questOpcodeReplayEntries,
                 R.array.questOpcodeReplayValues
+            )
+        )
+        sl.add(
+            SwitchSetting(
+                context,
+                QuestVrSettings.passthroughSetting(),
+                R.string.quest_passthrough,
+                R.string.quest_passthrough_description
+            )
+        )
+        sl.add(
+            SwitchSetting(
+                context,
+                QuestVrSettings.passthroughRevealUnrenderedSetting(),
+                R.string.quest_passthrough_reveal_unrendered,
+                R.string.quest_passthrough_reveal_unrendered_description
+            )
+        )
+        sl.add(
+            SwitchSetting(
+                context,
+                QuestVrSettings.passthroughRemoveBlackClearsSetting(),
+                R.string.quest_passthrough_remove_black_clears,
+                R.string.quest_passthrough_remove_black_clears_description
+            )
+        )
+        sl.add(
+            FloatSliderSetting(
+                context,
+                QuestVrSettings.passthroughSceneOpacitySetting(),
+                R.string.quest_passthrough_scene_opacity,
+                R.string.quest_passthrough_scene_opacity_description,
+                0.0f,
+                1.0f,
+                "",
+                0.05f,
+                true
             )
         )
         sl.add(

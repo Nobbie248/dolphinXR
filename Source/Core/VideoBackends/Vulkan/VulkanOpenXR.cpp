@@ -518,7 +518,9 @@ bool VulkanOpenXR::Initialize()
     VR::g_openxr = std::move(mgr);
   }
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(ANDROID)
+  // Windows desktop and Quest standalone: keep coverage only when the OpenXR runtime
+  // can actually composite it (XR_FB_passthrough or an ALPHA_BLEND environment).
   g_backend_info.bSupportsVRPassthroughCoverage &=
       VR::g_openxr->SupportsPassthrough();
   if (g_ActiveConfig.vr_passthrough &&

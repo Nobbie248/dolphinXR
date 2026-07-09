@@ -20,6 +20,11 @@
     <uses-feature
         android:name="android.software.xr.api.openxr"
         android:required="true" />
+    <!-- Required for XR_FB_passthrough: without this flag the OS keeps the app
+         passthrough-disabled and xrCreatePassthroughFB/passthrough layers do nothing. -->
+    <uses-feature
+        android:name="com.oculus.feature.PASSTHROUGH"
+        android:required="false" />
 
     <application>
         <uses-native-library

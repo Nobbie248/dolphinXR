@@ -528,7 +528,9 @@ void VulkanContext::PopulateBackendInfoFeatures(BackendInfo* backend_info, VkPhy
   backend_info->bSupportsLogicOp = info.logicOp;
   backend_info->bSupportsMultiview = info.multiview;
   backend_info->max_fragment_dual_src_attachments = info.maxFragmentDualSrcAttachments;
-#ifdef _WIN32
+#if defined(_WIN32) || defined(ANDROID)
+  // Windows desktop and Quest standalone (Adreno). Not MoltenVK — its framebuffer-fetch
+  // blending path bypasses the per-attachment blend states the coverage MRT relies on.
   VkImageFormatProperties r8_properties = {};
   const VkResult r8_result = vkGetPhysicalDeviceImageFormatProperties(
       gpu, VK_FORMAT_R8_UNORM, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL,
@@ -540,6 +542,12 @@ void VulkanContext::PopulateBackendInfoFeatures(BackendInfo* backend_info, VkPhy
   backend_info->bSupportsVRPassthroughCoverage =
       info.independentBlend && info.maxFragmentOutputAttachments >= 2 &&
       backend_info->vr_passthrough_coverage_sample_counts != 0;
+  INFO_LOG_FMT(VIDEO,
+               "VR passthrough coverage support: {} (independentBlend={} "
+               "maxFragmentOutputAttachments={} r8SampleCounts={:#x} r8Result={})",
+               backend_info->bSupportsVRPassthroughCoverage, static_cast<bool>(info.independentBlend),
+               info.maxFragmentOutputAttachments,
+               backend_info->vr_passthrough_coverage_sample_counts, static_cast<int>(r8_result));
 #else
   backend_info->bSupportsVRPassthroughCoverage = false;
   backend_info->vr_passthrough_coverage_sample_counts = 0;

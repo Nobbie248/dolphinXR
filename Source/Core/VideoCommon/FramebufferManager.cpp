@@ -270,6 +270,13 @@ bool FramebufferManager::CreateEFBFramebuffer(int efb_scale)
   if (!m_efb_framebuffer || !m_efb_convert_framebuffer)
     return false;
 
+  INFO_LOG_FMT(VIDEO,
+               "VR passthrough at EFB creation: enabled={} (config={} stereo_openxr={} "
+               "coverage_support={} sample_counts={:#x} msaa={})",
+               g_ActiveConfig.VRPassthroughEnabled(), g_ActiveConfig.vr_passthrough,
+               g_ActiveConfig.stereo_mode == StereoMode::OpenXR,
+               g_backend_info.bSupportsVRPassthroughCoverage,
+               g_backend_info.vr_passthrough_coverage_sample_counts, g_ActiveConfig.iMultisamples);
   if (g_ActiveConfig.VRPassthroughEnabled())
   {
     const TextureConfig coverage_config(

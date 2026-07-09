@@ -221,7 +221,7 @@ struct BackendInfo
   bool bSupportsHDROutput = false;
   bool bSupportsUnrestrictedDepthRange = false;
   bool bSupportsMultiview = false;  // VK_KHR_multiview (Vulkan only); used for OpenXR stereo path
-  // Dedicated passthrough coverage is deliberately limited to Windows Vulkan.
+  // Dedicated passthrough coverage: Vulkan on Windows desktop and Quest standalone.
   bool bSupportsVRPassthroughCoverage = false;
   u32 vr_passthrough_coverage_sample_counts = 0;
   u32 max_fragment_dual_src_attachments = 0;

@@ -409,10 +409,11 @@ bool OpenXRManager::CreateInstance(const std::vector<const char*>& extra_extensi
     }
   }
 
-  // XR_FB_passthrough is intentionally desktop-only. Meta Horizon Link exposes it on
-  // Windows when passthrough over Link is enabled.
+  // XR_FB_passthrough: Windows (Meta Horizon Link exposes it when passthrough over Link
+  // is enabled) and Quest standalone. Vulkan-only — the dedicated coverage target that
+  // produces the projection layer's alpha is a Vulkan feature.
   std::vector<const char*> enabled_extensions(extra_extensions);
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(ANDROID)
   const bool is_vulkan_binding =
       std::find_if(extra_extensions.begin(), extra_extensions.end(), [](const char* extension) {
         return std::string_view{extension} == "XR_KHR_vulkan_enable" ||
@@ -518,7 +519,7 @@ bool OpenXRManager::CreateInstance(const std::vector<const char*>& extra_extensi
     }
   }
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(ANDROID)
   if (IsExtensionEnabled(XR_FB_PASSTHROUGH_EXTENSION_NAME))
   {
     const auto load_pfn = [this](const char* name, auto* out_pfn) {
@@ -769,7 +770,7 @@ bool OpenXRManager::InitializeSystem()
   }
 
   XrSystemProperties props{XR_TYPE_SYSTEM_PROPERTIES};
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(ANDROID)
   XrSystemPassthroughPropertiesFB passthrough_props{XR_TYPE_SYSTEM_PASSTHROUGH_PROPERTIES_FB};
   if (m_xrCreatePassthroughFB != nullptr)
     props.next = &passthrough_props;
@@ -778,7 +779,7 @@ bool OpenXRManager::InitializeSystem()
   m_system_name = props.systemName;
   m_quest_or_vd_runtime.reset();
   m_system_vendor_id = props.vendorId;
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(ANDROID)
   m_system_supports_fb_passthrough = passthrough_props.supportsPassthrough == XR_TRUE;
 #else
   m_system_supports_fb_passthrough = false;

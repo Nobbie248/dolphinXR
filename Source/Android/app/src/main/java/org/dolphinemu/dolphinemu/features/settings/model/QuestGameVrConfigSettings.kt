@@ -33,7 +33,11 @@ object QuestGameVrConfigSettings {
         "ElementDepth",
         "ClearEFBCopies",
         "UseVulkanMultiview",
-        "AndroidDirectToHMD"
+        "AndroidDirectToHMD",
+        "Passthrough",
+        "PassthroughRemoveBlackBackground",
+        "PassthroughRemoveBlackEFBClears",
+        "PassthroughSceneOpacity"
     )
 
     fun getStoredKeys(gameId: String, revision: Int): Set<String> =
