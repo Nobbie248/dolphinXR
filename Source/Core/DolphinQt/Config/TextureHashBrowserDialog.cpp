@@ -10,6 +10,7 @@
 
 #include <QAbstractItemView>
 #include <QBrush>
+#include <QButtonGroup>
 #include <QCheckBox>
 #include <QColor>
 #include <QComboBox>
@@ -23,6 +24,8 @@
 #include <QImageReader>
 #include <QLabel>
 #include <QListWidget>
+#include <QPainter>
+#include <QPalette>
 #include <QPixmap>
 #include <QPushButton>
 #include <QSettings>
@@ -30,6 +33,7 @@
 #include <QSize>
 #include <QStackedWidget>
 #include <QTimer>
+#include <QToolButton>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
@@ -48,6 +52,55 @@ constexpr int GRID_CARD_H = 156;
 QString ToHashHex(u64 hash)
 {
   return QStringLiteral("%1").arg(static_cast<qulonglong>(hash), 16, 16, QLatin1Char('0'));
+}
+
+// A "list" glyph: rows of a small square marker followed by a bar. Painted in the given color so it
+// adapts to the active (light/dark) theme.
+QIcon MakeListViewIcon(const QColor& color)
+{
+  QPixmap pixmap(48, 48);
+  pixmap.fill(Qt::transparent);
+  QPainter painter(&pixmap);
+  painter.setRenderHint(QPainter::Antialiasing, true);
+  painter.setPen(Qt::NoPen);
+  painter.setBrush(color);
+
+  constexpr int rows = 4;
+  constexpr int margin = 7;
+  constexpr int row_h = 5;
+  constexpr int gap = (48 - 2 * margin - rows * row_h) / (rows - 1);
+  for (int i = 0; i < rows; ++i)
+  {
+    const int y = margin + i * (row_h + gap);
+    painter.drawRoundedRect(margin, y, row_h, row_h, 1, 1);                     // marker
+    painter.drawRoundedRect(margin + row_h + 4, y, 48 - margin - (margin + row_h + 4), row_h, 1, 1);
+  }
+  return QIcon(pixmap);
+}
+
+// A "grid" glyph: a 2x2 block of rounded squares.
+QIcon MakeGridViewIcon(const QColor& color)
+{
+  QPixmap pixmap(48, 48);
+  pixmap.fill(Qt::transparent);
+  QPainter painter(&pixmap);
+  painter.setRenderHint(QPainter::Antialiasing, true);
+  painter.setPen(Qt::NoPen);
+  painter.setBrush(color);
+
+  constexpr int margin = 7;
+  constexpr int cell_gap = 6;
+  constexpr int cell = (48 - 2 * margin - cell_gap) / 2;
+  for (int r = 0; r < 2; ++r)
+  {
+    for (int c = 0; c < 2; ++c)
+    {
+      const int x = margin + c * (cell + cell_gap);
+      const int y = margin + r * (cell + cell_gap);
+      painter.drawRoundedRect(x, y, cell, cell, 2, 2);
+    }
+  }
+  return QIcon(pixmap);
 }
 
 std::unordered_map<u64, QString> FindTexturePreviewPaths(const std::vector<u64>& hashes)
@@ -182,18 +235,32 @@ QDialog* ShowTextureHashBrowserDialog(QWidget* parent, const TextureHashBrowserC
   view_stack->addWidget(tree);  // index 0 = List View
   view_stack->addWidget(grid);  // index 1 = Grid View
 
-  auto* view_combo = new QComboBox;
-  view_combo->addItem(QObject::tr("List View"));
-  view_combo->addItem(QObject::tr("Grid View"));
-  view_combo->setToolTip(QObject::tr("Switch between the detailed list and a thumbnail grid."));
+  // Segmented List/Grid toggle: two icon buttons, exactly one checked at a time.
+  const QColor icon_color = dlg->palette().color(QPalette::WindowText);
+
+  auto* list_button = new QToolButton;
+  list_button->setCheckable(true);
+  list_button->setIcon(MakeListViewIcon(icon_color));
+  list_button->setIconSize(QSize(22, 22));
+  list_button->setToolTip(QObject::tr("List View"));
+
+  auto* grid_button = new QToolButton;
+  grid_button->setCheckable(true);
+  grid_button->setIcon(MakeGridViewIcon(icon_color));
+  grid_button->setIconSize(QSize(22, 22));
+  grid_button->setToolTip(QObject::tr("Grid View"));
+
+  auto* view_group = new QButtonGroup(dlg);  // Exclusive by default.
+  view_group->addButton(list_button, 0);     // id 0 = List View
+  view_group->addButton(grid_button, 1);     // id 1 = Grid View
 
   // Restore the last-used view (0 = List, 1 = Grid), defaulting to Grid the first time. The final
-  // populate() below reads this index.
+  // populate() below reads the checked button.
   const int saved_view = Settings::GetQSettings()
                              .value(QStringLiteral("texturehashbrowser/viewmode"), 1)
                              .toInt();
   const int initial_view = (saved_view == 0) ? 0 : 1;
-  view_combo->setCurrentIndex(initial_view);
+  (initial_view == 0 ? list_button : grid_button)->setChecked(true);
   view_stack->setCurrentIndex(initial_view);
 
   auto selected_hashes = std::make_shared<std::unordered_set<u64>>(
@@ -209,7 +276,7 @@ QDialog* ShowTextureHashBrowserDialog(QWidget* parent, const TextureHashBrowserC
     config.live_selection_changed(hashes);
   };
 
-  const auto populate = [tree, grid, view_combo, info, selected_hashes, scanned_hashes,
+  const auto populate = [tree, grid, view_group, info, selected_hashes, scanned_hashes,
                          continuous_scan_check, config, notify_live_selection]() {
     notify_live_selection();
     const QString current_label =
@@ -245,7 +312,7 @@ QDialog* ShowTextureHashBrowserDialog(QWidget* parent, const TextureHashBrowserC
 
     const auto preview_paths = FindTexturePreviewPaths(texture_hashes);
 
-    const bool grid_mode = (view_combo->currentIndex() == 1);
+    const bool grid_mode = (view_group->checkedId() == 1);
 
     // Block signals so programmatic clears/selects don't fire itemChanged / itemSelectionChanged.
     const QSignalBlocker tree_blocker(tree);
@@ -429,19 +496,19 @@ QDialog* ShowTextureHashBrowserDialog(QWidget* parent, const TextureHashBrowserC
     config.apply_selected_hashes(hashes);
   });
 
-  QObject::connect(view_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), dlg,
-                   [view_stack, populate](int index) {
-                     view_stack->setCurrentIndex(index);
-                     Settings::GetQSettings().setValue(QStringLiteral("texturehashbrowser/viewmode"),
-                                                       index);
-                     populate();  // Build the newly-shown view.
-                   });
+  QObject::connect(view_group, &QButtonGroup::idClicked, dlg, [view_stack, populate](int id) {
+    view_stack->setCurrentIndex(id);
+    Settings::GetQSettings().setValue(QStringLiteral("texturehashbrowser/viewmode"), id);
+    populate();  // Build the newly-shown view.
+  });
 
   auto* layout = new QVBoxLayout;
   layout->addWidget(info);
   auto* view_row = new QHBoxLayout;
-  view_row->addWidget(view_combo);
+  view_row->setSpacing(0);  // Buttons sit flush, like a segmented control.
   view_row->addStretch();
+  view_row->addWidget(list_button);
+  view_row->addWidget(grid_button);
   layout->addLayout(view_row);
   layout->addWidget(view_stack);
   auto* bottom_layout = new QHBoxLayout;
