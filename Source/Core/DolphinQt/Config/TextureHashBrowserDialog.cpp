@@ -19,12 +19,15 @@
 #include <QFileInfo>
 #include <QHeaderView>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QImageReader>
 #include <QLabel>
+#include <QListWidget>
 #include <QPixmap>
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSize>
+#include <QStackedWidget>
 #include <QTimer>
 #include <QTreeWidget>
 #include <QVBoxLayout>
@@ -34,6 +37,11 @@
 
 namespace
 {
+// Grid-view card geometry.
+constexpr int GRID_THUMB_SIZE = 96;
+constexpr int GRID_CARD_W = 132;
+constexpr int GRID_CARD_H = 156;
+
 QString ToHashHex(u64 hash)
 {
   return QStringLiteral("%1").arg(static_cast<qulonglong>(hash), 16, 16, QLatin1Char('0'));
@@ -152,6 +160,30 @@ QDialog* ShowTextureHashBrowserDialog(QWidget* parent, const TextureHashBrowserC
   tree->header()->setStretchLastSection(true);
   tree->setIconSize(QSize(64, 64));
 
+  // Grid view: thumbnail-focused cells that reflow to fill the available width. Clicking a
+  // thumbnail toggles its selection (multi-select, no modifier needed); selected cells are
+  // highlighted, and that selection is the set of chosen texture hashes.
+  auto* grid = new QListWidget;
+  grid->setViewMode(QListView::IconMode);
+  grid->setResizeMode(QListView::Adjust);
+  grid->setMovement(QListView::Static);
+  grid->setSelectionMode(QAbstractItemView::MultiSelection);
+  grid->setUniformItemSizes(true);
+  grid->setSpacing(8);
+  grid->setWordWrap(true);
+  grid->setIconSize(QSize(GRID_THUMB_SIZE, GRID_THUMB_SIZE));
+  grid->setGridSize(QSize(GRID_CARD_W, GRID_CARD_H));
+  grid->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+
+  auto* view_stack = new QStackedWidget;
+  view_stack->addWidget(tree);  // index 0 = List View
+  view_stack->addWidget(grid);  // index 1 = Grid View
+
+  auto* view_combo = new QComboBox;
+  view_combo->addItem(QObject::tr("List View"));
+  view_combo->addItem(QObject::tr("Grid View"));
+  view_combo->setToolTip(QObject::tr("Switch between the detailed list and a thumbnail grid."));
+
   auto selected_hashes = std::make_shared<std::unordered_set<u64>>(
       config.initial_selected_hashes.begin(), config.initial_selected_hashes.end());
   auto scanned_hashes = std::make_shared<std::unordered_map<u64, std::string>>();
@@ -165,8 +197,8 @@ QDialog* ShowTextureHashBrowserDialog(QWidget* parent, const TextureHashBrowserC
     config.live_selection_changed(hashes);
   };
 
-  const auto populate = [tree, info, selected_hashes, scanned_hashes, continuous_scan_check,
-                         config, notify_live_selection]() {
+  const auto populate = [tree, grid, view_combo, info, selected_hashes, scanned_hashes,
+                         continuous_scan_check, config, notify_live_selection]() {
     notify_live_selection();
     const QString current_label =
         config.fetch_current_label ? config.fetch_current_label() : config.current_label;
@@ -201,8 +233,13 @@ QDialog* ShowTextureHashBrowserDialog(QWidget* parent, const TextureHashBrowserC
 
     const auto preview_paths = FindTexturePreviewPaths(texture_hashes);
 
-    const QSignalBlocker blocker(tree);
+    const bool grid_mode = (view_combo->currentIndex() == 1);
+
+    // Block signals so programmatic clears/selects don't fire itemChanged / itemSelectionChanged.
+    const QSignalBlocker tree_blocker(tree);
+    const QSignalBlocker grid_blocker(grid);
     tree->clear();
+    grid->clear();
 
     int saved_only_count = 0;
     int scanned_only_count = 0;
@@ -218,31 +255,64 @@ QDialog* ShowTextureHashBrowserDialog(QWidget* parent, const TextureHashBrowserC
       if (is_scanned_only)
         ++scanned_only_count;
 
-      auto* item = new QTreeWidgetItem;
-      item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsUserCheckable);
-      item->setCheckState(0, selected_hashes->count(hash) > 0 ? Qt::Checked : Qt::Unchecked);
-      item->setText(1, ToHashHex(hash));
-
+      // Display name is the same in both views.
+      QString name_text;
       if (in_current_scene)
       {
         const auto& tex = captured_it->second;
-        item->setText(2, tex.name.empty() ? QObject::tr("(unknown)") :
-                                           QString::fromStdString(tex.name));
+        name_text = tex.name.empty() ? QObject::tr("(unknown)") : QString::fromStdString(tex.name);
+      }
+      else if (is_saved_only)
+      {
+        name_text = QObject::tr("(saved filter, not in current selection)");
       }
       else
       {
-        if (is_saved_only)
+        const auto scanned_it = scanned_hashes->find(hash);
+        const bool has_scanned_name =
+            scanned_it != scanned_hashes->end() && !scanned_it->second.empty();
+        name_text = has_scanned_name ?
+                        QString::fromStdString(scanned_it->second) :
+                        QObject::tr("(seen during scan, not in current selection)");
+      }
+      const bool gray = !in_current_scene;
+
+      const QString hash_hex = ToHashHex(hash);
+      const auto preview_it = preview_paths.find(hash);
+      const QString preview_path =
+          preview_it != preview_paths.end() ? preview_it->second : QString();
+
+      if (grid_mode)
+      {
+        auto* item = new QListWidgetItem(grid);
+        item->setText(QStringLiteral("%1\n%2").arg(hash_hex, name_text));
+        item->setTextAlignment(Qt::AlignHCenter | Qt::AlignTop);
+        item->setToolTip(QStringLiteral("%1\n%2").arg(hash_hex, name_text));
+        item->setData(Qt::UserRole, static_cast<qulonglong>(hash));
+        item->setSizeHint(QSize(GRID_CARD_W, GRID_CARD_H));
+        if (gray)
+          item->setForeground(QColor(140, 140, 140));
+        if (!preview_path.isEmpty())
         {
-          item->setText(2, QObject::tr("(saved filter, not in current selection)"));
+          const QPixmap pixmap = LoadPreviewPixmapFresh(preview_path);
+          if (!pixmap.isNull())
+          {
+            item->setIcon(QIcon(pixmap.scaled(GRID_THUMB_SIZE, GRID_THUMB_SIZE, Qt::KeepAspectRatio,
+                                              Qt::SmoothTransformation)));
+          }
         }
-        else
-        {
-          const auto scanned_it = scanned_hashes->find(hash);
-          const bool has_scanned_name =
-              scanned_it != scanned_hashes->end() && !scanned_it->second.empty();
-          item->setText(2, has_scanned_name ? QString::fromStdString(scanned_it->second) :
-                                              QObject::tr("(seen during scan, not in current selection)"));
-        }
+        // Reflect the current selection; clicking the cell later toggles it (see itemSelectionChanged).
+        item->setSelected(selected_hashes->count(hash) > 0);
+        continue;
+      }
+
+      auto* item = new QTreeWidgetItem;
+      item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsUserCheckable);
+      item->setCheckState(0, selected_hashes->count(hash) > 0 ? Qt::Checked : Qt::Unchecked);
+      item->setText(1, hash_hex);
+      item->setText(2, name_text);
+      if (gray)
+      {
         const QBrush gray_brush(QColor(140, 140, 140));
         item->setForeground(1, gray_brush);
         item->setForeground(2, gray_brush);
@@ -250,10 +320,9 @@ QDialog* ShowTextureHashBrowserDialog(QWidget* parent, const TextureHashBrowserC
 
       item->setData(0, Qt::UserRole, static_cast<qulonglong>(hash));
 
-      const auto preview_it = preview_paths.find(hash);
-      if (preview_it != preview_paths.end())
+      if (!preview_path.isEmpty())
       {
-        QPixmap pixmap = LoadPreviewPixmapFresh(preview_it->second);
+        QPixmap pixmap = LoadPreviewPixmapFresh(preview_path);
         if (!pixmap.isNull())
         {
           item->setData(3, Qt::DecorationRole,
@@ -265,8 +334,11 @@ QDialog* ShowTextureHashBrowserDialog(QWidget* parent, const TextureHashBrowserC
       tree->addTopLevelItem(item);
     }
 
-    for (int i = 0; i < 4; ++i)
-      tree->resizeColumnToContents(i);
+    if (!grid_mode)
+    {
+      for (int i = 0; i < 4; ++i)
+        tree->resizeColumnToContents(i);
+    }
 
     if (textures.empty())
     {
@@ -308,6 +380,16 @@ QDialog* ShowTextureHashBrowserDialog(QWidget* parent, const TextureHashBrowserC
                      notify_live_selection();
                    });
 
+  // Grid view: the highlighted (selected) cells are the chosen hashes. Every relevant hash is shown
+  // as a cell, so the selection set can be rebuilt directly from it.
+  QObject::connect(grid, &QListWidget::itemSelectionChanged, dlg,
+                   [grid, selected_hashes, notify_live_selection]() {
+                     selected_hashes->clear();
+                     for (const QListWidgetItem* item : grid->selectedItems())
+                       selected_hashes->insert(item->data(Qt::UserRole).toULongLong());
+                     notify_live_selection();
+                   });
+
   auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close);
   auto* refresh_button = buttons->addButton(QObject::tr("Refresh"), QDialogButtonBox::ActionRole);
   auto* apply_button = buttons->addButton(QObject::tr("Apply"), QDialogButtonBox::AcceptRole);
@@ -335,10 +417,17 @@ QDialog* ShowTextureHashBrowserDialog(QWidget* parent, const TextureHashBrowserC
     config.apply_selected_hashes(hashes);
   });
 
+  QObject::connect(view_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), dlg,
+                   [view_stack, populate](int index) {
+                     view_stack->setCurrentIndex(index);
+                     populate();  // Build the newly-shown view.
+                   });
+
   auto* layout = new QVBoxLayout;
   layout->addWidget(info);
-  layout->addWidget(tree);
+  layout->addWidget(view_stack);
   auto* bottom_layout = new QHBoxLayout;
+  bottom_layout->addWidget(view_combo);
   bottom_layout->addWidget(continuous_scan_check);
   if (preview_mode_combo)
     bottom_layout->addWidget(preview_mode_combo);
