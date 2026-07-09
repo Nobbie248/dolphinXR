@@ -25,6 +25,7 @@
 #include <QListWidget>
 #include <QPixmap>
 #include <QPushButton>
+#include <QSettings>
 #include <QSignalBlocker>
 #include <QSize>
 #include <QStackedWidget>
@@ -34,6 +35,8 @@
 
 #include "Common/FileUtil.h"
 #include "Core/ConfigManager.h"
+
+#include "DolphinQt/Settings.h"
 
 namespace
 {
@@ -183,6 +186,14 @@ QDialog* ShowTextureHashBrowserDialog(QWidget* parent, const TextureHashBrowserC
   view_combo->addItem(QObject::tr("List View"));
   view_combo->addItem(QObject::tr("Grid View"));
   view_combo->setToolTip(QObject::tr("Switch between the detailed list and a thumbnail grid."));
+
+  // Restore the last-used view (0 = List, 1 = Grid). The final populate() below reads this index.
+  const int saved_view = Settings::GetQSettings()
+                             .value(QStringLiteral("texturehashbrowser/viewmode"), 0)
+                             .toInt();
+  const int initial_view = (saved_view == 1) ? 1 : 0;
+  view_combo->setCurrentIndex(initial_view);
+  view_stack->setCurrentIndex(initial_view);
 
   auto selected_hashes = std::make_shared<std::unordered_set<u64>>(
       config.initial_selected_hashes.begin(), config.initial_selected_hashes.end());
@@ -420,6 +431,8 @@ QDialog* ShowTextureHashBrowserDialog(QWidget* parent, const TextureHashBrowserC
   QObject::connect(view_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), dlg,
                    [view_stack, populate](int index) {
                      view_stack->setCurrentIndex(index);
+                     Settings::GetQSettings().setValue(QStringLiteral("texturehashbrowser/viewmode"),
+                                                       index);
                      populate();  // Build the newly-shown view.
                    });
 
