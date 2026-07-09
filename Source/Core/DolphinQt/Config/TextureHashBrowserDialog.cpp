@@ -187,11 +187,12 @@ QDialog* ShowTextureHashBrowserDialog(QWidget* parent, const TextureHashBrowserC
   view_combo->addItem(QObject::tr("Grid View"));
   view_combo->setToolTip(QObject::tr("Switch between the detailed list and a thumbnail grid."));
 
-  // Restore the last-used view (0 = List, 1 = Grid). The final populate() below reads this index.
+  // Restore the last-used view (0 = List, 1 = Grid), defaulting to Grid the first time. The final
+  // populate() below reads this index.
   const int saved_view = Settings::GetQSettings()
-                             .value(QStringLiteral("texturehashbrowser/viewmode"), 0)
+                             .value(QStringLiteral("texturehashbrowser/viewmode"), 1)
                              .toInt();
-  const int initial_view = (saved_view == 1) ? 1 : 0;
+  const int initial_view = (saved_view == 0) ? 0 : 1;
   view_combo->setCurrentIndex(initial_view);
   view_stack->setCurrentIndex(initial_view);
 
@@ -438,9 +439,12 @@ QDialog* ShowTextureHashBrowserDialog(QWidget* parent, const TextureHashBrowserC
 
   auto* layout = new QVBoxLayout;
   layout->addWidget(info);
+  auto* view_row = new QHBoxLayout;
+  view_row->addWidget(view_combo);
+  view_row->addStretch();
+  layout->addLayout(view_row);
   layout->addWidget(view_stack);
   auto* bottom_layout = new QHBoxLayout;
-  bottom_layout->addWidget(view_combo);
   bottom_layout->addWidget(continuous_scan_check);
   if (preview_mode_combo)
     bottom_layout->addWidget(preview_mode_combo);
