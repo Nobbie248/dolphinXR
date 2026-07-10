@@ -62,6 +62,16 @@ object QuestVrSettings {
 
     fun detectSkyboxSetting() = vrBooleanSetting("DetectSkybox", false)
 
+    fun passthroughSetting() = vrBooleanSetting("Passthrough", false)
+
+    fun passthroughRevealUnrenderedSetting() =
+        vrBooleanSetting("PassthroughRemoveBlackBackground", true)
+
+    fun passthroughRemoveBlackClearsSetting() =
+        vrBooleanSetting("PassthroughRemoveBlackEFBClears", true)
+
+    fun passthroughSceneOpacitySetting() = vrFloatSetting("PassthroughSceneOpacity", 1.0f)
+
     fun opcodeReplaySetting() = vrIntSetting("OpcodeReplay", 0)
 
     fun vrGammaSetting() = vrFloatSetting("Gamma", 1.0f)

@@ -270,6 +270,13 @@ bool FramebufferManager::CreateEFBFramebuffer(int efb_scale)
   if (!m_efb_framebuffer || !m_efb_convert_framebuffer)
     return false;
 
+  INFO_LOG_FMT(VIDEO,
+               "VR passthrough at EFB creation: enabled={} (config={} stereo_openxr={} "
+               "coverage_support={} sample_counts={:#x} msaa={})",
+               g_ActiveConfig.VRPassthroughEnabled(), g_ActiveConfig.vr_passthrough,
+               g_ActiveConfig.stereo_mode == StereoMode::OpenXR,
+               g_backend_info.bSupportsVRPassthroughCoverage,
+               g_backend_info.vr_passthrough_coverage_sample_counts, g_ActiveConfig.iMultisamples);
   if (g_ActiveConfig.VRPassthroughEnabled())
   {
     const TextureConfig coverage_config(
@@ -1028,23 +1035,50 @@ void FramebufferManager::ClearEFB(const MathUtil::Rectangle<int>& rc, bool color
     color &= 0x00FFFFFF;
   }
 
-  BindEFBFramebuffer();
-  g_gfx->ClearRegion(target_rc, color_enable, alpha_enable, z_enable, color, z);
-
   // Coverage is independent of guest EFB alpha. Game color clears cover their region;
   // depth-only and alpha-only clears leave coverage unchanged. With Remove Black EFB
   // Clears enabled, (near-)black color clears mark their region as unrendered instead,
   // so menus and skyless scenes (games clear fullscreen to black every frame) reveal
   // the passthrough. The low 3 bits per channel are ignored — they are lost to
   // RGBA6/RGB565 quantization anyway.
-  if (HasEFBCoverage() && writes_visual_color)
+  const bool has_coverage = HasEFBCoverage();
+  const bool black_clear = g_ActiveConfig.vr_passthrough_remove_black_clears &&
+                           (color & 0x00F8F8F8u) == 0;
+  const u32 coverage_color = black_clear ? 0x00000000u : 0x00FF0000u;
+
+  // Fast route: keep the whole clear inside the shared with-coverage render pass.
+  // ClearRegion's in-pass paths clear every color attachment (the coverage attachment
+  // gets the game color); the coverage attachment is then rewritten in-pass with its
+  // real value. Only all-or-nothing color masks qualify — partial masks would take
+  // ClearRegion's quad fallback, whose pipelines target the single-attachment layout
+  // (as can MSAA on drivers with broken attachment clears, so MSAA keeps the old path).
+  if (has_coverage && color_enable == alpha_enable && !g_ActiveConfig.MultisamplingEnabled())
   {
-    const bool black_clear = g_ActiveConfig.vr_passthrough_remove_black_clears &&
-                             (color & 0x00F8F8F8u) == 0;
-    BindEFBCoverageFramebuffer();
-    g_gfx->ClearRegion(target_rc, true, true, false, black_clear ? 0x00000000u : 0x00FF0000u, 0);
+    BindEFBFramebufferWithCoverage();
+    g_gfx->ClearRegion(target_rc, color_enable, alpha_enable, z_enable, color, z);
+    if (writes_visual_color && !g_gfx->ClearAdditionalColorAttachments(target_rc, coverage_color))
+    {
+      // Unexpected on coverage-capable backends — restore correctness the slow way.
+      BindEFBCoverageFramebuffer();
+      g_gfx->ClearRegion(target_rc, true, true, false, coverage_color, 0);
+      BindEFBFramebufferWithCoverage();
+    }
+    return;
   }
+
   BindEFBFramebuffer();
+  g_gfx->ClearRegion(target_rc, color_enable, alpha_enable, z_enable, color, z);
+
+  if (has_coverage && writes_visual_color)
+  {
+    BindEFBCoverageFramebuffer();
+    g_gfx->ClearRegion(target_rc, true, true, false, coverage_color, 0);
+  }
+  // Leave the framebuffer the next GX draw will use bound, avoiding one more switch.
+  if (has_coverage)
+    BindEFBFramebufferWithCoverage();
+  else
+    BindEFBFramebuffer();
 }
 
 bool FramebufferManager::CompileClearPipelines()

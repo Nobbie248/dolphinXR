@@ -59,6 +59,8 @@ public:
 
   void ClearRegion(const MathUtil::Rectangle<int>& target_rc, bool color_enable, bool alpha_enable,
                    bool z_enable, u32 color, u32 z) override;
+  bool ClearAdditionalColorAttachments(const MathUtil::Rectangle<int>& target_rc,
+                                       u32 color) override;
 
   void SetPipeline(const AbstractPipeline* pipeline) override;
   void SetForcePixelShader(const AbstractShader* shader) override;

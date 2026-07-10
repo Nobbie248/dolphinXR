@@ -2003,7 +2003,11 @@ void VertexManagerBase::RenderDrawCall(
     }
   }
 
-  if (coverage_mode == VRPassthroughCoverageShaderMode::MRT)
+  // All EFB draws share the with-coverage framebuffer whenever the coverage attachment
+  // exists — non-MRT pipelines are built against the same attachment layout with a
+  // write-masked attachment 1 (see GetGXPipelineConfig), so the render pass never has
+  // to restart between draws (a per-switch GMEM store/load on tiler GPUs).
+  if (g_framebuffer_manager->HasEFBCoverage())
     g_framebuffer_manager->BindEFBFramebufferWithCoverage();
   else
     g_framebuffer_manager->BindEFBFramebuffer();
@@ -2045,9 +2049,12 @@ const AbstractPipeline* VertexManagerBase::GetCustomPipeline(
             VRPassthroughCoverageShaderMode::Prepass;
         custom_uber_pipeline_config.ps_uid.GetUidData()->vr_coverage_mode =
             VRPassthroughCoverageShaderMode::Prepass;
-        custom_base_config.framebuffer_state =
-            g_framebuffer_manager->GetEFBFramebufferState();
-        custom_base_config.use_independent_blending = false;
+        // Match the shared with-coverage render pass (attachment 1 write-masked; the
+        // coverage itself comes from the separate prepass) so custom-shader draws don't
+        // force a render pass restart either.
+        custom_base_config.framebuffer_state = g_framebuffer_manager->GetEFBFramebufferState(true);
+        custom_base_config.additional_blending_state = RenderState::GetNoColorWriteBlendState();
+        custom_base_config.use_independent_blending = true;
       }
 
       CustomShaderInstance custom_shaders;

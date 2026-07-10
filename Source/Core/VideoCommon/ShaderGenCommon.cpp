@@ -26,8 +26,12 @@ VRPassthroughCoverageShaderMode GetVRPassthroughCoverageShaderMode()
   // maxFragmentDualSrcAttachments limits how many color attachments the fragment shader
   // may write while dual-source blending is in use. It is 1 on desktop GPUs, so writing
   // the coverage attachment (2 attachments total) alongside SRC1 blending needs >= 2.
+  // Backends without dual-source blending (Quest Adreno) never emit SRC1 factors at all
+  // — ApplyDriverBugs strips them — so the limit is irrelevant and every blended draw
+  // can take the single-pass MRT path instead of the costly prepass.
   const bool dual_source_exceeds_mrt_limit =
-      blend.RequiresDualSrc() && g_backend_info.max_fragment_dual_src_attachments < 2;
+      blend.RequiresDualSrc() && g_backend_info.bSupportsDualSourceBlend &&
+      g_backend_info.max_fragment_dual_src_attachments < 2;
   const bool exact_mode =
       g_ActiveConfig.vr_passthrough_coverage_mode == VRPassthroughCoverageMode::Exact;
   if (fixed_logic_op || (exact_mode && dual_source_exceeds_mrt_limit))

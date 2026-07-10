@@ -715,7 +715,18 @@ AbstractPipelineConfig ShaderCache::GetGXPipelineConfig(
   }
   else
   {
-    config.framebuffer_state = g_framebuffer_manager->GetEFBFramebufferState();
+    // When the coverage attachment exists, draws that don't produce coverage (color
+    // writes disabled, prepass-routed draws) still target the with-coverage framebuffer
+    // with a fully write-masked attachment 1. This keeps a single render pass across
+    // all EFB draws — alternating between framebuffers with different attachment
+    // counts forces a render pass restart (GMEM store/load) per switch on tilers.
+    config.framebuffer_state =
+        g_framebuffer_manager->GetEFBFramebufferState(g_framebuffer_manager->HasEFBCoverage());
+    if (g_framebuffer_manager->HasEFBCoverage())
+    {
+      config.additional_blending_state = RenderState::GetNoColorWriteBlendState();
+      config.use_independent_blending = true;
+    }
   }
   return config;
 }
