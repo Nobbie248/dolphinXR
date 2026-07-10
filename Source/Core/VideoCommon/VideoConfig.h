@@ -447,7 +447,13 @@ struct VideoConfig final
     if (!g_backend_info.bSupportsVSLinePointExpand)
       return false;
 #ifdef ENABLE_VR
-    if (stereo_mode == StereoMode::OpenXR && vr_use_vulkan_multiview)
+    // VK_KHR_multiview drops the GS stage entirely, so points/lines must be VS-expanded.
+    // Must match ShaderHostConfig's vk_multiview bit exactly: on backends without multiview
+    // (D3D11/D3D12), OpenXR stereo still renders through the stereo GS, and forcing VS expand
+    // here desyncs the D3D12 GX root signature, which binds either the VS-expand CBV or the
+    // GS CBV — every GS-bearing PSO then fails to build (E_INVALIDARG) and nothing draws.
+    if (stereo_mode == StereoMode::OpenXR && vr_use_vulkan_multiview &&
+        g_backend_info.bSupportsMultiview && iMultisamples == 1)
       return true;
 #endif
     if (!g_backend_info.bSupportsGeometryShaders)

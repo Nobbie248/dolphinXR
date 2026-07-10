@@ -226,6 +226,21 @@ std::unique_ptr<DXPipeline> DXPipeline::Create(const AbstractPipelineConfig& con
   {
     WARN_LOG_FMT(VIDEO, "CreateGraphicsPipelineState() {}failed: {}",
                  cache_data ? "with cache data " : "", DX12HRWrap(hr));
+    WARN_LOG_FMT(VIDEO,
+                 "  PSO config: usage={} vs={} gs={} ps={} vtxfmt={} prim={} color_fmt={} "
+                 "depth_fmt={} samples={} add_color={} rtv0={} dsv={} blend={} logic_op={} "
+                 "dual_src={}",
+                 static_cast<int>(config.usage), config.vertex_shader != nullptr,
+                 config.geometry_shader != nullptr, config.pixel_shader != nullptr,
+                 config.vertex_format != nullptr, static_cast<int>(desc.PrimitiveTopologyType),
+                 static_cast<int>(config.framebuffer_state.color_texture_format.Value()),
+                 static_cast<int>(config.framebuffer_state.depth_texture_format.Value()),
+                 static_cast<u32>(config.framebuffer_state.samples),
+                 static_cast<u32>(config.framebuffer_state.additional_color_attachment_count),
+                 static_cast<int>(desc.RTVFormats[0]), static_cast<int>(desc.DSVFormat),
+                 config.blending_state.blend_enable.Value() ? 1 : 0,
+                 config.blending_state.logic_op_enable.Value() ? 1 : 0,
+                 config.blending_state.use_dual_src.Value() ? 1 : 0);
     return nullptr;
   }
 
