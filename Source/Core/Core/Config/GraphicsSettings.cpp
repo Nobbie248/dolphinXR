@@ -256,6 +256,21 @@ const Info<bool> GFX_VR_ANDROID_DIRECT_TO_HMD{{System::GFX, "VR", "AndroidDirect
                                               DEFAULT_VR_ANDROID_DIRECT_TO_HMD};
 const Info<bool> GFX_VR_QUEST_CPU_LEVEL_5_HINT{{System::GFX, "VR", "QuestCpuLevel5Hint"},
                                                false};
+#if defined(__ANDROID__) && defined(ENABLE_VR)
+// Standalone headsets ask for more resolution than their mobile GPUs can fill at Dolphin
+// workloads (Quest 3 recommends 2064x2208/eye); 0.85x cuts swapchain fill/composite cost
+// by ~28% with little visible sharpness loss.
+constexpr float DEFAULT_VR_RESOLUTION_SCALE = 0.85f;
+constexpr int DEFAULT_VR_FOVEATION_LEVEL = 2;  // Medium fixed foveated rendering
+#else
+constexpr float DEFAULT_VR_RESOLUTION_SCALE = 1.0f;
+constexpr int DEFAULT_VR_FOVEATION_LEVEL = 0;  // Off; few PC runtimes expose XR_FB_foveation
+#endif
+const Info<float> GFX_VR_RESOLUTION_SCALE{{System::GFX, "VR", "ResolutionScale"},
+                                          DEFAULT_VR_RESOLUTION_SCALE};
+const Info<int> GFX_VR_FOVEATION_LEVEL{{System::GFX, "VR", "FoveationLevel"},
+                                       DEFAULT_VR_FOVEATION_LEVEL};
+const Info<bool> GFX_VR_FOVEATION_DYNAMIC{{System::GFX, "VR", "DynamicFoveation"}, true};
 // Graphics.Hacks
 
 const Info<bool> GFX_HACK_EFB_ACCESS_ENABLE{{System::GFX, "Hacks", "EFBAccessEnable"}, false};

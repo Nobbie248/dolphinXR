@@ -231,6 +231,14 @@ static constexpr int GFX_VR_CLEAR_EFB_STEP = 10;
 extern const Info<bool> GFX_VR_USE_VULKAN_MULTIVIEW;
 extern const Info<bool> GFX_VR_ANDROID_DIRECT_TO_HMD;
 extern const Info<bool> GFX_VR_QUEST_CPU_LEVEL_5_HINT;
+extern const Info<float> GFX_VR_RESOLUTION_SCALE;
+extern const Info<int> GFX_VR_FOVEATION_LEVEL;
+extern const Info<bool> GFX_VR_FOVEATION_DYNAMIC;
+static constexpr float GFX_VR_RESOLUTION_SCALE_MIN = 0.5f;
+static constexpr float GFX_VR_RESOLUTION_SCALE_MAX = 2.0f;
+static constexpr float GFX_VR_RESOLUTION_SCALE_STEP = 0.05f;
+static constexpr int GFX_VR_FOVEATION_LEVEL_OFF = 0;
+static constexpr int GFX_VR_FOVEATION_LEVEL_MAX = 3;
 
 static constexpr float GFX_VR_SCREEN_DISTANCE_MIN = 0.5f;
 static constexpr float GFX_VR_SCREEN_DISTANCE_MAX = 10.0f;

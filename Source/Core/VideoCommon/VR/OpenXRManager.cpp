@@ -326,6 +326,93 @@ std::vector<const char*> OpenXRManager::GetAvailableControllerExtensions()
   return result;
 }
 
+std::vector<const char*> OpenXRManager::GetAvailableFoveationExtensions(bool for_vulkan)
+{
+#if defined(ANDROID)
+  if (!EnsureAndroidOpenXRLoaderInitialized())
+    return {};
+#endif
+
+  // All three are needed to configure and apply a foveation profile; foveation_vulkan
+  // additionally exposes the runtime's fragment density map images to the app.
+  if (!IsRuntimeExtensionSupported(XR_FB_FOVEATION_EXTENSION_NAME) ||
+      !IsRuntimeExtensionSupported(XR_FB_FOVEATION_CONFIGURATION_EXTENSION_NAME) ||
+      !IsRuntimeExtensionSupported(XR_FB_SWAPCHAIN_UPDATE_STATE_EXTENSION_NAME))
+  {
+    return {};
+  }
+
+  std::vector<const char*> result = {XR_FB_FOVEATION_EXTENSION_NAME,
+                                     XR_FB_FOVEATION_CONFIGURATION_EXTENSION_NAME,
+                                     XR_FB_SWAPCHAIN_UPDATE_STATE_EXTENSION_NAME};
+  if (for_vulkan)
+  {
+    // Spelled out because the XR_FB_FOVEATION_VULKAN_EXTENSION_NAME macro lives in
+    // openxr_platform.h behind XR_USE_GRAPHICS_API_VULKAN, which this file doesn't define.
+    static constexpr const char* kFoveationVulkanExt = "XR_FB_foveation_vulkan";
+    if (!IsRuntimeExtensionSupported(kFoveationVulkanExt))
+      return {};
+    result.push_back(kFoveationVulkanExt);
+  }
+  return result;
+}
+
+bool OpenXRManager::IsFoveationUsable() const
+{
+  return m_xrCreateFoveationProfileFB != nullptr && m_xrUpdateSwapchainFB != nullptr &&
+         Config::Get(Config::GFX_VR_FOVEATION_LEVEL) > Config::GFX_VR_FOVEATION_LEVEL_OFF;
+}
+
+bool OpenXRManager::ApplyFoveationToSwapchain(XrSwapchain swapchain)
+{
+  if (!IsFoveationUsable() || m_session == XR_NULL_HANDLE || swapchain == XR_NULL_HANDLE)
+    return false;
+
+  const int level = std::clamp(Config::Get(Config::GFX_VR_FOVEATION_LEVEL),
+                               Config::GFX_VR_FOVEATION_LEVEL_OFF,
+                               Config::GFX_VR_FOVEATION_LEVEL_MAX);
+  const bool dynamic = Config::Get(Config::GFX_VR_FOVEATION_DYNAMIC);
+
+  XrFoveationLevelProfileCreateInfoFB level_info{XR_TYPE_FOVEATION_LEVEL_PROFILE_CREATE_INFO_FB};
+  level_info.level = static_cast<XrFoveationLevelFB>(level);
+  level_info.verticalOffset = 0.0f;
+  level_info.dynamic =
+      dynamic ? XR_FOVEATION_DYNAMIC_LEVEL_ENABLED_FB : XR_FOVEATION_DYNAMIC_DISABLED_FB;
+
+  XrFoveationProfileCreateInfoFB profile_info{XR_TYPE_FOVEATION_PROFILE_CREATE_INFO_FB};
+  profile_info.next = &level_info;
+
+  XrFoveationProfileFB profile = XR_NULL_HANDLE;
+  XrResult result = m_xrCreateFoveationProfileFB(m_session, &profile_info, &profile);
+  if (XR_FAILED(result))
+  {
+    WARN_LOG_FMT(OPENXR, "OpenXR: xrCreateFoveationProfileFB failed ({}).",
+                 static_cast<int>(result));
+    return false;
+  }
+
+  XrSwapchainStateFoveationFB foveation_state{XR_TYPE_SWAPCHAIN_STATE_FOVEATION_FB};
+  foveation_state.flags = 0;
+  foveation_state.profile = profile;
+  result = m_xrUpdateSwapchainFB(
+      swapchain, reinterpret_cast<const XrSwapchainStateBaseHeaderFB*>(&foveation_state));
+
+  // The runtime snapshots the profile during the update; ours can go away immediately.
+  if (m_xrDestroyFoveationProfileFB != nullptr)
+    m_xrDestroyFoveationProfileFB(profile);
+
+  if (XR_FAILED(result))
+  {
+    WARN_LOG_FMT(OPENXR, "OpenXR: xrUpdateSwapchainFB (foveation) failed ({}).",
+                 static_cast<int>(result));
+    return false;
+  }
+
+  INFO_LOG_FMT(OPENXR, "OpenXR: Foveation applied: level {} ({}dynamic).", level,
+               dynamic ? "" : "non-");
+  return true;
+}
+
 bool OpenXRManager::IsExtensionEnabled(std::string_view ext_name) const
 {
   return std::any_of(m_enabled_extensions.begin(), m_enabled_extensions.end(),
@@ -516,6 +603,36 @@ bool OpenXRManager::CreateInstance(const std::vector<const char*>& extra_extensi
     else
     {
       INFO_LOG_FMT(OPENXR, "OpenXR: XR_FB_display_refresh_rate enabled.");
+    }
+  }
+
+  if (IsExtensionEnabled(XR_FB_FOVEATION_EXTENSION_NAME) &&
+      IsExtensionEnabled(XR_FB_SWAPCHAIN_UPDATE_STATE_EXTENSION_NAME))
+  {
+    const auto load_foveation_pfn = [this](const char* name, auto* out_pfn) {
+      const XrResult r = xrGetInstanceProcAddr(m_instance, name,
+                                               reinterpret_cast<PFN_xrVoidFunction*>(out_pfn));
+      if (XR_FAILED(r) || *out_pfn == nullptr)
+      {
+        WARN_LOG_FMT(OPENXR, "OpenXR: XR_FB_foveation enabled but {} could not be loaded ({}).",
+                     name, static_cast<int>(r));
+        *out_pfn = nullptr;
+        return false;
+      }
+      return true;
+    };
+
+    if (load_foveation_pfn("xrCreateFoveationProfileFB", &m_xrCreateFoveationProfileFB) &&
+        load_foveation_pfn("xrDestroyFoveationProfileFB", &m_xrDestroyFoveationProfileFB) &&
+        load_foveation_pfn("xrUpdateSwapchainFB", &m_xrUpdateSwapchainFB))
+    {
+      INFO_LOG_FMT(OPENXR, "OpenXR: XR_FB_foveation enabled.");
+    }
+    else
+    {
+      m_xrCreateFoveationProfileFB = nullptr;
+      m_xrDestroyFoveationProfileFB = nullptr;
+      m_xrUpdateSwapchainFB = nullptr;
     }
   }
 
@@ -814,13 +931,34 @@ bool OpenXRManager::EnumerateViewConfigurations()
                                              XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
                                              view_count, &view_count, m_view_config_views.data()));
 
+  // Bake the user's resolution scale into the recommended sizes so every consumer
+  // (swapchain creation, per-eye blit rects, GetEyeWidth/Height) stays consistent.
+  // Read through Config::Get: this can run before g_ActiveConfig is populated.
+  const float resolution_scale = std::clamp(Config::Get(Config::GFX_VR_RESOLUTION_SCALE),
+                                            Config::GFX_VR_RESOLUTION_SCALE_MIN,
+                                            Config::GFX_VR_RESOLUTION_SCALE_MAX);
+
   for (uint32_t i = 0; i < view_count; ++i)
   {
-    INFO_LOG_FMT(OPENXR, "OpenXR: Eye {} recommended {}x{} (max {}x{})", i,
-                 m_view_config_views[i].recommendedImageRectWidth,
-                 m_view_config_views[i].recommendedImageRectHeight,
-                 m_view_config_views[i].maxImageRectWidth,
-                 m_view_config_views[i].maxImageRectHeight);
+    auto& view = m_view_config_views[i];
+    const uint32_t recommended_w = view.recommendedImageRectWidth;
+    const uint32_t recommended_h = view.recommendedImageRectHeight;
+
+    if (std::abs(resolution_scale - 1.0f) > 0.001f)
+    {
+      // Round to a multiple of 4 and clamp to the runtime's limits.
+      const auto scale_dim = [resolution_scale](uint32_t dim, uint32_t max_dim) {
+        const auto scaled = static_cast<uint32_t>(std::lround(dim * resolution_scale / 4.0)) * 4;
+        return std::clamp<uint32_t>(scaled, 64, max_dim);
+      };
+      view.recommendedImageRectWidth = scale_dim(recommended_w, view.maxImageRectWidth);
+      view.recommendedImageRectHeight = scale_dim(recommended_h, view.maxImageRectHeight);
+    }
+
+    INFO_LOG_FMT(OPENXR, "OpenXR: Eye {} recommended {}x{} (max {}x{}), using {}x{} (scale {})", i,
+                 recommended_w, recommended_h, view.maxImageRectWidth, view.maxImageRectHeight,
+                 view.recommendedImageRectWidth, view.recommendedImageRectHeight,
+                 resolution_scale);
   }
 
   uint32_t blend_count = 0;

@@ -51,6 +51,11 @@ struct XRVkEyeSwapchain
   // One entry per swapchain image.
   std::vector<std::unique_ptr<VKTexture>> textures;
   std::vector<std::unique_ptr<VKFramebuffer>> framebuffers;
+
+  // VR foveation (XR_FB_foveation_vulkan): views of the runtime-owned fragment density
+  // map images, one per swapchain image; empty when the swapchain is not foveated. The
+  // VkImages belong to the runtime, only the views are ours to destroy.
+  std::vector<VkImageView> fdm_views;
 };
 
 struct XRVkLayeredSwapchain
@@ -69,6 +74,9 @@ struct XRVkLayeredSwapchain
 
   std::vector<std::unique_ptr<VKTexture>> textures;
   std::vector<std::unique_ptr<VKFramebuffer>> framebuffers;
+
+  // See XRVkEyeSwapchain::fdm_views.
+  std::vector<VkImageView> fdm_views;
 };
 
 // Vulkan-specific OpenXR backend. Implements VR::IOpenXRSwapchain so that
@@ -114,6 +122,7 @@ public:
   void ReleaseEyeTexture(uint32_t eye_index) override;
 
   bool SupportsLayeredRendering() const override { return m_use_layered_swapchain; }
+  bool HasFoveatedFramebuffers() const override { return m_foveated; }
   AbstractFramebuffer* AcquireLayeredFramebuffer() override;
   void ReleaseLayeredTexture() override;
   std::unique_lock<std::mutex> AcquireGraphicsQueueLock() override;
@@ -165,6 +174,16 @@ private:
   bool CreateLayeredSwapchain(int64_t swapchain_format);
   bool CreateEyeSwapchains(int64_t swapchain_format);
 
+  // True when swapchains should be created with a fragment density map (VR foveation).
+  static bool ShouldUseFoveation();
+
+  // Wraps the runtime's fragment density map images in image views and transitions them
+  // to VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT. Returns false (and cleans up)
+  // if any image is missing or a view can't be created.
+  static bool PrepareFoveationImages(
+      const std::vector<XrSwapchainImageFoveationVulkanFB>& fdm_images,
+      std::vector<VkImageView>* out_views);
+
   void DestroySwapchains();
   void FinalizePendingXRFrame(PendingXRFrame frame);
 
@@ -178,6 +197,9 @@ private:
   bool m_layered_image_acquired = false;
   bool m_use_layered_swapchain = false;
   bool m_frame_uses_layered_swapchain = false;
+  // True when any swapchain framebuffer carries a fragment density map; PostProcessing
+  // compiles matching foveated pipelines when set.
+  bool m_foveated = false;
 
   // Reused per-frame composition data (avoids per-frame heap allocation).
   std::array<XrCompositionLayerProjectionView, 2> m_projection_views{};

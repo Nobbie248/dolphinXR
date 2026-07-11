@@ -62,6 +62,16 @@ static void AppendOptionalOpenXRExtensions(std::vector<const char*>* extensions)
     extensions->push_back(XR_FB_DISPLAY_REFRESH_RATE_EXTENSION_NAME);
     INFO_LOG_FMT(VIDEO, "OpenXR: Enabling XR_FB_display_refresh_rate.");
   }
+
+  // Fixed foveated rendering: on Vulkan the runtime hands us fragment density map images
+  // (XR_FB_foveation_vulkan) that our swapchain render passes read.
+  const auto foveation_exts = VR::OpenXRManager::GetAvailableFoveationExtensions(true);
+  if (!foveation_exts.empty())
+  {
+    extensions->insert(extensions->end(), foveation_exts.begin(), foveation_exts.end());
+    INFO_LOG_FMT(VIDEO, "OpenXR: Enabling XR_FB_foveation (+configuration, vulkan, "
+                        "swapchain_update_state).");
+  }
 }
 }  // namespace
 
@@ -730,6 +740,79 @@ bool VulkanOpenXR::CreateSessionVulkan()
   return true;
 }
 
+// static
+bool VulkanOpenXR::ShouldUseFoveation()
+{
+  // Foveate only the stereo projection path: the flat panel reuses eye swapchain #0,
+  // and foveating a world-locked quad would just blur its edges for no gain.
+  return g_ActiveConfig.stereo_mode == StereoMode::OpenXR && VR::g_openxr &&
+         VR::g_openxr->IsFoveationUsable() && g_vulkan_context->SupportsFragmentDensityMap();
+}
+
+// static
+bool VulkanOpenXR::PrepareFoveationImages(
+    const std::vector<XrSwapchainImageFoveationVulkanFB>& fdm_images,
+    std::vector<VkImageView>* out_views)
+{
+  out_views->clear();
+  out_views->reserve(fdm_images.size());
+
+  const auto cleanup = [out_views]() {
+    for (VkImageView view : *out_views)
+      vkDestroyImageView(g_vulkan_context->GetDevice(), view, nullptr);
+    out_views->clear();
+  };
+
+  for (const auto& fdm : fdm_images)
+  {
+    if (fdm.image == VK_NULL_HANDLE)
+    {
+      WARN_LOG_FMT(VIDEO, "OpenXR: Runtime returned no fragment density map image.");
+      cleanup();
+      return false;
+    }
+
+    VkImageViewCreateInfo view_info = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+    view_info.image = fdm.image;
+    // 2D_ARRAY covers both per-eye (1 layer) and multiview (2 layer) density maps.
+    view_info.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+    view_info.format = VK_FORMAT_R8G8_UNORM;
+    view_info.components = {VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY,
+                            VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY};
+    view_info.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, VK_REMAINING_ARRAY_LAYERS};
+
+    VkImageView view = VK_NULL_HANDLE;
+    const VkResult res =
+        vkCreateImageView(g_vulkan_context->GetDevice(), &view_info, nullptr, &view);
+    if (res != VK_SUCCESS)
+    {
+      LOG_VULKAN_ERROR(res, "vkCreateImageView (fragment density map) failed: ");
+      cleanup();
+      return false;
+    }
+    out_views->push_back(view);
+
+    // One-time transition into the fixed layout the render passes expect. Contents at
+    // this point are only pre-profile defaults; the runtime rewrites the density values
+    // once the foveation profile is applied via xrUpdateSwapchainFB.
+    VkImageMemoryBarrier barrier = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+    barrier.srcAccessMask = 0;
+    barrier.dstAccessMask = VK_ACCESS_FRAGMENT_DENSITY_MAP_READ_BIT_EXT;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    barrier.newLayout = VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = fdm.image;
+    barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, VK_REMAINING_ARRAY_LAYERS};
+    vkCmdPipelineBarrier(g_command_buffer_mgr->GetCurrentInitCommandBuffer(),
+                         VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                         VK_PIPELINE_STAGE_FRAGMENT_DENSITY_PROCESS_BIT_EXT, 0, 0, nullptr, 0,
+                         nullptr, 1, &barrier);
+  }
+
+  return true;
+}
+
 bool VulkanOpenXR::CreateSwapchains()
 {
   ASSERT(VR::g_openxr != nullptr);
@@ -740,6 +823,7 @@ bool VulkanOpenXR::CreateSwapchains()
 
   m_use_layered_swapchain = false;
   m_frame_uses_layered_swapchain = false;
+  m_foveated = false;
 
 #if defined(ANDROID)
   const auto& view_cfgs = VR::g_openxr->GetViewConfigViews();
@@ -799,6 +883,9 @@ bool VulkanOpenXR::CreateLayeredSwapchain(int64_t swapchain_format)
   auto cleanup = [&sc]() {
     sc.framebuffers.clear();
     sc.textures.clear();
+    for (VkImageView view : sc.fdm_views)
+      vkDestroyImageView(g_vulkan_context->GetDevice(), view, nullptr);
+    sc.fdm_views.clear();
     if (sc.swapchain != XR_NULL_HANDLE)
     {
       xrDestroySwapchain(sc.swapchain);
@@ -835,7 +922,28 @@ bool VulkanOpenXR::CreateLayeredSwapchain(int64_t swapchain_format)
     }
   }
 
+  // Fixed foveated rendering: ask the runtime to allocate fragment density maps.
+  XrSwapchainCreateInfoFoveationFB foveation_info{XR_TYPE_SWAPCHAIN_CREATE_INFO_FOVEATION_FB};
+  bool foveated = ShouldUseFoveation();
+  if (foveated)
+  {
+    foveation_info.flags = XR_SWAPCHAIN_CREATE_FOVEATION_FRAGMENT_DENSITY_MAP_BIT_FB;
+    // XrSwapchainCreateInfoFoveationFB::next is (non-const) void*.
+    foveation_info.next = const_cast<void*>(info.next);
+    info.next = &foveation_info;
+  }
+
   XrResult result = xrCreateSwapchain(VR::g_openxr->GetSession(), &info, &sc.swapchain);
+  if (XR_FAILED(result) && foveated)
+  {
+    WARN_LOG_FMT(VIDEO,
+                 "OpenXR: Foveated layered swapchain creation failed ({}); retrying without "
+                 "foveation.",
+                 static_cast<int>(result));
+    info.next = foveation_info.next;
+    foveated = false;
+    result = xrCreateSwapchain(VR::g_openxr->GetSession(), &info, &sc.swapchain);
+  }
   if (XR_FAILED(result))
   {
     WARN_LOG_FMT(VIDEO, "OpenXR: xrCreateSwapchain failed for layered Vulkan swapchain ({}).",
@@ -857,6 +965,13 @@ bool VulkanOpenXR::CreateLayeredSwapchain(int64_t swapchain_format)
 
   std::vector<XrSwapchainImageVulkanKHR> images(image_count,
                                                  {XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR});
+  std::vector<XrSwapchainImageFoveationVulkanFB> fdm_images;
+  if (foveated)
+  {
+    fdm_images.resize(image_count, {XR_TYPE_SWAPCHAIN_IMAGE_FOVEATION_VULKAN_FB});
+    for (uint32_t i = 0; i < image_count; ++i)
+      images[i].next = &fdm_images[i];
+  }
   result = xrEnumerateSwapchainImages(
       sc.swapchain, image_count, &image_count,
       reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data()));
@@ -868,6 +983,12 @@ bool VulkanOpenXR::CreateLayeredSwapchain(int64_t swapchain_format)
                  static_cast<int>(result));
     cleanup();
     return false;
+  }
+
+  if (foveated && !PrepareFoveationImages(fdm_images, &sc.fdm_views))
+  {
+    WARN_LOG_FMT(VIDEO, "OpenXR: Layered swapchain continues without foveation.");
+    foveated = false;
   }
 
   sc.textures.resize(image_count);
@@ -890,7 +1011,8 @@ bool VulkanOpenXR::CreateLayeredSwapchain(int64_t swapchain_format)
       return false;
     }
 
-    sc.framebuffers[i] = VKFramebuffer::CreateMultiview(sc.textures[i].get(), nullptr, {});
+    sc.framebuffers[i] = VKFramebuffer::CreateMultiview(
+        sc.textures[i].get(), nullptr, {}, foveated ? sc.fdm_views[i] : VK_NULL_HANDLE);
     if (!sc.framebuffers[i])
     {
       WARN_LOG_FMT(VIDEO,
@@ -901,8 +1023,15 @@ bool VulkanOpenXR::CreateLayeredSwapchain(int64_t swapchain_format)
     }
   }
 
-  INFO_LOG_FMT(VIDEO, "OpenXR: Layered Vulkan swapchain ready: {}x{}, {} images, arraySize=2.",
-               sc.width, sc.height, image_count);
+  if (foveated)
+  {
+    VR::g_openxr->ApplyFoveationToSwapchain(sc.swapchain);
+    m_foveated = true;
+  }
+
+  INFO_LOG_FMT(VIDEO,
+               "OpenXR: Layered Vulkan swapchain ready: {}x{}, {} images, arraySize=2{}.",
+               sc.width, sc.height, image_count, foveated ? ", foveated" : "");
   return true;
 }
 
@@ -949,7 +1078,28 @@ bool VulkanOpenXR::CreateEyeSwapchains(int64_t swapchain_format)
       }
     }
 
+    // Fixed foveated rendering: ask the runtime to allocate fragment density maps.
+    XrSwapchainCreateInfoFoveationFB foveation_info{XR_TYPE_SWAPCHAIN_CREATE_INFO_FOVEATION_FB};
+    bool foveated = ShouldUseFoveation();
+    if (foveated)
+    {
+      foveation_info.flags = XR_SWAPCHAIN_CREATE_FOVEATION_FRAGMENT_DENSITY_MAP_BIT_FB;
+      // XrSwapchainCreateInfoFoveationFB::next is (non-const) void*.
+      foveation_info.next = const_cast<void*>(info.next);
+      info.next = &foveation_info;
+    }
+
     XrResult result = xrCreateSwapchain(VR::g_openxr->GetSession(), &info, &sc.swapchain);
+    if (XR_FAILED(result) && foveated)
+    {
+      WARN_LOG_FMT(VIDEO,
+                   "OpenXR: Foveated swapchain creation failed for eye {} ({}); retrying "
+                   "without foveation.",
+                   eye, static_cast<int>(result));
+      info.next = foveation_info.next;
+      foveated = false;
+      result = xrCreateSwapchain(VR::g_openxr->GetSession(), &info, &sc.swapchain);
+    }
     if (XR_FAILED(result))
     {
       ERROR_LOG_FMT(VIDEO, "OpenXR: xrCreateSwapchain failed for eye {} ({}).", eye,
@@ -963,8 +1113,21 @@ bool VulkanOpenXR::CreateEyeSwapchains(int64_t swapchain_format)
 
     std::vector<XrSwapchainImageVulkanKHR> images(image_count,
                                                    {XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR});
+    std::vector<XrSwapchainImageFoveationVulkanFB> fdm_images;
+    if (foveated)
+    {
+      fdm_images.resize(image_count, {XR_TYPE_SWAPCHAIN_IMAGE_FOVEATION_VULKAN_FB});
+      for (uint32_t i = 0; i < image_count; ++i)
+        images[i].next = &fdm_images[i];
+    }
     xrEnumerateSwapchainImages(sc.swapchain, image_count, &image_count,
                                reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data()));
+
+    if (foveated && !PrepareFoveationImages(fdm_images, &sc.fdm_views))
+    {
+      WARN_LOG_FMT(VIDEO, "OpenXR: Eye {} swapchain continues without foveation.", eye);
+      foveated = false;
+    }
 
     sc.textures.resize(image_count);
     sc.framebuffers.resize(image_count);
@@ -988,7 +1151,8 @@ bool VulkanOpenXR::CreateEyeSwapchains(int64_t swapchain_format)
         return false;
       }
 
-      sc.framebuffers[i] = VKFramebuffer::Create(sc.textures[i].get(), nullptr, {});
+      sc.framebuffers[i] = VKFramebuffer::Create(sc.textures[i].get(), nullptr, {},
+                                                 foveated ? sc.fdm_views[i] : VK_NULL_HANDLE);
       if (!sc.framebuffers[i])
       {
         ERROR_LOG_FMT(VIDEO, "OpenXR: VKFramebuffer::Create failed for eye {}, image {}.", eye, i);
@@ -996,8 +1160,14 @@ bool VulkanOpenXR::CreateEyeSwapchains(int64_t swapchain_format)
       }
     }
 
-    INFO_LOG_FMT(VIDEO, "OpenXR: Eye {} swapchain ready: {}x{}, {} images.", eye, sc.width,
-                 sc.height, image_count);
+    if (foveated)
+    {
+      VR::g_openxr->ApplyFoveationToSwapchain(sc.swapchain);
+      m_foveated = true;
+    }
+
+    INFO_LOG_FMT(VIDEO, "OpenXR: Eye {} swapchain ready: {}x{}, {} images{}.", eye, sc.width,
+                 sc.height, image_count, foveated ? ", foveated" : "");
   }
 
   return true;
@@ -1029,6 +1199,9 @@ void VulkanOpenXR::DestroySwapchains()
 
   m_layered_swapchain.framebuffers.clear();
   m_layered_swapchain.textures.clear();
+  for (VkImageView view : m_layered_swapchain.fdm_views)
+    vkDestroyImageView(g_vulkan_context->GetDevice(), view, nullptr);
+  m_layered_swapchain.fdm_views.clear();
 
   if (m_layered_swapchain.swapchain != XR_NULL_HANDLE)
   {
@@ -1070,6 +1243,9 @@ void VulkanOpenXR::DestroySwapchains()
     // runtime's VkImages are only freed after our views are gone.
     sc.framebuffers.clear();
     sc.textures.clear();
+    for (VkImageView view : sc.fdm_views)
+      vkDestroyImageView(g_vulkan_context->GetDevice(), view, nullptr);
+    sc.fdm_views.clear();
 
     if (sc.swapchain != XR_NULL_HANDLE)
     {

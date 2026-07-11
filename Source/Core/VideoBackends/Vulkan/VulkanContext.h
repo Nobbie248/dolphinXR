@@ -127,6 +127,8 @@ public:
   // True when the timelineSemaphore feature was enabled at device creation (done when the
   // OpenXR runtime lists VK_KHR_timeline_semaphore as a required device extension).
   bool SupportsTimelineSemaphores() const { return m_timeline_semaphore_enabled; }
+  // True when VK_EXT_fragment_density_map was enabled at device creation (VR foveation).
+  bool SupportsFragmentDensityMap() const { return m_fragment_density_map_enabled; }
 
   // Lightweight CPU-side perf counters for diagnosing VR frame cost. Accumulated by the
   // backend, dumped and reset periodically by CommandBufferManager on present.
@@ -197,6 +199,7 @@ private:
 
   bool m_multiview_enabled = false;
   bool m_timeline_semaphore_enabled = false;
+  bool m_fragment_density_map_enabled = false;
   PerfCounters m_perf_counters;
 };
 

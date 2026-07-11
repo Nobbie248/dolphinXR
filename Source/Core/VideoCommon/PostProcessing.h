@@ -139,6 +139,12 @@ protected:
     std::unique_ptr<AbstractPipeline> pipeline;
     std::unique_ptr<AbstractPipeline> default_multiview_pipeline;
     std::unique_ptr<AbstractPipeline> multiview_pipeline;
+    // Variants built against fragment-density-map render passes, for blitting into
+    // foveated OpenXR eye framebuffers (Vulkan VR foveation). Null when inactive.
+    std::unique_ptr<AbstractPipeline> fdm_default_pipeline;
+    std::unique_ptr<AbstractPipeline> fdm_pipeline;
+    std::unique_ptr<AbstractPipeline> fdm_default_multiview_pipeline;
+    std::unique_ptr<AbstractPipeline> fdm_multiview_pipeline;
   };
   void SetActivePipelines(const FormatPipelines& pipelines);
   void ClearPipelineCache();
@@ -174,6 +180,10 @@ protected:
   const AbstractPipeline* m_pipeline = nullptr;
   const AbstractPipeline* m_default_multiview_pipeline = nullptr;
   const AbstractPipeline* m_multiview_pipeline = nullptr;
+  const AbstractPipeline* m_fdm_default_pipeline = nullptr;
+  const AbstractPipeline* m_fdm_pipeline = nullptr;
+  const AbstractPipeline* m_fdm_default_multiview_pipeline = nullptr;
+  const AbstractPipeline* m_fdm_multiview_pipeline = nullptr;
 
   AbstractTextureFormat m_framebuffer_format = AbstractTextureFormat::Undefined;
 };

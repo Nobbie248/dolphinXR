@@ -306,6 +306,35 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   update_gamma_label();
   connect(m_vr_gamma, &ConfigFloatSlider::valueChanged, this, update_gamma_label);
 
+  // Eye buffer resolution scale (applied at session start)
+  m_resolution_scale = new ConfigFloatSlider(Config::GFX_VR_RESOLUTION_SCALE_MIN,
+                                             Config::GFX_VR_RESOLUTION_SCALE_MAX,
+                                             Config::GFX_VR_RESOLUTION_SCALE,
+                                             Config::GFX_VR_RESOLUTION_SCALE_STEP);
+  m_resolution_scale_value = new QLabel();
+  rendering_layout->addWidget(new ConfigFloatLabel(tr("Resolution Scale:"), m_resolution_scale),
+                              2, 0);
+  rendering_layout->addWidget(m_resolution_scale, 2, 1);
+  rendering_layout->addWidget(m_resolution_scale_value, 2, 2);
+
+  auto update_resolution_scale_label = [this] {
+    m_resolution_scale_value->setText(
+        QString::asprintf("%.2fx", m_resolution_scale->GetValue()));
+  };
+  update_resolution_scale_label();
+  connect(m_resolution_scale, &ConfigFloatSlider::valueChanged, this,
+          update_resolution_scale_label);
+
+  // Fixed foveated rendering (XR_FB_foveation; needs a runtime that exposes it, applied
+  // at session start)
+  m_foveation_level = new ConfigChoiceMap<int>(
+      {{tr("Off"), 0}, {tr("Low"), 1}, {tr("Medium"), 2}, {tr("High"), 3}},
+      Config::GFX_VR_FOVEATION_LEVEL);
+  m_dynamic_foveation = new ConfigBool(tr("Dynamic"), Config::GFX_VR_FOVEATION_DYNAMIC);
+  rendering_layout->addWidget(new QLabel(tr("Foveated Rendering:")), 3, 0);
+  rendering_layout->addWidget(m_foveation_level, 3, 1);
+  rendering_layout->addWidget(m_dynamic_foveation, 3, 2);
+
   // Auto Layer Spread
   m_auto_layer_spread =
       new ConfigBool(tr("Auto Layer Spread"), Config::GFX_VR_AUTO_LAYER_SPREAD);

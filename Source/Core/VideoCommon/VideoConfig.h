@@ -408,6 +408,9 @@ struct VideoConfig final
   int vr_clear_efb_min_width = 0;  // 0=disabled, >0=clear EFB copies wider than this
   bool vr_use_vulkan_multiview = true;  // Render OpenXR stereo via VK_KHR_multiview (Quest perf path)
   bool vr_android_direct_to_hmd = false;  // Android OpenXR shortcut that skips backbuffer present
+  float vr_resolution_scale = 1.0f;  // Eye swapchain size vs. HMD recommended resolution
+  int vr_foveation_level = 0;   // XR_FB_foveation level: 0=off, 1=low, 2=medium, 3=high
+  bool vr_foveation_dynamic = true;  // Let the runtime drop the foveation level when GPU load allows
   // D3D only config, mostly to be merged into the above
   int iAdapter = 0;
 

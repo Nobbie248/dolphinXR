@@ -862,6 +862,15 @@ It can efficiently compress both junk data and encrypted Wii data.
     <string name="quest_remove_cinematic_bars_description">Expands perspective rendering to remove cinematic letterbox bars while in VR.</string>
     <string name="quest_use_vulkan_multiview">Vulkan Multiview (Quest perf)</string>
     <string name="quest_use_vulkan_multiview_description">Renders both eyes in a single pass via VK_KHR_multiview. Disable to fall back to the geometry-shader stereo path if the multiview path produces broken visuals.</string>
+    <string name="quest_resolution_scale">VR Resolution Scale</string>
+    <string name="quest_resolution_scale_description">Scales the OpenXR eye buffers relative to the headset\'s recommended resolution. Lower values recover GPU headroom with a small sharpness cost; 0.85 is the recommended Quest default. Takes effect on next launch.</string>
+    <string name="quest_foveation_level">Foveated Rendering</string>
+    <string name="quest_foveation_level_description">Renders the edges of each eye at reduced resolution to save GPU time (XR_FB_foveation). Higher levels save more but blur the periphery. Takes effect on next launch.</string>
+    <string name="quest_dynamic_foveation">Dynamic Foveation</string>
+    <string name="quest_dynamic_foveation_description">Lets the runtime lower the foveation level automatically when the GPU has headroom, keeping the image sharp in light scenes.</string>
+    <string name="quest_foveation_low">Low</string>
+    <string name="quest_foveation_medium">Medium</string>
+    <string name="quest_foveation_high">High</string>
     <string name="quest_android_direct_to_hmd">Android direct-to-HMD</string>
     <string name="quest_android_direct_to_hmd_description">Skips the normal Android backbuffer present and submits the XFB directly to OpenXR. Faster in some scenes, but can freeze or black-screen games that stop producing XFB frames during transitions.</string>
     <string name="quest_clear_efb_copies">Clear EFB Copies</string>

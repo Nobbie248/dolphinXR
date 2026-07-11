@@ -277,7 +277,9 @@ std::unique_ptr<VKPipeline> VKPipeline::Create(const AbstractPipelineConfig& con
   // Get render pass for config. Pipelines targeting the EFB in VR multiview mode must be
   // built against a multiview-compatible render pass — pipelines and framebuffers must
   // agree on view masks for compatibility (Vulkan render-pass-compatibility rules).
+  // The same applies to fragment density map (VR foveation) render passes.
   const bool multiview_pass = config.framebuffer_state.multiview != 0;
+  const bool fdm_pass = config.framebuffer_state.fragment_density_map != 0;
   const AbstractTextureFormat additional_format =
       config.framebuffer_state.additional_color_texture_format;
   VkRenderPass render_pass = g_object_cache->GetRenderPass(
@@ -287,7 +289,8 @@ std::unique_ptr<VKPipeline> VKPipeline::Create(const AbstractPipelineConfig& con
       config.framebuffer_state.additional_color_attachment_count, multiview_pass,
       config.framebuffer_state.additional_color_attachment_count == 0 ?
           VK_FORMAT_UNDEFINED :
-          VKTexture::GetVkFormatForHostTextureFormat(additional_format));
+          VKTexture::GetVkFormatForHostTextureFormat(additional_format),
+      fdm_pass);
 
   if (render_pass == VK_NULL_HANDLE)
   {

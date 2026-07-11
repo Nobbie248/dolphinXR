@@ -1066,7 +1066,7 @@ VKFramebuffer::VKFramebuffer(VKTexture* color_attachment, VKTexture* depth_attac
                              std::vector<AbstractTexture*> additional_color_attachments, u32 width,
                              u32 height, u32 layers, u32 samples, VkFramebuffer fb,
                              VkRenderPass load_render_pass, VkRenderPass discard_render_pass,
-                             VkRenderPass clear_render_pass)
+                             VkRenderPass clear_render_pass, bool has_fragment_density_map)
     : AbstractFramebuffer(
           color_attachment, depth_attachment, std::move(additional_color_attachments),
           color_attachment ? color_attachment->GetFormat() : AbstractTextureFormat::Undefined,
@@ -1075,6 +1075,7 @@ VKFramebuffer::VKFramebuffer(VKTexture* color_attachment, VKTexture* depth_attac
       m_fb(fb), m_load_render_pass(load_render_pass), m_discard_render_pass(discard_render_pass),
       m_clear_render_pass(clear_render_pass)
 {
+  m_has_fragment_density_map = has_fragment_density_map;
 }
 
 VKFramebuffer::~VKFramebuffer()
@@ -1085,11 +1086,19 @@ VKFramebuffer::~VKFramebuffer()
 static std::unique_ptr<VKFramebuffer>
 CreateFramebufferInternal(VKTexture* color_attachment, VKTexture* depth_attachment,
                           std::vector<AbstractTexture*> additional_color_attachments,
-                          bool force_multiview)
+                          bool force_multiview,
+                          VkImageView fragment_density_map_view = VK_NULL_HANDLE)
 {
   if (!AbstractFramebuffer::ValidateConfig(color_attachment, depth_attachment,
                                            additional_color_attachments))
     return nullptr;
+
+  const bool use_fdm = fragment_density_map_view != VK_NULL_HANDLE;
+  if (use_fdm && !g_vulkan_context->SupportsFragmentDensityMap())
+  {
+    ERROR_LOG_FMT(VIDEO, "Fragment density map framebuffer requested without device support.");
+    return nullptr;
+  }
 
   const VkFormat vk_color_format =
       color_attachment ? color_attachment->GetVkFormat() : VK_FORMAT_UNDEFINED;
@@ -1144,18 +1153,23 @@ CreateFramebufferInternal(VKTexture* color_attachment, VKTexture* depth_attachme
           VK_FORMAT_UNDEFINED :
           static_cast<VKTexture*>(additional_color_attachments.front())->GetVkFormat();
 
+  // The fragment density map is always the last attachment; the render passes from
+  // GetRenderPass() reference it at the same index (after color/depth/additional).
+  if (use_fdm)
+    attachment_views.push_back(fragment_density_map_view);
+
   VkRenderPass load_render_pass = g_object_cache->GetRenderPass(
       vk_color_format, vk_depth_format, samples, VK_ATTACHMENT_LOAD_OP_LOAD,
       static_cast<u8>(additional_color_attachments.size()), use_multiview,
-      additional_color_format);
+      additional_color_format, use_fdm);
   VkRenderPass discard_render_pass = g_object_cache->GetRenderPass(
       vk_color_format, vk_depth_format, samples, VK_ATTACHMENT_LOAD_OP_DONT_CARE,
       static_cast<u8>(additional_color_attachments.size()), use_multiview,
-      additional_color_format);
+      additional_color_format, use_fdm);
   VkRenderPass clear_render_pass = g_object_cache->GetRenderPass(
       vk_color_format, vk_depth_format, samples, VK_ATTACHMENT_LOAD_OP_CLEAR,
       static_cast<u8>(additional_color_attachments.size()), use_multiview,
-      additional_color_format);
+      additional_color_format, use_fdm);
   if (load_render_pass == VK_NULL_HANDLE || discard_render_pass == VK_NULL_HANDLE ||
       clear_render_pass == VK_NULL_HANDLE)
   {
@@ -1183,23 +1197,27 @@ CreateFramebufferInternal(VKTexture* color_attachment, VKTexture* depth_attachme
 
   return std::make_unique<VKFramebuffer>(
       color_attachment, depth_attachment, std::move(additional_color_attachments), width, height,
-      layers, samples, fb, load_render_pass, discard_render_pass, clear_render_pass);
+      layers, samples, fb, load_render_pass, discard_render_pass, clear_render_pass, use_fdm);
 }
 
 std::unique_ptr<VKFramebuffer>
 VKFramebuffer::Create(VKTexture* color_attachment, VKTexture* depth_attachment,
-                      std::vector<AbstractTexture*> additional_color_attachments)
+                      std::vector<AbstractTexture*> additional_color_attachments,
+                      VkImageView fragment_density_map_view)
 {
   return CreateFramebufferInternal(color_attachment, depth_attachment,
-                                   std::move(additional_color_attachments), false);
+                                   std::move(additional_color_attachments), false,
+                                   fragment_density_map_view);
 }
 
 std::unique_ptr<VKFramebuffer>
 VKFramebuffer::CreateMultiview(VKTexture* color_attachment, VKTexture* depth_attachment,
-                               std::vector<AbstractTexture*> additional_color_attachments)
+                               std::vector<AbstractTexture*> additional_color_attachments,
+                               VkImageView fragment_density_map_view)
 {
   return CreateFramebufferInternal(color_attachment, depth_attachment,
-                                   std::move(additional_color_attachments), true);
+                                   std::move(additional_color_attachments), true,
+                                   fragment_density_map_view);
 }
 
 void VKFramebuffer::Unbind()

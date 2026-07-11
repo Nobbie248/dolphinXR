@@ -79,6 +79,10 @@ private:
   ConfigChoiceMap<VRPassthroughCoverageMode>* m_passthrough_coverage_mode = nullptr;
   ConfigFloatSlider* m_vr_gamma = nullptr;
   QLabel* m_vr_gamma_value = nullptr;
+  ConfigFloatSlider* m_resolution_scale = nullptr;
+  QLabel* m_resolution_scale_value = nullptr;
+  ConfigChoiceMap<int>* m_foveation_level = nullptr;
+  ConfigBool* m_dynamic_foveation = nullptr;
   ConfigBool* m_auto_layer_spread = nullptr;
   ConfigFloatSlider* m_layer_offset = nullptr;
   QLabel* m_layer_offset_value = nullptr;

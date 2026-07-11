@@ -128,6 +128,12 @@ bool OGLOpenXR::Initialize(GLContext* context)
     extensions.push_back(XR_FB_DISPLAY_REFRESH_RATE_EXTENSION_NAME);
     INFO_LOG_FMT(VIDEO, "OpenXR: Enabling XR_FB_display_refresh_rate.");
   }
+#if defined(ANDROID)
+  // Fixed foveated rendering: on GLES the runtime applies the QCOM scaled-bin foveation
+  // to the swapchain textures itself, so requesting the extensions is all we need here.
+  const auto foveation_exts = VR::OpenXRManager::GetAvailableFoveationExtensions(false);
+  extensions.insert(extensions.end(), foveation_exts.begin(), foveation_exts.end());
+#endif
   const auto controller_exts = VR::OpenXRManager::GetAvailableControllerExtensions();
   extensions.insert(extensions.end(), controller_exts.begin(), controller_exts.end());
   if (!mgr->CreateInstance(extensions))
@@ -365,6 +371,11 @@ bool OGLOpenXR::CreateSwapchains()
     glDisable(GL_FRAMEBUFFER_SRGB);
   }
 
+  // Fixed foveated rendering: only for the stereo projection path — the flat panel quad
+  // reuses eye swapchain #0 and a foveated panel would blur its edges for no gain.
+  const bool use_foveation = g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
+                             VR::g_openxr->IsFoveationUsable();
+
   for (uint32_t eye = 0; eye < 2; ++eye)
   {
     auto& sc = m_eye_swapchains[eye];
@@ -385,13 +396,38 @@ bool OGLOpenXR::CreateSwapchains()
     // GL only applies the sRGB encode when GL_FRAMEBUFFER_SRGB is enabled (see above).
     info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
 
+    // GLES foveation uses the Adreno scaled-bin method: the driver renders peripheral
+    // bins at reduced resolution and upscales them when the render pass resolves.
+    XrSwapchainCreateInfoFoveationFB foveation_info{XR_TYPE_SWAPCHAIN_CREATE_INFO_FOVEATION_FB};
+    bool foveated = use_foveation;
+    if (foveated)
+    {
+      foveation_info.flags = XR_SWAPCHAIN_CREATE_FOVEATION_SCALED_BIN_BIT_FB;
+      // XrSwapchainCreateInfoFoveationFB::next is (non-const) void*.
+      foveation_info.next = const_cast<void*>(info.next);
+      info.next = &foveation_info;
+    }
+
     XrResult result = xrCreateSwapchain(VR::g_openxr->GetSession(), &info, &sc.swapchain);
+    if (XR_FAILED(result) && foveated)
+    {
+      WARN_LOG_FMT(VIDEO,
+                   "OpenXR: Foveated swapchain creation failed for eye {} ({}); retrying "
+                   "without foveation.",
+                   eye, static_cast<int>(result));
+      info.next = foveation_info.next;
+      foveated = false;
+      result = xrCreateSwapchain(VR::g_openxr->GetSession(), &info, &sc.swapchain);
+    }
     if (XR_FAILED(result))
     {
       ERROR_LOG_FMT(VIDEO, "OpenXR: xrCreateSwapchain failed for eye {} ({}).", eye,
                     static_cast<int>(result));
       return false;
     }
+
+    if (foveated)
+      VR::g_openxr->ApplyFoveationToSwapchain(sc.swapchain);
 
     // Enumerate the GL textures backing this swapchain.
     uint32_t image_count = 0;

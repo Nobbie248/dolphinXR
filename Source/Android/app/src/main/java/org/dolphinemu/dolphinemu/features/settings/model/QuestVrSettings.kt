@@ -90,6 +90,13 @@ object QuestVrSettings {
 
     fun cpuLevel5HintSetting() = vrBooleanSetting("QuestCpuLevel5Hint", false)
 
+    // Defaults must match GraphicsSettings.cpp (Android values).
+    fun resolutionScaleSetting() = vrFloatSetting("ResolutionScale", 0.85f)
+
+    fun foveationLevelSetting() = vrIntSetting("FoveationLevel", 2)
+
+    fun dynamicFoveationSetting() = vrBooleanSetting("DynamicFoveation", true)
+
     fun virtualScreenSetting() = vrBooleanSetting("VirtualScreen", false)
 
     fun screenDistanceSetting() = vrFloatSetting("ScreenDistance", 1.5f)

@@ -732,6 +732,12 @@ bool VulkanContext::SelectDeviceExtensions(bool enable_surface)
   AddExtension(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME, false);
   AddExtension(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME, false);
 
+#ifdef ENABLE_VR
+  // VR foveation: XR_FB_foveation_vulkan hands us runtime-owned fragment density maps
+  // that our render passes read via VK_EXT_fragment_density_map (Quest-class devices).
+  AddExtension(VK_EXT_FRAGMENT_DENSITY_MAP_EXTENSION_NAME, false);
+#endif
+
   if (!DriverDetails::HasBug(DriverDetails::BUG_BROKEN_DEPTH_CLAMP_CONTROL))
   {
     // Unrestricted depth range is one of the few extensions that changes the behavior
@@ -897,7 +903,24 @@ bool VulkanContext::CreateDevice(VkSurfaceKHR surface, bool enable_validation_la
   const bool use_timeline_semaphore =
       m_device_info.timelineSemaphore &&
       Common::Contains(m_device_extensions, VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME);
-  if (use_multiview || use_timeline_semaphore)
+  // VR foveation: enable the base fragmentDensityMap feature when the extension made it
+  // into the device extension list and the device really supports the feature.
+  VkPhysicalDeviceFragmentDensityMapFeaturesEXT fdm_features = {};
+  bool use_fragment_density_map = false;
+  if (m_device_info.apiVersion >= VK_API_VERSION_1_1 &&
+      Common::Contains(m_device_extensions, VK_EXT_FRAGMENT_DENSITY_MAP_EXTENSION_NAME))
+  {
+    VkPhysicalDeviceFeatures2 fdm_query = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+    fdm_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_FEATURES_EXT;
+    fdm_query.pNext = &fdm_features;
+    vkGetPhysicalDeviceFeatures2(m_physical_device, &fdm_query);
+    use_fragment_density_map = fdm_features.fragmentDensityMap == VK_TRUE;
+    // Only the base feature; we neither modify density maps mid-frame nor render to
+    // non-subsampled images (the runtime creates foveated swapchain images subsampled).
+    fdm_features.fragmentDensityMapDynamic = VK_FALSE;
+    fdm_features.fragmentDensityMapNonSubsampledImages = VK_FALSE;
+  }
+  if (use_multiview || use_timeline_semaphore || use_fragment_density_map)
   {
     features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
     features2.features = device_features;
@@ -916,6 +939,12 @@ bool VulkanContext::CreateDevice(VkSurfaceKHR surface, bool enable_validation_la
       InsertIntoChain(&features2, &timeline_semaphore_features);
       m_timeline_semaphore_enabled = true;
       INFO_LOG_FMT(VIDEO, "Vulkan: Enabling timelineSemaphore feature for the OpenXR runtime.");
+    }
+    if (use_fragment_density_map)
+    {
+      InsertIntoChain(&features2, &fdm_features);
+      m_fragment_density_map_enabled = true;
+      INFO_LOG_FMT(VIDEO, "Vulkan: Enabling fragmentDensityMap feature for VR foveation.");
     }
     device_info.pNext = &features2;
     device_info.pEnabledFeatures = nullptr;

@@ -418,12 +418,19 @@ VkSampler ObjectCache::GetSampler(const SamplerState& info)
 VkRenderPass ObjectCache::GetRenderPass(VkFormat color_format, VkFormat depth_format,
                                         u32 multisamples, VkAttachmentLoadOp load_op,
                                         u8 additional_attachment_count, bool multiview,
-                                        VkFormat additional_color_format)
+                                        VkFormat additional_color_format,
+                                        bool fragment_density_map)
 {
   if (additional_color_format == VK_FORMAT_UNDEFINED)
     additional_color_format = color_format;
+  if (fragment_density_map && !g_vulkan_context->SupportsFragmentDensityMap())
+  {
+    ERROR_LOG_FMT(VIDEO, "Fragment density map render pass requested without device support.");
+    fragment_density_map = false;
+  }
   auto key = std::tie(color_format, depth_format, multisamples, load_op,
-                      additional_attachment_count, multiview, additional_color_format);
+                      additional_attachment_count, multiview, additional_color_format,
+                      fragment_density_map);
   auto it = m_render_pass_cache.find(key);
   if (it != m_render_pass_cache.end())
     return it->second;
@@ -471,6 +478,23 @@ VkRenderPass ObjectCache::GetRenderPass(VkFormat color_format, VkFormat depth_fo
                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
   }
 
+  // VR foveation: reference a fragment density map. The attachment is not part of the
+  // subpass; it's a render-pass-global input the GPU samples to pick per-region fragment
+  // shading density. Per spec its loadOp must be LOAD/DONT_CARE and storeOp DONT_CARE.
+  VkRenderPassFragmentDensityMapCreateInfoEXT fdm_info = {
+      VK_STRUCTURE_TYPE_RENDER_PASS_FRAGMENT_DENSITY_MAP_CREATE_INFO_EXT};
+  if (fragment_density_map)
+  {
+    fdm_info.fragmentDensityMapAttachment = {
+        static_cast<uint32_t>(attachments.size()),
+        VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT};
+    attachments.push_back({0, VK_FORMAT_R8G8_UNORM, VK_SAMPLE_COUNT_1_BIT,
+                           VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                           VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                           VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT,
+                           VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT});
+  }
+
   VkSubpassDescription subpass = {
       0,
       VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -491,6 +515,8 @@ VkRenderPass ObjectCache::GetRenderPass(VkFormat color_format, VkFormat depth_fo
                                       &subpass,
                                       0,
                                       nullptr};
+  if (fragment_density_map)
+    pass_info.pNext = &fdm_info;
 
   // VR stereo: render both eyes in a single pass via VK_KHR_multiview. The view mask
   // 0b11 replicates the subpass into layers 0 and 1; gl_ViewIndex selects per-eye state
@@ -505,6 +531,8 @@ VkRenderPass ObjectCache::GetRenderPass(VkFormat color_format, VkFormat depth_fo
     multiview_info.pViewMasks = &view_mask;
     multiview_info.correlationMaskCount = 0;
     multiview_info.pCorrelationMasks = nullptr;
+    // Preserve the fragment density map chain entry when both are active.
+    multiview_info.pNext = pass_info.pNext;
     pass_info.pNext = &multiview_info;
   }
 

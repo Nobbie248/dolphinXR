@@ -2691,6 +2691,31 @@ class SettingsFragmentPresenter(
             R.string.quest_use_vulkan_multiview,
             R.string.quest_use_vulkan_multiview_description
         )
+        addFloat(
+            "ResolutionScale",
+            0.85f,
+            R.string.quest_resolution_scale,
+            R.string.quest_resolution_scale_description,
+            0.5f,
+            1.5f,
+            0.05f
+        )
+        sl.add(
+            SingleChoiceSetting(
+                context,
+                QuestGameVrConfigIntSetting(currentGameId, revision, "FoveationLevel", 2),
+                R.string.quest_foveation_level,
+                R.string.quest_foveation_level_description,
+                R.array.questFoveationLevelEntries,
+                R.array.questFoveationLevelValues
+            )
+        )
+        addBoolean(
+            "DynamicFoveation",
+            true,
+            R.string.quest_dynamic_foveation,
+            R.string.quest_dynamic_foveation_description
+        )
         addBoolean(
             "AndroidDirectToHMD",
             false,
@@ -2774,6 +2799,37 @@ class SettingsFragmentPresenter(
                 QuestVrSettings.cpuLevel5HintSetting(),
                 R.string.quest_cpu_level_5_hint,
                 R.string.quest_cpu_level_5_hint_description
+            )
+        )
+        sl.add(
+            FloatSliderSetting(
+                context,
+                QuestVrSettings.resolutionScaleSetting(),
+                R.string.quest_resolution_scale,
+                R.string.quest_resolution_scale_description,
+                0.5f,
+                1.5f,
+                "",
+                0.05f,
+                true
+            )
+        )
+        sl.add(
+            SingleChoiceSetting(
+                context,
+                QuestVrSettings.foveationLevelSetting(),
+                R.string.quest_foveation_level,
+                R.string.quest_foveation_level_description,
+                R.array.questFoveationLevelEntries,
+                R.array.questFoveationLevelValues
+            )
+        )
+        sl.add(
+            SwitchSetting(
+                context,
+                QuestVrSettings.dynamicFoveationSetting(),
+                R.string.quest_dynamic_foveation,
+                R.string.quest_dynamic_foveation_description
             )
         )
         sl.add(

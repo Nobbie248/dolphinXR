@@ -61,6 +61,10 @@ public:
   virtual AbstractFramebuffer* AcquireLayeredFramebuffer() { return nullptr; }
   virtual void ReleaseLayeredTexture() {}
 
+  // True when the eye framebuffers carry a fragment density map (Vulkan VR foveation).
+  // PostProcessing then compiles pipeline variants against foveated render passes.
+  virtual bool HasFoveatedFramebuffers() const { return false; }
+
   // ---- Flat mono panel path (StereoMode::Off + vr_flat_screen) ----
   // The game is rendered mono and shown on a world-locked quad in the VR scene. The default
   // implementations reuse per-eye swapchain #0, so a backend only needs to expose that image's
@@ -251,6 +255,24 @@ public:
   // swapchain image synchronization). Used to scope the release-path GPU-drain fallback.
   bool IsQuestOrVirtualDesktopRuntime() const;
 
+  // ---- XR_FB_foveation (fixed foveated rendering) ----
+
+  // Foveation extensions the runtime advertises, for the backend's CreateInstance list:
+  // XR_FB_foveation, XR_FB_foveation_configuration, XR_FB_swapchain_update_state, and
+  // (when for_vulkan) XR_FB_foveation_vulkan. Empty when the base extensions are missing.
+  // Call before CreateInstance().
+  static std::vector<const char*> GetAvailableFoveationExtensions(bool for_vulkan);
+
+  // True when the foveation extensions are enabled on this instance and the user's
+  // FoveationLevel setting is not Off. Backends check this before creating swapchains
+  // with a foveation profile request.
+  bool IsFoveationUsable() const;
+
+  // Create a foveation profile from the FoveationLevel/DynamicFoveation settings and
+  // apply it to the swapchain via xrUpdateSwapchainFB. Call after xrCreateSwapchain
+  // (the swapchain must have been created with XrSwapchainCreateInfoFoveationFB).
+  bool ApplyFoveationToSwapchain(XrSwapchain swapchain);
+
   // True when the runtime supports XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND.
   bool SupportsAlphaBlend() const;
 
@@ -311,6 +333,11 @@ private:
   PFN_xrRequestDisplayRefreshRateFB m_xrRequestDisplayRefreshRateFB = nullptr;
   float m_requested_display_refresh_rate_hz = 0.0f;
   bool m_output_refresh_rate_unavailable_logged = false;
+
+  // XR_FB_foveation entry points (null when the extension is unavailable).
+  PFN_xrCreateFoveationProfileFB m_xrCreateFoveationProfileFB = nullptr;
+  PFN_xrDestroyFoveationProfileFB m_xrDestroyFoveationProfileFB = nullptr;
+  PFN_xrUpdateSwapchainFB m_xrUpdateSwapchainFB = nullptr;
 
   // XR_FB_passthrough entry points (null when the extension is unavailable).
   PFN_xrCreatePassthroughFB m_xrCreatePassthroughFB = nullptr;

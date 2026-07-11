@@ -31,6 +31,10 @@
 #include "VideoCommon/VideoCommon.h"
 #include "VideoCommon/VideoConfig.h"
 
+#ifdef ENABLE_VR
+#include "VideoCommon/VR/OpenXRManager.h"
+#endif
+
 namespace VideoCommon
 {
 static const char s_empty_pixel_shader[] = "void main() { SetOutput(Sample()); }\n";
@@ -428,12 +432,28 @@ bool PostProcessing::Initialize(AbstractTextureFormat format)
   return true;
 }
 
+// True when blits into the OpenXR eye framebuffers need pipelines built against
+// fragment-density-map render passes (Vulkan VR foveation).
+static bool UseFoveatedPipelines()
+{
+#ifdef ENABLE_VR
+  return g_backend_info.api_type == APIType::Vulkan && VR::g_openxr &&
+         VR::g_openxr->GetSwapchain() && VR::g_openxr->GetSwapchain()->HasFoveatedFramebuffers();
+#else
+  return false;
+#endif
+}
+
 void PostProcessing::SetActivePipelines(const FormatPipelines& pipelines)
 {
   m_default_pipeline = pipelines.default_pipeline.get();
   m_pipeline = pipelines.pipeline.get();
   m_default_multiview_pipeline = pipelines.default_multiview_pipeline.get();
   m_multiview_pipeline = pipelines.multiview_pipeline.get();
+  m_fdm_default_pipeline = pipelines.fdm_default_pipeline.get();
+  m_fdm_pipeline = pipelines.fdm_pipeline.get();
+  m_fdm_default_multiview_pipeline = pipelines.fdm_default_multiview_pipeline.get();
+  m_fdm_multiview_pipeline = pipelines.fdm_multiview_pipeline.get();
 }
 
 void PostProcessing::ClearPipelineCache()
@@ -442,6 +462,10 @@ void PostProcessing::ClearPipelineCache()
   m_pipeline = nullptr;
   m_default_multiview_pipeline = nullptr;
   m_multiview_pipeline = nullptr;
+  m_fdm_default_pipeline = nullptr;
+  m_fdm_pipeline = nullptr;
+  m_fdm_default_multiview_pipeline = nullptr;
+  m_fdm_multiview_pipeline = nullptr;
   m_pipelines_per_format.clear();
 }
 
@@ -528,7 +552,11 @@ void PostProcessing::BlitFromTexture(const MathUtil::Rectangle<int>& dst,
       g_ActiveConfig.output_resampling_mode > OutputResamplingMode::Default;
   const bool needs_intermediary_buffer = NeedsIntermediaryBuffer();
   const bool needs_default_pipeline = needs_color_correction || needs_resampling;
-  const AbstractPipeline* final_pipeline = m_pipeline;
+  // Foveated OpenXR eye framebuffers need the FDM pipeline variants; the mirror window
+  // and intermediary buffer keep the regular ones.
+  const bool target_fdm = g_gfx->GetCurrentFramebuffer()->HasFragmentDensityMap();
+  const AbstractPipeline* final_pipeline =
+      (target_fdm && m_fdm_pipeline) ? m_fdm_pipeline : m_pipeline;
   std::vector<u8>* uniform_staging_buffer = &m_default_uniform_staging_buffer;
   bool default_uniform_staging_buffer = true;
   const MathUtil::Rectangle<int> present_rect = g_presenter->GetTargetRectangle();
@@ -603,7 +631,8 @@ void PostProcessing::BlitFromTexture(const MathUtil::Rectangle<int>& dst,
     // doing two passes, with the second one doing nothing useful.
     if (m_default_pipeline && needs_default_pipeline)
     {
-      final_pipeline = m_default_pipeline;
+      final_pipeline =
+          (target_fdm && m_fdm_default_pipeline) ? m_fdm_default_pipeline : m_default_pipeline;
     }
     else
     {
@@ -670,8 +699,20 @@ bool PostProcessing::BlitFromTextureLayeredMultiview(const MathUtil::Rectangle<i
   const bool needs_resampling =
       g_ActiveConfig.output_resampling_mode > OutputResamplingMode::Default;
   const bool needs_default_pipeline = needs_color_correction || needs_resampling;
-  const AbstractPipeline* pipeline = needs_default_pipeline ? m_default_multiview_pipeline :
-                                                              m_multiview_pipeline;
+  // Foveated OpenXR eye framebuffers need the FDM pipeline variants.
+  const bool target_fdm = current_framebuffer->HasFragmentDensityMap();
+  const AbstractPipeline* pipeline;
+  if (needs_default_pipeline)
+  {
+    pipeline = (target_fdm && m_fdm_default_multiview_pipeline) ?
+                   m_fdm_default_multiview_pipeline :
+                   m_default_multiview_pipeline;
+  }
+  else
+  {
+    pipeline =
+        (target_fdm && m_fdm_multiview_pipeline) ? m_fdm_multiview_pipeline : m_multiview_pipeline;
+  }
   std::vector<u8>* uniform_staging_buffer =
       needs_default_pipeline ? &m_default_uniform_staging_buffer : &m_uniform_staging_buffer;
   const bool user_post_process = !needs_default_pipeline;
@@ -1235,6 +1276,53 @@ bool PostProcessing::CompilePipeline()
     format_pipelines.multiview_pipeline = g_gfx->CreatePipeline(multiview_config);
     if (!format_pipelines.multiview_pipeline)
       WARN_LOG_FMT(VIDEO, "Failed to create multiview post-processing pipeline");
+  }
+
+  // VR foveation (Vulkan): the OpenXR eye framebuffers carry a fragment density map, so
+  // every pipeline that can draw into them needs a variant built against a
+  // render pass with the FDM attachment (Vulkan render-pass-compatibility rules).
+  if (UseFoveatedPipelines())
+  {
+    AbstractPipelineConfig fdm_config = {};
+    fdm_config.vertex_shader = m_default_vertex_shader.get();
+    fdm_config.geometry_shader = UseGeometryShaderForPostProcess(false) ?
+                                     g_shader_cache->GetTexcoordGeometryShader() :
+                                     nullptr;
+    fdm_config.pixel_shader = m_default_pixel_shader.get();
+    fdm_config.rasterization_state =
+        RenderState::GetNoCullRasterizationState(PrimitiveType::Triangles);
+    fdm_config.depth_state = RenderState::GetNoDepthTestingDepthState();
+    fdm_config.blending_state = RenderState::GetNoBlendingBlendState();
+    fdm_config.framebuffer_state = RenderState::GetColorFramebufferState(m_framebuffer_format);
+    fdm_config.framebuffer_state.fragment_density_map = 1;
+    fdm_config.usage = AbstractPipelineUsage::Utility;
+
+    if (fdm_config.pixel_shader)
+      format_pipelines.fdm_default_pipeline = g_gfx->CreatePipeline(fdm_config);
+
+    fdm_config.vertex_shader = m_vertex_shader.get();
+    fdm_config.pixel_shader = m_pixel_shader.get();
+    format_pipelines.fdm_pipeline = g_gfx->CreatePipeline(fdm_config);
+    if (!format_pipelines.fdm_pipeline)
+      WARN_LOG_FMT(VIDEO, "Failed to create foveated post-processing pipeline");
+
+    if (g_backend_info.bSupportsMultiview && !needs_intermediary_buffer &&
+        m_default_multiview_vertex_shader && m_multiview_vertex_shader)
+    {
+      fdm_config.geometry_shader = nullptr;
+      fdm_config.framebuffer_state.multiview = 1;
+
+      fdm_config.vertex_shader = m_default_multiview_vertex_shader.get();
+      fdm_config.pixel_shader = m_default_pixel_shader.get();
+      if (fdm_config.pixel_shader)
+        format_pipelines.fdm_default_multiview_pipeline = g_gfx->CreatePipeline(fdm_config);
+
+      fdm_config.vertex_shader = m_multiview_vertex_shader.get();
+      fdm_config.pixel_shader = m_pixel_shader.get();
+      format_pipelines.fdm_multiview_pipeline = g_gfx->CreatePipeline(fdm_config);
+      if (!format_pipelines.fdm_multiview_pipeline)
+        WARN_LOG_FMT(VIDEO, "Failed to create foveated multiview post-processing pipeline");
+    }
   }
 
   SetActivePipelines(format_pipelines);
