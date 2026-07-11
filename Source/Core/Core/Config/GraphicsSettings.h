@@ -19,7 +19,6 @@ enum class ColorCorrectionRegion : int;
 enum class TriState : int;
 enum class FrameDumpResolutionType : int;
 enum class VertexLoaderType : int;
-enum class OpenXROpcodeReplayMode : int;
 enum class OpenXRMirrorView : int;
 enum class OpenXRReferenceSpaceMode : int;
 enum class OpenXRTrackingMode : int;
@@ -197,13 +196,16 @@ extern const Info<bool> GFX_VR_DONT_CLEAR_SCREEN;
 extern const Info<bool> GFX_VR_LOAD_CUSTOM_SHADERS;
 extern const Info<bool> GFX_VR_ENABLE_OPENXR_CONFIG_SCENE;
 extern const Info<bool> GFX_VR_DISABLE_CPU_CULL;
-extern const Info<OpenXROpcodeReplayMode> GFX_VR_OPCODE_REPLAY;
 extern const Info<OpenXRMirrorView> GFX_VR_MIRROR_VIEW;
 extern const Info<OpenXRReferenceSpaceMode> GFX_VR_REFERENCE_SPACE_MODE;
 extern const Info<OpenXRTrackingMode> GFX_VR_TRACKING_MODE;
 extern const Info<bool> GFX_VR_USE_OPENXR_PLAY_SPACE_CENTER;
-extern const Info<int> GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE;
 extern const Info<int> GFX_VR_FORCED_VBI_FREQUENCY;
+// Dedicated XR frame-pacing thread: owns xrWaitFrame/xrBeginFrame/xrEndFrame and
+// re-submits the last frame at HMD cadence when the game runs slower (replaces the
+// legacy Opcode Replay). INI-only escape hatch; disable to fall back to the inline
+// synchronous frame flow.
+extern const Info<bool> GFX_VR_USE_XR_PACING_THREAD;
 extern const Info<bool> GFX_VR_AUTO_VBI_FROM_HMD;
 extern const Info<bool> GFX_VR_AUTO_LAYER_SPREAD;
 extern const Info<float> GFX_VR_LAYER_OFFSET;
@@ -234,6 +236,7 @@ extern const Info<bool> GFX_VR_QUEST_CPU_LEVEL_5_HINT;
 extern const Info<float> GFX_VR_RESOLUTION_SCALE;
 extern const Info<int> GFX_VR_FOVEATION_LEVEL;
 extern const Info<bool> GFX_VR_FOVEATION_DYNAMIC;
+extern const Info<bool> GFX_VR_EFB_FOVEATION;
 static constexpr float GFX_VR_RESOLUTION_SCALE_MIN = 0.5f;
 static constexpr float GFX_VR_RESOLUTION_SCALE_MAX = 2.0f;
 static constexpr float GFX_VR_RESOLUTION_SCALE_STEP = 0.05f;
@@ -254,10 +257,6 @@ static constexpr int GFX_VR_FORCED_VBI_FREQUENCY_OFF = 0;
 static constexpr int GFX_VR_FORCED_VBI_FREQUENCY_72 = 72;
 static constexpr int GFX_VR_FORCED_VBI_FREQUENCY_90 = 90;
 static constexpr int GFX_VR_FORCED_VBI_FREQUENCY_120 = 120;
-static constexpr int GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_AUTO = -1;
-static constexpr int GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_72 = 72;
-static constexpr int GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_90 = 90;
-static constexpr int GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_120 = 120;
 static constexpr float GFX_VR_LAYER_OFFSET_MIN = 0.0001f;
 static constexpr float GFX_VR_LAYER_OFFSET_MAX = 0.01f;
 static constexpr float GFX_VR_LAYER_OFFSET_STEP = 0.0001f;
@@ -282,22 +281,6 @@ inline int NormalizeVRForcedVBIFrequency(int frequency)
     return frequency;
   default:
     return GFX_VR_FORCED_VBI_FREQUENCY_OFF;
-  }
-}
-
-inline int NormalizeVROpcodeReplayTargetRefreshRate(int refresh_rate)
-{
-  switch (refresh_rate)
-  {
-  case GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_AUTO:
-  case 0:  // Legacy value from the previous OutputRefreshRate Auto option.
-    return GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_AUTO;
-  case GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_72:
-  case GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_90:
-  case GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_120:
-    return refresh_rate;
-  default:
-    return GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_90;
   }
 }
 

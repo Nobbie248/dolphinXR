@@ -182,15 +182,11 @@ void VRConfigWidget::CreateWidgets()
   m_dont_clear_screen_mode = new QComboBox;
   m_lock_head_pose_mode = new QComboBox;
   m_detect_skybox_mode = new QComboBox;
-  m_opcode_replay_mode = new QComboBox;
-  m_replay_refresh_rate_mode = new QComboBox;
   m_forced_vbi_frequency_mode = new QComboBox;
   PopulateBoolModeCombo(m_virtual_screen_mode);
   PopulateBoolModeCombo(m_dont_clear_screen_mode);
   PopulateBoolModeCombo(m_lock_head_pose_mode);
   PopulateBoolModeCombo(m_detect_skybox_mode);
-  PopulateReplayModeCombo(m_opcode_replay_mode);
-  PopulateReplayRefreshRateModeCombo(m_replay_refresh_rate_mode);
   PopulateForcedVBIFrequencyModeCombo(m_forced_vbi_frequency_mode);
 
   form->addRow(tr("Units per Meter"), units_row);
@@ -203,8 +199,6 @@ void VRConfigWidget::CreateWidgets()
   form->addRow(tr("Don't Clear Screen"), m_dont_clear_screen_mode);
   form->addRow(tr("Lock Head Pose per Frame"), m_lock_head_pose_mode);
   form->addRow(tr("Detect Skybox"), m_detect_skybox_mode);
-  form->addRow(tr("Opcode Replay Input"), m_opcode_replay_mode);
-  form->addRow(tr("Replay Refresh Rate"), m_replay_refresh_rate_mode);
   form->addRow(tr("Forced VBI Frequency in VR"), m_forced_vbi_frequency_mode);
 
   general_layout->addWidget(override_group);
@@ -289,17 +283,6 @@ void VRConfigWidget::CreateWidgets()
   connect(m_lock_head_pose_mode, &QComboBox::currentIndexChanged, this,
           [this](int) { SaveToFile(); });
   connect(m_detect_skybox_mode, &QComboBox::currentIndexChanged, this,
-          [this](int) { SaveToFile(); });
-  auto update_replay_refresh_rate_enabled = [this] {
-    m_replay_refresh_rate_mode->setEnabled(GetReplayMode(m_opcode_replay_mode) != ReplayMode::Off);
-  };
-  update_replay_refresh_rate_enabled();
-  connect(m_opcode_replay_mode, &QComboBox::currentIndexChanged, this, [this,
-                                                                        update_replay_refresh_rate_enabled](int) {
-    update_replay_refresh_rate_enabled();
-    SaveToFile();
-  });
-  connect(m_replay_refresh_rate_mode, &QComboBox::currentIndexChanged, this,
           [this](int) { SaveToFile(); });
   connect(m_forced_vbi_frequency_mode, &QComboBox::currentIndexChanged, this,
           [this](int) { SaveToFile(); });
@@ -434,9 +417,6 @@ void VRConfigWidget::LoadFromFile()
   SetBoolMode(m_dont_clear_screen_mode, ParseBoolMode(values, "DontClearScreen"));
   SetBoolMode(m_lock_head_pose_mode, ParseBoolMode(values, "LockHeadPosePerFrame"));
   SetBoolMode(m_detect_skybox_mode, ParseBoolMode(values, "DetectSkybox"));
-  SetReplayMode(m_opcode_replay_mode, ParseReplayMode(values, "OpcodeReplay"));
-  SetReplayRefreshRateMode(m_replay_refresh_rate_mode, ParseReplayRefreshRateMode(values));
-  m_replay_refresh_rate_mode->setEnabled(GetReplayMode(m_opcode_replay_mode) != ReplayMode::Off);
   SetForcedVBIFrequencyMode(m_forced_vbi_frequency_mode, ParseForcedVBIFrequencyMode(values));
 
   m_updating = false;
@@ -488,43 +468,6 @@ void VRConfigWidget::SaveToFile()
   append_bool("DontClearScreen", GetBoolMode(m_dont_clear_screen_mode));
   append_bool("LockHeadPosePerFrame", GetBoolMode(m_lock_head_pose_mode));
   append_bool("DetectSkybox", GetBoolMode(m_detect_skybox_mode));
-  switch (GetReplayMode(m_opcode_replay_mode))
-  {
-  case ReplayMode::Off:
-    entries.emplace_back("OpcodeReplay", "0");
-    break;
-  case ReplayMode::Input25Hz:
-    entries.emplace_back("OpcodeReplay", "3");
-    break;
-  case ReplayMode::Input60Hz:
-    entries.emplace_back("OpcodeReplay", "1");
-    break;
-  case ReplayMode::Input30Hz:
-    entries.emplace_back("OpcodeReplay", "2");
-    break;
-  case ReplayMode::Input50Hz:
-    entries.emplace_back("OpcodeReplay", "4");
-    break;
-  case ReplayMode::Inherit:
-    break;
-  }
-  switch (GetReplayRefreshRateMode(m_replay_refresh_rate_mode))
-  {
-  case ReplayRefreshRateMode::Auto:
-    entries.emplace_back("OpcodeReplayTargetRefreshRate", "-1");
-    break;
-  case ReplayRefreshRateMode::Hz72:
-    entries.emplace_back("OpcodeReplayTargetRefreshRate", "72");
-    break;
-  case ReplayRefreshRateMode::Hz90:
-    entries.emplace_back("OpcodeReplayTargetRefreshRate", "90");
-    break;
-  case ReplayRefreshRateMode::Hz120:
-    entries.emplace_back("OpcodeReplayTargetRefreshRate", "120");
-    break;
-  case ReplayRefreshRateMode::Inherit:
-    break;
-  }
   switch (GetForcedVBIFrequencyMode(m_forced_vbi_frequency_mode))
   {
   case ForcedVBIFrequencyMode::Auto:
@@ -728,33 +671,6 @@ VRConfigWidget::BoolMode VRConfigWidget::ParseBoolMode(const ValueMap& values, c
   return BoolMode::Inherit;
 }
 
-VRConfigWidget::ReplayMode VRConfigWidget::ParseReplayMode(const ValueMap& values, const char* key)
-{
-  const auto it = values.find(key);
-  if (it == values.end())
-    return ReplayMode::Inherit;
-
-  int parsed = 0;
-  if (!TryParse(it->second, &parsed))
-    return ReplayMode::Inherit;
-
-  switch (parsed)
-  {
-  case 0:
-    return ReplayMode::Off;
-  case 1:
-    return ReplayMode::Input60Hz;
-  case 2:
-    return ReplayMode::Input30Hz;
-  case 3:
-    return ReplayMode::Input25Hz;
-  case 4:
-    return ReplayMode::Input50Hz;
-  default:
-    return ReplayMode::Inherit;
-  }
-}
-
 VRConfigWidget::ForcedVBIFrequencyMode
 VRConfigWidget::ParseForcedVBIFrequencyMode(const ValueMap& values)
 {
@@ -790,34 +706,6 @@ VRConfigWidget::ParseForcedVBIFrequencyMode(const ValueMap& values)
   return ForcedVBIFrequencyMode::Inherit;
 }
 
-VRConfigWidget::ReplayRefreshRateMode
-VRConfigWidget::ParseReplayRefreshRateMode(const ValueMap& values)
-{
-  auto replay_refresh_rate_it = values.find("OpcodeReplayTargetRefreshRate");
-  if (replay_refresh_rate_it == values.end())
-    replay_refresh_rate_it = values.find("OutputRefreshRate");
-  if (replay_refresh_rate_it == values.end())
-    return ReplayRefreshRateMode::Inherit;
-
-  int parsed = 0;
-  if (!TryParse(replay_refresh_rate_it->second, &parsed))
-    return ReplayRefreshRateMode::Inherit;
-
-  switch (Config::NormalizeVROpcodeReplayTargetRefreshRate(parsed))
-  {
-  case Config::GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_AUTO:
-    return ReplayRefreshRateMode::Auto;
-  case Config::GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_72:
-    return ReplayRefreshRateMode::Hz72;
-  case Config::GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_90:
-    return ReplayRefreshRateMode::Hz90;
-  case Config::GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_120:
-    return ReplayRefreshRateMode::Hz120;
-  default:
-    return ReplayRefreshRateMode::Inherit;
-  }
-}
-
 void VRConfigWidget::SetBoolMode(QComboBox* combo, BoolMode mode)
 {
   combo->setCurrentIndex(static_cast<int>(mode));
@@ -838,111 +726,6 @@ void VRConfigWidget::PopulateBoolModeCombo(QComboBox* combo)
   combo->addItem(QObject::tr("Inherit"));
   combo->addItem(QObject::tr("Enabled"));
   combo->addItem(QObject::tr("Disabled"));
-}
-
-void VRConfigWidget::SetReplayMode(QComboBox* combo, ReplayMode mode)
-{
-  switch (mode)
-  {
-  case ReplayMode::Off:
-    combo->setCurrentIndex(1);
-    break;
-  case ReplayMode::Input25Hz:
-    combo->setCurrentIndex(2);
-    break;
-  case ReplayMode::Input30Hz:
-    combo->setCurrentIndex(3);
-    break;
-  case ReplayMode::Input50Hz:
-    combo->setCurrentIndex(4);
-    break;
-  case ReplayMode::Input60Hz:
-    combo->setCurrentIndex(5);
-    break;
-  case ReplayMode::Inherit:
-  default:
-    combo->setCurrentIndex(0);
-    break;
-  }
-}
-
-VRConfigWidget::ReplayMode VRConfigWidget::GetReplayMode(const QComboBox* combo)
-{
-  switch (combo->currentIndex())
-  {
-  case 1:
-    return ReplayMode::Off;
-  case 2:
-    return ReplayMode::Input25Hz;
-  case 3:
-    return ReplayMode::Input30Hz;
-  case 4:
-    return ReplayMode::Input50Hz;
-  case 5:
-    return ReplayMode::Input60Hz;
-  default:
-    return ReplayMode::Inherit;
-  }
-}
-
-void VRConfigWidget::PopulateReplayModeCombo(QComboBox* combo)
-{
-  combo->addItem(QObject::tr("Inherit"));
-  combo->addItem(QObject::tr("Off"));
-  combo->addItem(QObject::tr("25 Hz Input"));
-  combo->addItem(QObject::tr("30 Hz Input"));
-  combo->addItem(QObject::tr("50 Hz Input"));
-  combo->addItem(QObject::tr("60 Hz Input"));
-}
-
-void VRConfigWidget::SetReplayRefreshRateMode(QComboBox* combo, ReplayRefreshRateMode mode)
-{
-  switch (mode)
-  {
-  case ReplayRefreshRateMode::Auto:
-    combo->setCurrentIndex(1);
-    break;
-  case ReplayRefreshRateMode::Hz72:
-    combo->setCurrentIndex(2);
-    break;
-  case ReplayRefreshRateMode::Hz90:
-    combo->setCurrentIndex(3);
-    break;
-  case ReplayRefreshRateMode::Hz120:
-    combo->setCurrentIndex(4);
-    break;
-  case ReplayRefreshRateMode::Inherit:
-  default:
-    combo->setCurrentIndex(0);
-    break;
-  }
-}
-
-VRConfigWidget::ReplayRefreshRateMode
-VRConfigWidget::GetReplayRefreshRateMode(const QComboBox* combo)
-{
-  switch (combo->currentIndex())
-  {
-  case 1:
-    return ReplayRefreshRateMode::Auto;
-  case 2:
-    return ReplayRefreshRateMode::Hz72;
-  case 3:
-    return ReplayRefreshRateMode::Hz90;
-  case 4:
-    return ReplayRefreshRateMode::Hz120;
-  default:
-    return ReplayRefreshRateMode::Inherit;
-  }
-}
-
-void VRConfigWidget::PopulateReplayRefreshRateModeCombo(QComboBox* combo)
-{
-  combo->addItem(QObject::tr("Inherit"));
-  combo->addItem(QObject::tr("Auto"));
-  combo->addItem(QObject::tr("72 Hz"));
-  combo->addItem(QObject::tr("90 Hz"));
-  combo->addItem(QObject::tr("120 Hz"));
 }
 
 void VRConfigWidget::SetForcedVBIFrequencyMode(QComboBox* combo, ForcedVBIFrequencyMode mode)

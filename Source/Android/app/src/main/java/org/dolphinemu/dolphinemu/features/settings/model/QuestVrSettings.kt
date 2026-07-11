@@ -72,8 +72,6 @@ object QuestVrSettings {
 
     fun passthroughSceneOpacitySetting() = vrFloatSetting("PassthroughSceneOpacity", 1.0f)
 
-    fun opcodeReplaySetting() = vrIntSetting("OpcodeReplay", 0)
-
     fun vrGammaSetting() = vrFloatSetting("Gamma", 1.0f)
 
     fun autoLayerSpreadSetting() = vrBooleanSetting("AutoLayerSpread", true)
@@ -96,6 +94,9 @@ object QuestVrSettings {
     fun foveationLevelSetting() = vrIntSetting("FoveationLevel", 2)
 
     fun dynamicFoveationSetting() = vrBooleanSetting("DynamicFoveation", true)
+
+    // Off by default: forces binned rendering, which hurts EFB-copy-heavy games.
+    fun foveateEfbSetting() = vrBooleanSetting("FoveateEFB", false)
 
     fun virtualScreenSetting() = vrBooleanSetting("VirtualScreen", false)
 

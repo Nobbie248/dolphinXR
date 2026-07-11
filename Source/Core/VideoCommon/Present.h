@@ -124,16 +124,12 @@ private:
   ConvertStereoRectangle(const MathUtil::Rectangle<int>& rc) const;
 
 #ifdef ENABLE_VR
-  enum class OpenXRFrameOwner
-  {
-    None,
-    Real,
-    Replay,
-  };
-
+  // Legacy synchronous frame flow (UseXRPacingThread = false): runs xrWaitFrame +
+  // xrBeginFrame (+ LocateViews) inline on the presenting thread.
   bool StartOpenXRFrameNow(double* wait_frame_ms = nullptr, double* locate_views_ms = nullptr,
                            bool do_locate_views = true);
-  bool PrepareOpenXRFrame(OpenXRFrameOwner owner);
+  // Per-game-frame VR upkeep after a present: refresh eye poses for the next game frame
+  // (and, on the legacy path, pre-begin the next XR frame). Also clears the EFB.
   void PrepareNextOpenXRFrame();
   void BlitCurrentSourceToOpenXREyes(const AbstractTexture* source_texture,
                                      const MathUtil::Rectangle<int>& source_rc);
@@ -146,9 +142,6 @@ private:
   bool SubmitOpenXRFrameFromCurrentSource(const AbstractTexture* source_texture,
                                           const MathUtil::Rectangle<int>& source_rc,
                                           bool blit_source);
-  bool PresentReplayOpenXRFrame();
-  void FinishReplayOpenXRFrameWithoutSource();
-  bool MaybeRunOpenXROpcodeReplayFrames();
 #endif
 
   std::mutex m_swap_mutex;
@@ -214,9 +207,17 @@ private:
   std::atomic_bool m_immediate_swap_happened_this_field{};
 
 #ifdef ENABLE_VR
-  OpenXRFrameOwner m_openxr_frame_owner = OpenXRFrameOwner::None;
+  // Legacy synchronous flow: true when the next XR frame was already pre-begun after
+  // the previous present.
+  bool m_openxr_frame_prepared = false;
   double m_last_openxr_wait_frame_ms = 0.0;
   double m_last_openxr_locate_views_ms = 0.0;
+  // Rolling 5s window measuring how long the presenting (video/emu) thread spends
+  // inside blocking XR calls; logged so the pacing-thread gain is quantifiable.
+  u64 m_openxr_timing_window_start_us = 0;
+  u32 m_openxr_timing_frames = 0;
+  double m_openxr_timing_wait_ms = 0.0;
+  double m_openxr_timing_locate_ms = 0.0;
 #endif
 };
 

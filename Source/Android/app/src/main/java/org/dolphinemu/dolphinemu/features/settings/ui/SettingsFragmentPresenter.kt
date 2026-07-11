@@ -2642,16 +2642,6 @@ class SettingsFragmentPresenter(
             R.string.quest_detect_skybox,
             R.string.quest_detect_skybox_description
         )
-        sl.add(
-            SingleChoiceSetting(
-                context,
-                QuestGameVrConfigIntSetting(currentGameId, revision, "OpcodeReplay", 0),
-                R.string.quest_opcode_replay,
-                R.string.quest_opcode_replay_description,
-                R.array.questOpcodeReplayEntries,
-                R.array.questOpcodeReplayValues
-            )
-        )
         addBoolean(
             "AutoLayerSpread",
             true,
@@ -2715,6 +2705,12 @@ class SettingsFragmentPresenter(
             true,
             R.string.quest_dynamic_foveation,
             R.string.quest_dynamic_foveation_description
+        )
+        addBoolean(
+            "FoveateEFB",
+            false,
+            R.string.quest_foveate_efb,
+            R.string.quest_foveate_efb_description
         )
         addBoolean(
             "AndroidDirectToHMD",
@@ -2835,6 +2831,14 @@ class SettingsFragmentPresenter(
         sl.add(
             SwitchSetting(
                 context,
+                QuestVrSettings.foveateEfbSetting(),
+                R.string.quest_foveate_efb,
+                R.string.quest_foveate_efb_description
+            )
+        )
+        sl.add(
+            SwitchSetting(
+                context,
                 QuestVrSettings.lockHeadPoseSetting(),
                 R.string.quest_lock_head_pose,
                 R.string.quest_lock_head_pose_description
@@ -2898,16 +2902,6 @@ class SettingsFragmentPresenter(
                 "",
                 0.1f,
                 true
-            )
-        )
-        sl.add(
-            SingleChoiceSetting(
-                context,
-                QuestVrSettings.opcodeReplaySetting(),
-                R.string.quest_opcode_replay,
-                R.string.quest_opcode_replay_description,
-                R.array.questOpcodeReplayEntries,
-                R.array.questOpcodeReplayValues
             )
         )
         sl.add(

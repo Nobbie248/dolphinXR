@@ -41,15 +41,6 @@ enum class StereoMode : int
   OpenXR  // Head-mounted display via the OpenXR runtime
 };
 
-enum class OpenXROpcodeReplayMode : int
-{
-  Off = 0,
-  Input25Hz = 3,
-  Input30Hz = 2,
-  Input50Hz = 4,
-  Input60Hz = 1,
-};
-
 enum class OpenXRMirrorView : int
 {
   BothEyes = 0,
@@ -221,6 +212,9 @@ struct BackendInfo
   bool bSupportsHDROutput = false;
   bool bSupportsUnrestrictedDepthRange = false;
   bool bSupportsMultiview = false;  // VK_KHR_multiview (Vulkan only); used for OpenXR stereo path
+  // EFB render pass foveation: Vulkan with VK_EXT_fragment_density_map incl. the
+  // nonSubsampledImages feature, multiview EFB only.
+  bool bSupportsVRFoveatedEFB = false;
   // Dedicated passthrough coverage: Vulkan on Windows desktop and Quest standalone.
   bool bSupportsVRPassthroughCoverage = false;
   u32 vr_passthrough_coverage_sample_counts = 0;
@@ -377,12 +371,11 @@ struct VideoConfig final
   bool vr_dont_clear_screen = false;
   bool vr_load_custom_shaders = false;
   bool vr_disable_cpu_cull = false;
-  OpenXROpcodeReplayMode vr_opcode_replay_mode = OpenXROpcodeReplayMode::Off;
   OpenXRMirrorView vr_mirror_view = OpenXRMirrorView::BothEyes;
   OpenXRReferenceSpaceMode vr_reference_space_mode = OpenXRReferenceSpaceMode::Local;
   OpenXRTrackingMode vr_tracking_mode = OpenXRTrackingMode::Full6DoF;
-  int vr_opcode_replay_target_refresh_rate = -1;
   bool vr_use_openxr_play_space_center = false;
+  bool vr_use_xr_pacing_thread = true;  // Dedicated xrWaitFrame/Begin/EndFrame thread + heartbeat
   bool vr_auto_layer_spread = false;
   bool vr_remove_bars = true;       // Expand scissor/viewport to remove cinematic letterbox bars
   bool vr_ortho_scissor_fix = true;  // Expand scissor for orthographic VR draws
@@ -411,6 +404,7 @@ struct VideoConfig final
   float vr_resolution_scale = 1.0f;  // Eye swapchain size vs. HMD recommended resolution
   int vr_foveation_level = 0;   // XR_FB_foveation level: 0=off, 1=low, 2=medium, 3=high
   bool vr_foveation_dynamic = true;  // Let the runtime drop the foveation level when GPU load allows
+  bool vr_efb_foveation = false;  // Also foveate the EFB pass (hurts EFB-copy-heavy games)
   // D3D only config, mostly to be merged into the above
   int iAdapter = 0;
 

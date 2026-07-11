@@ -17,7 +17,6 @@
 #include "VideoCommon/BPMemory.h"
 #include "VideoCommon/EFBInterface.h"
 #include "VideoCommon/FramebufferManager.h"
-#include "VideoCommon/OpenXROpcodeReplay.h"
 #include "VideoCommon/VertexManagerBase.h"
 #include "VideoCommon/VertexShaderManager.h"
 #include "VideoCommon/VideoCommon.h"
@@ -419,10 +418,6 @@ bool ClearScreen(FramebufferManager* frame_buffer_manager, const MathUtil::Recta
   {
     u32 color = (clear_color_ar << 16) | clear_color_gb;
     u32 z = clear_z_value;
-
-    VideoCommon::OpenXROpcodeReplay::ApplyReplayClearState(frame_just_rendered, &color_enable,
-                                                           &alpha_enable, &z_enable,
-                                                           &pixel_format, &color, &z);
 
     // (2) drop additional accuracy
     if (pixel_format == PixelFormat::RGBA6_Z24)

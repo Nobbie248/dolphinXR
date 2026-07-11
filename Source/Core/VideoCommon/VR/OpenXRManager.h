@@ -7,11 +7,14 @@
 
 #include <array>
 #include <atomic>
+#include <condition_variable>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 #include <openxr/openxr.h>
@@ -64,6 +67,11 @@ public:
   // True when the eye framebuffers carry a fragment density map (Vulkan VR foveation).
   // PostProcessing then compiles pipeline variants against foveated render passes.
   virtual bool HasFoveatedFramebuffers() const { return false; }
+
+  // Whether xrEndFrame may be issued from the XR pacing thread. GL/GLES bindings expect
+  // frame calls from the thread owning the context, so the GL backend opts out and
+  // keeps the legacy inline frame flow.
+  virtual bool SupportsDetachedFrameLoop() const { return true; }
 
   // ---- Flat mono panel path (StereoMode::Off + vr_flat_screen) ----
   // The game is rendered mono and shown on a world-locked quad in the VR scene. The default
@@ -150,8 +158,9 @@ public:
   void SetSession(XrSession session);
 
   // Step 3b: Register the backend swapchain implementation for use by the presenter.
-  // Raw pointer — the backend object outlives the manager.
-  void SetSwapchain(IOpenXRSwapchain* swapchain) { m_swapchain = swapchain; }
+  // Raw pointer — the backend object outlives the manager. Starts the XR pacing thread
+  // (when enabled); passing nullptr stops it before the backend tears swapchains down.
+  void SetSwapchain(IOpenXRSwapchain* swapchain);
   IOpenXRSwapchain* GetSwapchain() const { return m_swapchain; }
 
   // Step 4: Create the local reference space used for head tracking.
@@ -176,6 +185,31 @@ public:
                         bool should_render,
                         const std::vector<XrCompositionLayerBaseHeader*>& layers,
                         bool lock_graphics_queue = true);
+
+  // ---- XR pacing thread ----
+  // Owns the xrWaitFrame → xrBeginFrame → xrEndFrame loop (and the session event pump),
+  // running at HMD cadence. Rendered frames are handed over via PublishFrame; when the
+  // game runs slower than the display, the thread re-submits the last published layers
+  // each cycle and the compositor reprojects them (ATW) with a fresh head pose. This
+  // keeps the emulation/video thread free of blocking XR calls — on single-core games
+  // every blocked ms was stolen straight from emulation.
+  //
+  // Started by SetSwapchain() when UseXRPacingThread is enabled; when inactive, the
+  // legacy synchronous flow (Presenter calling Wait/Begin/End inline) applies.
+  void StartFrameThread();
+  void StopFrameThread();
+  bool IsFrameThreadActive() const
+  {
+    return m_frame_thread_running.load(std::memory_order_acquire);
+  }
+
+  // Hand the pacing thread a rendered stereo frame. The views (incl. the poses the
+  // content was rendered with) are copied; swapchain handles inside must stay valid
+  // until StopFrameThread().
+  void PublishFrame(const std::array<XrCompositionLayerProjectionView, 2>& views,
+                    XrCompositionLayerFlags layer_flags);
+  // Flat mono panel variant: a fully built world-locked quad layer.
+  void PublishQuadFrame(const XrCompositionLayerQuad& quad);
 
   // xrLocateViews — fills m_eye_views with the predicted head pose for each eye.
   // Call between BeginFrame and rendering.
@@ -204,17 +238,27 @@ public:
   XrSession GetSession() const { return m_session; }
   XrSpace GetReferenceSpace() const { return m_reference_space; }
 
-  XrTime GetPredictedDisplayTime() const { return m_frame_state.predictedDisplayTime; }
-  double GetEstimatedDisplayPeriodMs() const { return m_estimated_display_period_ms; }
+  // Frame-state snapshots. Written by whichever thread runs WaitFrame (the pacing
+  // thread when active, the presenting thread otherwise) and readable from any thread.
+  XrTime GetPredictedDisplayTime() const
+  {
+    return m_predicted_display_time_snapshot.load(std::memory_order_acquire);
+  }
+  double GetEstimatedDisplayPeriodMs() const
+  {
+    return m_estimated_display_period_ms.load(std::memory_order_acquire);
+  }
   float GetStartupDisplayRefreshRateHz() const { return m_startup_display_refresh_rate_hz; }
   // HMD's native display period from XrFrameState (e.g. 11.11ms for 90Hz)
   double GetNativeDisplayPeriodMs() const
   {
-    return static_cast<double>(m_frame_state.predictedDisplayPeriod) / 1000000.0;
+    return static_cast<double>(m_predicted_display_period_snapshot.load(
+               std::memory_order_acquire)) /
+           1000000.0;
   }
-  bool IsSessionRunning() const { return m_session_running; }
-  bool IsSessionFocused() const { return m_session_focused; }
-  bool ShouldRender() const { return m_frame_state.shouldRender == XR_TRUE; }
+  bool IsSessionRunning() const { return m_session_running.load(std::memory_order_acquire); }
+  bool IsSessionFocused() const { return m_session_focused.load(std::memory_order_acquire); }
+  bool ShouldRender() const { return m_should_render_snapshot.load(std::memory_order_acquire); }
 
   const std::array<XREyeView, 2>& GetEyeViews() const { return m_eye_views; }
   // The pose actually used by the GS cache to render the current game frame.
@@ -310,7 +354,6 @@ private:
   XrPosef GetFlatScreenPose() const;
   void CaptureStartupDisplayRefreshRateFromExtension();
   void SetStartupDisplayRefreshRate(float refresh_rate_hz, std::string_view source);
-  void RequestConfiguredDisplayRefreshRate();
 
   XrInstance m_instance = XR_NULL_HANDLE;
   XrSystemId m_system_id = XR_NULL_SYSTEM_ID;
@@ -330,9 +373,6 @@ private:
   mutable std::optional<bool> m_quest_or_vd_runtime;
   uint32_t m_system_vendor_id = 0;
   PFN_xrGetDisplayRefreshRateFB m_xrGetDisplayRefreshRateFB = nullptr;
-  PFN_xrRequestDisplayRefreshRateFB m_xrRequestDisplayRefreshRateFB = nullptr;
-  float m_requested_display_refresh_rate_hz = 0.0f;
-  bool m_output_refresh_rate_unavailable_logged = false;
 
   // XR_FB_foveation entry points (null when the extension is unavailable).
   PFN_xrCreateFoveationProfileFB m_xrCreateFoveationProfileFB = nullptr;
@@ -380,12 +420,36 @@ private:
 #endif
 
   XrSessionState m_session_state = XR_SESSION_STATE_UNKNOWN;
-  bool m_session_running = false;
-  bool m_session_focused = false;
+  std::atomic<bool> m_session_running{false};
+  std::atomic<bool> m_session_focused{false};
   bool m_exit_render_loop = false;
 
   XrFrameState m_frame_state{XR_TYPE_FRAME_STATE};
   XrViewStateFlags m_view_state_flags = 0;
+
+  // Cross-thread snapshots of the latest xrWaitFrame result (see accessors above).
+  std::atomic<XrTime> m_predicted_display_time_snapshot{0};
+  std::atomic<int64_t> m_predicted_display_period_snapshot{0};
+  std::atomic<bool> m_should_render_snapshot{false};
+
+  // ---- XR pacing thread state ----
+  void FrameThreadLoop();
+
+  struct PublishedXRFrame
+  {
+    bool is_quad = false;
+    std::array<XrCompositionLayerProjectionView, 2> views{};
+    XrCompositionLayerFlags layer_flags = 0;
+    XrCompositionLayerQuad quad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+  };
+
+  std::thread m_frame_thread;
+  std::atomic<bool> m_frame_thread_running{false};
+  std::atomic<bool> m_frame_thread_should_exit{false};
+  std::mutex m_publish_mutex;
+  std::condition_variable m_publish_cv;
+  PublishedXRFrame m_published_frame;  // guarded by m_publish_mutex
+  uint64_t m_publish_serial = 0;       // guarded by m_publish_mutex
 
   // OpenXR input action set used to expose VR controller input to Dolphin's
   // regular controller mapping UI.
@@ -417,7 +481,7 @@ private:
   std::array<XREyeView, 2> m_rendered_eye_views{};
   std::array<XREyeView, 2> m_submitted_eye_views{};
   XrTime m_last_predicted_display_time = 0;
-  double m_estimated_display_period_ms = 0.0;
+  std::atomic<double> m_estimated_display_period_ms{0.0};
   float m_startup_display_refresh_rate_hz = 0.0f;
 
   // "Home" head-center position, recorded from the first stable tracked pose.

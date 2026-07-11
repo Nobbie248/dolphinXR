@@ -25,7 +25,6 @@ object QuestGameVrConfigSettings {
         "LoadCustomShaders",
         "DisableCPUCull",
         "DetectSkybox",
-        "OpcodeReplay",
         "ForcedVBIFrequency",
         "AutoVBIFromHMD",
         "AutoLayerSpread",

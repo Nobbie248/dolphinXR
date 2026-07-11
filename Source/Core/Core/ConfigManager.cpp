@@ -168,12 +168,8 @@ static void ClearAppliedVRSettings()
   ClearAppliedVRSetting("DontClearScreen", Config::GFX_VR_DONT_CLEAR_SCREEN);
   ClearAppliedVRSetting("LoadCustomShaders", Config::GFX_VR_LOAD_CUSTOM_SHADERS);
   ClearAppliedVRSetting("DisableCPUCull", Config::GFX_VR_DISABLE_CPU_CULL);
-  ClearAppliedVRSetting("OpcodeReplay", Config::GFX_VR_OPCODE_REPLAY);
   ClearAppliedVRSetting("ReferenceSpaceMode", Config::GFX_VR_REFERENCE_SPACE_MODE);
   ClearAppliedVRSetting("TrackingMode", Config::GFX_VR_TRACKING_MODE);
-  ClearAppliedVRSetting("OpcodeReplayTargetRefreshRate",
-                        Config::GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE);
-  ClearAppliedVRSetting("OutputRefreshRate", Config::GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE);
   ClearAppliedVRSetting("UseOpenXRPlaySpaceCenter", Config::GFX_VR_USE_OPENXR_PLAY_SPACE_CENTER);
   ClearAppliedVRSetting("LockHeadPosePerFrame", Config::GFX_VR_LOCK_HEAD_POSE);
   ClearAppliedVRSetting("ForcedVBIFrequency", Config::GFX_VR_FORCED_VBI_FREQUENCY);
@@ -232,15 +228,8 @@ static void ApplyGameVRConfigOverrides(std::string_view game_id, std::optional<u
   ApplyVRSetting(values, "DontClearScreen", Config::GFX_VR_DONT_CLEAR_SCREEN);
   ApplyVRSetting(values, "LoadCustomShaders", Config::GFX_VR_LOAD_CUSTOM_SHADERS);
   ApplyVRSetting(values, "DisableCPUCull", Config::GFX_VR_DISABLE_CPU_CULL);
-  ApplyVRSetting(values, "OpcodeReplay", Config::GFX_VR_OPCODE_REPLAY);
   ApplyVRSetting(values, "ReferenceSpaceMode", Config::GFX_VR_REFERENCE_SPACE_MODE);
   ApplyVRSetting(values, "TrackingMode", Config::GFX_VR_TRACKING_MODE);
-  const bool has_opcode_replay_target =
-      values.find("OpcodeReplayTargetRefreshRate") != values.end();
-  ApplyVRSetting(values, "OpcodeReplayTargetRefreshRate",
-                 Config::GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE);
-  if (!has_opcode_replay_target)
-    ApplyVRSetting(values, "OutputRefreshRate", Config::GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE);
   ApplyVRSetting(values, "UseOpenXRPlaySpaceCenter", Config::GFX_VR_USE_OPENXR_PLAY_SPACE_CENTER);
   ApplyVRSetting(values, "LockHeadPosePerFrame", Config::GFX_VR_LOCK_HEAD_POSE);
   const bool has_forced_vbi_frequency = values.find("ForcedVBIFrequency") != values.end();

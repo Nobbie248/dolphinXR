@@ -108,8 +108,6 @@ public:
   virtual ~VertexManagerBase();
 
   virtual bool Initialize();
-  virtual void OnReplayFrameBegin() {}
-  virtual void OnReplayFrameEnd() {}
 
   PrimitiveType GetCurrentPrimitiveType() const { return m_current_primitive_type; }
   void AddIndices(OpcodeDecoder::Primitive primitive, u32 num_vertices);

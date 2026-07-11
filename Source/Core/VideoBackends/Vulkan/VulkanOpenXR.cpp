@@ -325,21 +325,33 @@ void VulkanOpenXR::FinalizePendingXRFrame(PendingXRFrame frame)
       release_swapchain(frame.eye_swapchains[eye], eye == 0 ? "eye 0" : "eye 1");
   }
 
-  XrCompositionLayerProjection projection_layer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
-  projection_layer.layerFlags = frame.layer_flags;
-  projection_layer.space = frame.space;
-  projection_layer.viewCount = static_cast<uint32_t>(frame.projection_views.size());
-  projection_layer.views = frame.projection_views.data();
-
-  const std::vector<XrCompositionLayerBaseHeader*> layers = {
-      reinterpret_cast<XrCompositionLayerBaseHeader*>(&projection_layer)};
-
   const uint64_t end_frame_start_us = Common::Timer::NowUs();
-  if (!VR::g_openxr ||
-      !VR::g_openxr->EndFrameDetached(frame.display_time, frame.environment_blend_mode,
-                                      frame.should_render, layers))
+  if (!VR::g_openxr)
   {
     success = false;
+  }
+  else if (VR::g_openxr->IsFrameThreadActive())
+  {
+    // The pacing thread owns xrEndFrame — publish the released frame's views to it.
+    // Publishing after the releases guarantees the compositor picks up the new image.
+    VR::g_openxr->PublishFrame(frame.projection_views, frame.layer_flags);
+  }
+  else
+  {
+    XrCompositionLayerProjection projection_layer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
+    projection_layer.layerFlags = frame.layer_flags;
+    projection_layer.space = frame.space;
+    projection_layer.viewCount = static_cast<uint32_t>(frame.projection_views.size());
+    projection_layer.views = frame.projection_views.data();
+
+    const std::vector<XrCompositionLayerBaseHeader*> layers = {
+        reinterpret_cast<XrCompositionLayerBaseHeader*>(&projection_layer)};
+
+    if (!VR::g_openxr->EndFrameDetached(frame.display_time, frame.environment_blend_mode,
+                                        frame.should_render, layers))
+    {
+      success = false;
+    }
   }
   end_frame_us = ElapsedUs(end_frame_start_us, Common::Timer::NowUs());
 
@@ -349,8 +361,8 @@ void VulkanOpenXR::FinalizePendingXRFrame(PendingXRFrame frame)
   const uint64_t finalize_end_us = Common::Timer::NowUs();
   const uint64_t queue_delay_us = ElapsedUs(frame.queued_time_us, finalize_start_us);
   const uint64_t finalize_us = ElapsedUs(finalize_start_us, finalize_end_us);
-  if (frame.debug_frame_id <= 20 || frame.debug_frame_id % 300 == 0 || queue_delay_us >= 1000 ||
-      finalize_us >= 1000)
+  if (frame.debug_frame_id <= 20 || frame.debug_frame_id % 300 == 0 || queue_delay_us >= 5000 ||
+      finalize_us >= 5000)
   {
     INFO_LOG_FMT(VIDEO,
                  "OpenXR Vulkan: async final XR submit #{} timing queue_delay={}us "
@@ -1617,6 +1629,15 @@ bool VulkanOpenXR::SubmitFrame()
           {static_cast<int32_t>(m_eye_swapchains[eye].width),
            static_cast<int32_t>(m_eye_swapchains[eye].height)}};
     }
+  }
+
+  if (VR::g_openxr->IsFrameThreadActive())
+  {
+    // The pacing thread owns xrEndFrame; hand it the rendered views (poses included).
+    VR::g_openxr->PublishFrame(m_projection_views,
+                               VR::g_openxr->GetProjectionLayerExtraFlags());
+    m_frame_uses_layered_swapchain = false;
+    return true;
   }
 
   m_projection_layer = {XR_TYPE_COMPOSITION_LAYER_PROJECTION};

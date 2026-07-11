@@ -15,13 +15,10 @@
 
 #include "Present.h"
 #include "VideoCommon/AbstractGfx.h"
-#include "VideoCommon/DataReader.h"
 #include "VideoCommon/FrameDumper.h"
 #include "VideoCommon/FramebufferManager.h"
 #include "VideoCommon/GeometryShaderManager.h"
 #include "VideoCommon/OnScreenUI.h"
-#include "VideoCommon/OpcodeDecoding.h"
-#include "VideoCommon/OpenXROpcodeReplay.h"
 #include "VideoCommon/PostProcessing.h"
 #include "VideoCommon/VertexManagerBase.h"
 #include "VideoCommon/VideoConfig.h"
@@ -31,6 +28,7 @@
 #ifdef ENABLE_VR
 #include <chrono>
 #include "Common/Logging/Log.h"
+#include "Common/Timer.h"
 #include "VideoCommon/VR/OpenXRManager.h"
 #endif
 
@@ -242,15 +240,7 @@ void Presenter::ViSwap(u32 xfb_addr, u32 fb_width, u32 fb_stride, u32 fb_height,
 
 void Presenter::ImmediateSwap(u32 xfb_addr, u32 fb_width, u32 fb_stride, u32 fb_height)
 {
-#ifdef ENABLE_VR
-  const bool is_replay = VideoCommon::OpenXROpcodeReplay::IsReplaying();
-#else
-  const bool is_replay = false;
-#endif
-
-  // Bypass one-swap-per-field cap during replay (multiple presents needed per frame)
-  if (!is_replay &&
-      m_immediate_swap_happened_this_field.exchange(true, std::memory_order_relaxed) &&
+  if (m_immediate_swap_happened_this_field.exchange(true, std::memory_order_relaxed) &&
       Config::Get(Config::GFX_HACK_CAP_IMMEDIATE_XFB))
   {
     return;
@@ -259,14 +249,6 @@ void Presenter::ImmediateSwap(u32 xfb_addr, u32 fb_width, u32 fb_stride, u32 fb_
   const u64 ticks = m_next_swap_estimated_ticks;
 
   FetchXFB(xfb_addr, fb_width, fb_stride, fb_height, ticks);
-
-  if (is_replay)
-  {
-    // During replay: Present with VR lifecycle (EndFrame + WaitFrame + BeginFrame +
-    // LocateViews) but suppress frame counting, events, and frame dumping.
-    Present();
-    return;
-  }
 
   // Normal path: full events and frame counting
   PresentInfo present_info{
@@ -903,44 +885,69 @@ bool Presenter::StartOpenXRFrameNow(double* wait_frame_ms, double* locate_views_
   return true;
 }
 
-bool Presenter::PrepareOpenXRFrame(OpenXRFrameOwner owner)
-{
-  m_openxr_frame_owner = OpenXRFrameOwner::None;
-  if (!g_ActiveConfig.VRSessionActive() || !VR::g_openxr)
-    return false;
-
-  // Replay frames: skip LocateViews — render with the same eye poses as the real frame.
-  // The compositor ATW-corrects the replay to its actual display time.  This matches
-  // the Hydra approach (minimal pose delta between real and replay) and avoids visible
-  // "jumping" from prediction-error differences between real and replay poses.
-  const bool do_locate_views = owner != OpenXRFrameOwner::Replay;
-  const bool started = StartOpenXRFrameNow(&m_last_openxr_wait_frame_ms,
-                                           &m_last_openxr_locate_views_ms, do_locate_views);
-  m_openxr_frame_owner = started ? owner : OpenXRFrameOwner::None;
-  return started;
-}
-
 void Presenter::PrepareNextOpenXRFrame()
 {
-  PrepareOpenXRFrame(OpenXRFrameOwner::Real);
+  if (!g_ActiveConfig.VRSessionActive() || !VR::g_openxr)
+  {
+    m_openxr_frame_prepared = false;
+    return;
+  }
+
+  if (VR::g_openxr->IsFrameThreadActive())
+  {
+    // The pacing thread owns xrWaitFrame/xrBeginFrame/xrEndFrame; here we only refresh
+    // the eye poses the next game frame will be rendered with.
+    const auto locate_start = std::chrono::high_resolution_clock::now();
+    if (VR::g_openxr->IsSessionRunning() && VR::g_openxr->ShouldRender() &&
+        VR::g_openxr->LocateViews())
+    {
+      auto& geometry_shader_manager = Core::System::GetInstance().GetGeometryShaderManager();
+      geometry_shader_manager.SetProjectionChanged();
+      // Lock Head Pose Per Frame: see StartOpenXRFrameNow — the GS pose cache is only
+      // invalidated at the XFB-copy boundary when the lock is enabled.
+      if (!g_ActiveConfig.vr_lock_head_pose)
+        geometry_shader_manager.InvalidateVRHeadPose();
+    }
+    m_last_openxr_wait_frame_ms = 0.0;
+    m_last_openxr_locate_views_ms =
+        std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() -
+                                                  locate_start)
+            .count();
+  }
+  else
+  {
+    m_openxr_frame_prepared =
+        StartOpenXRFrameNow(&m_last_openxr_wait_frame_ms, &m_last_openxr_locate_views_ms);
+  }
+
+  // Rolling window: how much of the presenting (video/emu) thread each game frame
+  // spends inside blocking XR calls. On single-core games this time is stolen
+  // straight from emulation — the number the pacing thread exists to erase.
+  m_openxr_timing_frames++;
+  m_openxr_timing_wait_ms += m_last_openxr_wait_frame_ms;
+  m_openxr_timing_locate_ms += m_last_openxr_locate_views_ms;
+  const u64 now_us = Common::Timer::NowUs();
+  if (m_openxr_timing_window_start_us == 0)
+    m_openxr_timing_window_start_us = now_us;
+  if (now_us - m_openxr_timing_window_start_us >= 5'000'000 && m_openxr_timing_frames > 0)
+  {
+    INFO_LOG_FMT(VIDEO,
+                 "XRTiming(present thread): {} frames | per frame: wait+begin={:.2f}ms "
+                 "locate={:.2f}ms | pacing_thread={}",
+                 m_openxr_timing_frames, m_openxr_timing_wait_ms / m_openxr_timing_frames,
+                 m_openxr_timing_locate_ms / m_openxr_timing_frames,
+                 VR::g_openxr->IsFrameThreadActive());
+    m_openxr_timing_window_start_us = now_us;
+    m_openxr_timing_frames = 0;
+    m_openxr_timing_wait_ms = 0.0;
+    m_openxr_timing_locate_ms = 0.0;
+  }
 
   if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR && VR::g_openxr &&
       !g_ActiveConfig.vr_dont_clear_screen && g_framebuffer_manager)
   {
     g_framebuffer_manager->ClearEFBForOpenXR();
   }
-
-  VideoCommon::OpenXROpcodeReplay::EnableCaptureForNextFrame(
-      VR::g_openxr ? VR::g_openxr->GetNativeDisplayPeriodMs() : 0.0);
-}
-
-void Presenter::FinishReplayOpenXRFrameWithoutSource()
-{
-  if (m_openxr_frame_owner != OpenXRFrameOwner::Replay || !VR::g_openxr)
-    return;
-
-  VR::g_openxr->EndFrame({});
-  m_openxr_frame_owner = OpenXRFrameOwner::None;
 }
 
 void Presenter::BlitCurrentSourceToOpenXREyes(const AbstractTexture* source_texture,
@@ -1093,135 +1100,13 @@ bool Presenter::SubmitOpenXRFrameFromCurrentSource(const AbstractTexture* source
     return sc->SubmitFrame();
   }
 
+  // No swapchain: with the pacing thread active it heartbeats empty frames itself;
+  // the legacy flow must close the begun frame here.
+  if (VR::g_openxr->IsFrameThreadActive())
+    return true;
   return VR::g_openxr->EndFrame({});
 }
 
-bool Presenter::PresentReplayOpenXRFrame()
-{
-  if (m_openxr_frame_owner != OpenXRFrameOwner::Replay || !m_xfb_entry)
-  {
-    FinishReplayOpenXRFrameWithoutSource();
-    return false;
-  }
-
-  UpdateDrawRectangle();
-  g_gfx->BeginUtilityDrawing();
-
-  auto replay_target_rc = GetTargetRectangle();
-  auto replay_source_rc = m_xfb_rect;
-  AdjustRectanglesToFitBounds(&replay_target_rc, &replay_source_rc, m_backbuffer_width,
-                              m_backbuffer_height);
-  const bool submitted =
-      SubmitOpenXRFrameFromCurrentSource(m_xfb_entry->texture.get(), replay_source_rc, true);
-
-  g_gfx->EndUtilityDrawing();
-  m_openxr_frame_owner = OpenXRFrameOwner::None;
-  return submitted;
-}
-
-bool Presenter::MaybeRunOpenXROpcodeReplayFrames()
-{
-  if (g_ActiveConfig.stereo_mode != StereoMode::OpenXR || !VR::g_openxr)
-    return false;
-
-  if (!VideoCommon::OpenXROpcodeReplay::IsCaptureEnabled())
-  {
-    if (VideoCommon::OpenXROpcodeReplay::HasReplayData())
-      VideoCommon::OpenXROpcodeReplay::DiscardReplayFrame();
-    return false;
-  }
-
-  if (!VideoCommon::OpenXROpcodeReplay::HasReplayData())
-  {
-    static int no_data_count = 0;
-    if (++no_data_count % 60 == 1)
-    {
-      const double native_period_ms = VR::g_openxr->GetNativeDisplayPeriodMs();
-      WARN_LOG_FMT(VIDEO,
-                   "OpcodeReplay MaybeRun: NO replay data (count={}, native_period_ms={:.3f}, "
-                   "capture_armed={})",
-                   no_data_count, native_period_ms,
-                   VideoCommon::OpenXROpcodeReplay::IsCaptureArmed());
-    }
-    return false;
-  }
-
-  const double native_period_ms = VR::g_openxr->GetNativeDisplayPeriodMs();
-  const int replay_count = VideoCommon::OpenXROpcodeReplay::GetReplayCount(native_period_ms);
-
-  if (replay_count <= 0)
-  {
-    VideoCommon::OpenXROpcodeReplay::DiscardReplayFrame();
-    return false;
-  }
-
-  auto preprocess_cmds = VideoCommon::OpenXROpcodeReplay::GetReplayCommands(true);
-  auto main_cmds = VideoCommon::OpenXROpcodeReplay::GetReplayCommands(false);
-
-  bool replay_submitted = false;
-  for (int replay_i = 0; replay_i < replay_count; ++replay_i)
-  {
-    if (!PrepareOpenXRFrame(OpenXRFrameOwner::Replay))
-    {
-      WARN_LOG_FMT(VIDEO, "OpcodeReplay: failed to prepare replay frame {}", replay_i);
-      break;
-    }
-
-    if (!VideoCommon::OpenXROpcodeReplay::BeginReplayIteration())
-    {
-      WARN_LOG_FMT(VIDEO, "OpcodeReplay: BeginReplayIteration failed ({})", replay_i);
-      FinishReplayOpenXRFrameWithoutSource();
-      break;
-    }
-
-    g_vertex_manager->OnReplayFrameBegin();
-
-    if (!preprocess_cmds.empty())
-    {
-      auto* start = const_cast<u8*>(preprocess_cmds.data());
-      OpcodeDecoder::RunFifo<true>(DataReader(start, start + preprocess_cmds.size()), nullptr);
-    }
-
-    if (!main_cmds.empty())
-    {
-      auto* start = const_cast<u8*>(main_cmds.data());
-      OpcodeDecoder::RunFifo<false>(DataReader(start, start + main_cmds.size()), nullptr);
-    }
-
-    g_vertex_manager->Flush();
-
-    u32 replay_xfb_addr = 0;
-    u32 replay_fb_width = 0;
-    u32 replay_fb_stride = 0;
-    u32 replay_fb_height = 0;
-    const bool has_replay_xfb = VideoCommon::OpenXROpcodeReplay::ConsumeReplayImmediateSwap(
-        &replay_xfb_addr, &replay_fb_width, &replay_fb_stride, &replay_fb_height);
-
-    // End replay-mode D3D state before the OpenXR present path runs its own utility draws.
-    // Otherwise those blits can consume the captured draw/constant stream out of phase with the
-    // FIFO replay sequence, which shows up as stride mismatches and unstable replayed motion.
-    g_vertex_manager->OnReplayFrameEnd();
-    VideoCommon::OpenXROpcodeReplay::EndReplayIteration();
-
-    if (has_replay_xfb)
-    {
-      FetchXFB(replay_xfb_addr, replay_fb_width, replay_fb_stride, replay_fb_height,
-               m_next_swap_estimated_ticks);
-      PresentReplayOpenXRFrame();
-      replay_submitted = true;
-    }
-    else
-    {
-      WARN_LOG_FMT(VIDEO,
-                   "OpcodeReplay: replay iteration {} produced no replay XFB (xfb_count={})",
-                   replay_i, VideoCommon::OpenXROpcodeReplay::GetReplayXFBCount());
-      FinishReplayOpenXRFrameWithoutSource();
-    }
-  }
-
-  VideoCommon::OpenXROpcodeReplay::DiscardReplayFrame();
-  return replay_submitted;
-}
 
 #endif
 
@@ -1321,19 +1206,15 @@ void Presenter::Present(PresentInfo* present_info)
   UpdateDrawRectangle();
 
 #ifdef ENABLE_VR
-  // OpenXR frame lifecycle — restructured so BeginFrame→EndFrame brackets the full game
-  // render time (~33ms at 30fps), not just the final blit.  This gives the compositor
-  // accurate frame timing for ATW/ASW reprojection.
+  // OpenXR frame lifecycle.
   //
-  // Flow:
-  //   Present(N): [frame N already begun at end of Present(N-1)]
-  //     → render + blit eyes → EndFrame(N)
-  //     → WaitFrame(N+1) → BeginFrame(N+1) → LocateViews(N+1)
-  //   [game renders frame N+1 — ~33ms]
-  //   Present(N+1): EndFrame(N+1) → WaitFrame(N+2) → BeginFrame(N+2) → ...
+  // Pacing thread active (default): the thread owns WaitFrame/BeginFrame/EndFrame and
+  // heartbeats the last frame at HMD cadence; Present() only blits the eyes and
+  // publishes the new layers. Nothing here blocks on the XR runtime.
   //
-  // First real frame: if no pre-begun frame exists, start it here.
-  const bool is_replay_present = VideoCommon::OpenXROpcodeReplay::IsReplaying();
+  // Legacy flow (UseXRPacingThread = false): frame N was pre-begun at the end of
+  // Present(N-1) so BeginFrame→EndFrame brackets the full game render time; the blits
+  // and EndFrame run inline here.
 #if defined(ANDROID)
   const bool openxr_direct_to_hmd = g_ActiveConfig.VRSessionActive() &&
                                     VR::g_openxr && g_ActiveConfig.vr_android_direct_to_hmd;
@@ -1343,47 +1224,28 @@ void Presenter::Present(PresentInfo* present_info)
   bool vr_frame_started = false;
   if (g_ActiveConfig.VRSessionActive() && VR::g_openxr)
   {
-    if (is_replay_present)
+    if (VR::g_openxr->IsFrameThreadActive())
     {
-      vr_frame_started = (m_openxr_frame_owner == OpenXRFrameOwner::Replay);
+      vr_frame_started = VR::g_openxr->IsSessionRunning();
     }
     else
     {
-      vr_frame_started = (m_openxr_frame_owner == OpenXRFrameOwner::Real);
+      vr_frame_started = m_openxr_frame_prepared;
       if (!vr_frame_started)
       {
         vr_frame_started = StartOpenXRFrameNow();
-        m_openxr_frame_owner = vr_frame_started ? OpenXRFrameOwner::Real :
-                                                 OpenXRFrameOwner::None;
-      }
-    }
-  }
-  if (false && !vr_frame_started && g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
-      VR::g_openxr)
-  {
-    // First frame or after a session restart — start the frame here.
-    if (VR::g_openxr->PollEvents() && VR::g_openxr->IsSessionRunning())
-    {
-      if (VR::g_openxr->WaitFrame() && VR::g_openxr->BeginFrame())
-      {
-        vr_frame_started = true;
-        if (VR::g_openxr->ShouldRender())
-        {
-          VR::g_openxr->LocateViews();
-          Core::System::GetInstance().GetGeometryShaderManager().SetProjectionChanged();
-        }
+        m_openxr_frame_prepared = vr_frame_started;
       }
     }
   }
 #endif
 #ifndef ENABLE_VR
-  constexpr bool is_replay_present = false;
   constexpr bool openxr_direct_to_hmd = false;
 #endif
 
   g_gfx->BeginUtilityDrawing();
-  const bool backbuffer_bound = !is_replay_present && !openxr_direct_to_hmd &&
-                                g_gfx->BindBackbuffer({{0.0f, 0.0f, 0.0f, 1.0f}});
+  const bool backbuffer_bound =
+      !openxr_direct_to_hmd && g_gfx->BindBackbuffer({{0.0f, 0.0f, 0.0f, 1.0f}});
 
   // Render the XFB to the screen.
   if (backbuffer_bound && m_xfb_entry)
@@ -1396,10 +1258,9 @@ void Presenter::Present(PresentInfo* present_info)
     RenderXFBToScreen(render_target_rc, m_xfb_entry->texture.get(), render_source_rc);
   }
 #ifdef ENABLE_VR
-  else if ((is_replay_present || openxr_direct_to_hmd) && vr_frame_started && m_xfb_entry &&
-           !IsOpenXRFlat())
+  else if (openxr_direct_to_hmd && vr_frame_started && m_xfb_entry && !IsOpenXRFlat())
   {
-    // Stereo direct-to-HMD/replay path. Flat mode blits at submit time
+    // Stereo direct-to-HMD path. Flat mode blits at submit time
     // (SubmitOpenXRFrameFromCurrentSource) instead, so it is skipped here.
     auto replay_target_rc = GetTargetRectangle();
     auto replay_source_rc = m_xfb_rect;
@@ -1431,74 +1292,19 @@ void Presenter::Present(PresentInfo* present_info)
       present_info->present_time_accuracy = PresentInfo::PresentTimeAccuracy::PresentInProgress;
     }
 
-    if (!is_replay_present && !openxr_direct_to_hmd)
+    if (!openxr_direct_to_hmd)
       g_gfx->PresentBackbuffer();
   }
 
 #ifdef ENABLE_VR
   if (vr_frame_started)
   {
+    // Pacing thread active: blits the eyes and publishes the layers for the thread to
+    // submit (and heartbeat). Legacy flow: blits and calls xrEndFrame inline.
     SubmitOpenXRFrameFromCurrentSource(m_xfb_entry ? m_xfb_entry->texture.get() : nullptr,
                                        m_xfb_rect, false);
-    m_openxr_frame_owner = OpenXRFrameOwner::None;
+    m_openxr_frame_prepared = false;
   }
-
-  // --- End current VR frame ---
-  // xrEndFrame must be called if (and only if) WaitFrame+BeginFrame succeeded.
-  if (false && vr_frame_started)
-  {
-    if (VR::IOpenXRSwapchain* sc = VR::g_openxr->GetSwapchain())
-      sc->SubmitFrame();
-    else
-      VR::g_openxr->EndFrame({});  // No swapchain yet — submit empty frame
-  }
-
-  // --- Immediately prepare the NEXT VR frame ---
-  // By calling WaitFrame+BeginFrame+LocateViews here, the entire game render time
-  // (until the next Present()) falls between BeginFrame and EndFrame.  SteamVR will
-  // see the real frame duration (~11-33ms) instead of just the blit time (~1ms),
-  // which gives the compositor accurate timing for ATW/ASW reprojection.
-  if (false)
-    m_openxr_frame_owner = OpenXRFrameOwner::None;
-  if (false && g_ActiveConfig.stereo_mode == StereoMode::OpenXR && VR::g_openxr)
-    m_openxr_frame_owner =
-        StartOpenXRFrameNow(&m_last_openxr_wait_frame_ms, &m_last_openxr_locate_views_ms) ?
-            OpenXRFrameOwner::Real :
-            OpenXRFrameOwner::None;
-  if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR && VR::g_openxr &&
-      !g_ActiveConfig.vr_dont_clear_screen && g_framebuffer_manager)
-  if (false)
-  {
-    g_gfx->SetAndClearFramebuffer(g_framebuffer_manager->GetEFBFramebuffer(),
-                                  {0.f, 0.f, 0.f, 0.f}, 0.f);
-  }
-  if (false && g_ActiveConfig.stereo_mode == StereoMode::OpenXR && VR::g_openxr)
-  {
-    if (VR::g_openxr->PollEvents() && VR::g_openxr->IsSessionRunning())
-    {
-      if (VR::g_openxr->WaitFrame() && VR::g_openxr->BeginFrame())
-      {
-        m_openxr_frame_owner = OpenXRFrameOwner::Real;
-        if (VR::g_openxr->ShouldRender())
-        {
-          VR::g_openxr->LocateViews();
-          Core::System::GetInstance().GetGeometryShaderManager().SetProjectionChanged();
-        }
-      }
-    }
-
-    // Clear the EFB so the next game frame starts on a clean slate.
-    // Without this, areas outside the virtual screen (or areas the game doesn't
-    // redraw) retain stale data from previous frames, causing visible trails.
-    // The "Don't Clear Screen" option disables this for games that rely on the
-    // EFB retaining data between frames (e.g. to fake 60fps from 30fps rendering).
-    if (!g_ActiveConfig.vr_dont_clear_screen && g_framebuffer_manager)
-    {
-      g_gfx->SetAndClearFramebuffer(g_framebuffer_manager->GetEFBFramebuffer(),
-                                    {0.f, 0.f, 0.f, 0.f}, 0.f);
-    }
-  }
-
 #endif
 
   if (m_xfb_entry)
@@ -1514,26 +1320,9 @@ void Presenter::Present(PresentInfo* present_info)
   g_gfx->EndUtilityDrawing();
 
 #ifdef ENABLE_VR
-  // Opcode replay is executed here, immediately after the real frame submit, so replay
-  // presents stay on the submit side instead of showing up as late-start FIFO work.
-
-  if (!is_replay_present)
-  {
-    const bool replay_submitted = MaybeRunOpenXROpcodeReplayFrames();
-    if (!replay_submitted)
-    {
-      PrepareNextOpenXRFrame();
-    }
-    else
-    {
-      VideoCommon::OpenXROpcodeReplay::EnableCaptureForNextFrame(
-          VR::g_openxr ? VR::g_openxr->GetNativeDisplayPeriodMs() : 0.0);
-    }
-  }
-  else
-  {
-    m_openxr_frame_owner = OpenXRFrameOwner::None;
-  }
+  // Refresh eye poses for the next game frame (and pre-begin the next XR frame on the
+  // legacy flow), then clear the EFB so the frame starts on a clean slate.
+  PrepareNextOpenXRFrame();
 #endif
 }
 

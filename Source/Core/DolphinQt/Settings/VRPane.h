@@ -15,7 +15,6 @@ class CullingCodeFinderWidget;
 class ShaderHunterWidget;
 template <typename T>
 class ConfigChoiceMap;
-enum class OpenXROpcodeReplayMode : int;
 enum class OpenXRMirrorView : int;
 enum class OpenXRReferenceSpaceMode : int;
 enum class OpenXRTrackingMode : int;
@@ -61,9 +60,7 @@ private:
   ConfigBool* m_disable_cpu_cull = nullptr;
   ConfigBool* m_ortho_scissor_fix = nullptr;
   ConfigBool* m_layered_palette_conversion_path = nullptr;
-  ConfigChoiceMap<OpenXROpcodeReplayMode>* m_opcode_replay_mode = nullptr;
   ConfigChoiceMap<OpenXRMirrorView>* m_mirror_view = nullptr;
-  ConfigChoiceMap<int>* m_replay_refresh_rate = nullptr;
   ConfigChoiceMap<int>* m_forced_vbi_frequency = nullptr;
   ConfigSlider* m_clear_efb_slider = nullptr;
   QLabel* m_clear_efb_value = nullptr;
@@ -83,6 +80,7 @@ private:
   QLabel* m_resolution_scale_value = nullptr;
   ConfigChoiceMap<int>* m_foveation_level = nullptr;
   ConfigBool* m_dynamic_foveation = nullptr;
+  ConfigBool* m_foveate_efb = nullptr;
   ConfigBool* m_auto_layer_spread = nullptr;
   ConfigFloatSlider* m_layer_offset = nullptr;
   QLabel* m_layer_offset_value = nullptr;

@@ -130,8 +130,6 @@ add_library(videocommon
   OnScreenUI.cpp
   OnScreenUI.h
   OnScreenUIKeyMap.h
-  OpenXROpcodeReplay.cpp
-  OpenXROpcodeReplay.h
   OpcodeDecoding.cpp
   OpcodeDecoding.h
   PerfQueryBase.cpp

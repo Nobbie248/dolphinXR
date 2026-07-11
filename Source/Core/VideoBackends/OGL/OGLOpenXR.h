@@ -60,6 +60,10 @@ public:
   OGLOpenXR(const OGLOpenXR&) = delete;
   OGLOpenXR& operator=(const OGLOpenXR&) = delete;
 
+  // GL frame calls must stay on the thread owning the GL context; keep the legacy
+  // inline Wait/Begin/EndFrame flow instead of the XR pacing thread.
+  bool SupportsDetachedFrameLoop() const override { return false; }
+
   // Full initialization: creates XrInstance + system, GL-bound XrSession,
   // reference space, and per-eye swapchains.
   // context must be the main GL context, current on the calling (GPU) thread.

@@ -348,17 +348,6 @@
         <item>1</item>
     </integer-array>
 
-    <string-array name="questOpcodeReplayEntries">
-        <item>@string/off</item>
-        <item>@string/quest_opcode_replay_60_to_90</item>
-        <item>@string/quest_opcode_replay_30_to_90</item>
-    </string-array>
-    <integer-array name="questOpcodeReplayValues">
-        <item>0</item>
-        <item>1</item>
-        <item>2</item>
-    </integer-array>
-
     <string-array name="questFoveationLevelEntries">
         <item>@string/off</item>
         <item>@string/quest_foveation_low</item>

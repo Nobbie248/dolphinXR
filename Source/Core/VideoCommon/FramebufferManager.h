@@ -73,6 +73,12 @@ public:
   FramebufferState GetEFBFramebufferState(bool with_coverage = false) const;
   FramebufferState GetEFBCoverageFramebufferState() const;
 
+  // True when the EFB render pass reads a fragment density map (Vulkan VR foveation).
+  // Latched on first EFB creation: cached GX pipelines are built against this render
+  // pass layout, so it must not flip mid-session (setting changes need a restart).
+  // The backend consults this when creating the EFB framebuffer to attach the map.
+  bool IsEFBFoveated() const { return m_efb_foveated.value_or(false); }
+
   // EFB coordinate conversion functions
   // Use this to convert a whole native EFB rect to backbuffer coordinates
   MathUtil::Rectangle<int> ConvertEFBRectangle(const MathUtil::Rectangle<int>& rc) const;
@@ -203,6 +209,9 @@ protected:
 
   float m_efb_scale = 1.0f;
   PixelFormat m_prev_efb_format;
+
+  // See IsEFBFoveated(). Latched by the first CreateEFBFramebuffer of the session.
+  std::optional<bool> m_efb_foveated;
 
   std::unique_ptr<AbstractTexture> m_efb_color_texture;
   std::unique_ptr<AbstractTexture> m_efb_convert_color_texture;

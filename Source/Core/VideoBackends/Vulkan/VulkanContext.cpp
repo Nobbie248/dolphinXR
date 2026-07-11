@@ -39,9 +39,30 @@ VulkanContext::PhysicalDeviceInfo::PhysicalDeviceInfo(VkPhysicalDevice device)
 
   if (apiVersion >= VK_API_VERSION_1_1)
   {
+    // Feature/property structs for EXT extensions may only be chained when the device
+    // advertises the extension.
+    bool has_fdm_extension = false;
+    {
+      u32 ext_count = 0;
+      if (vkEnumerateDeviceExtensionProperties(device, nullptr, &ext_count, nullptr) ==
+              VK_SUCCESS &&
+          ext_count > 0)
+      {
+        std::vector<VkExtensionProperties> exts(ext_count);
+        if (vkEnumerateDeviceExtensionProperties(device, nullptr, &ext_count, exts.data()) ==
+            VK_SUCCESS)
+        {
+          has_fdm_extension =
+              Common::Contains(exts, std::string_view{VK_EXT_FRAGMENT_DENSITY_MAP_EXTENSION_NAME},
+                               &VkExtensionProperties::extensionName);
+        }
+      }
+    }
+
     VkPhysicalDeviceSubgroupProperties properties_subgroup = {};
     VkPhysicalDeviceVulkan12Properties properties_vk12 = {};
     VkPhysicalDeviceMultiviewProperties properties_multiview = {};
+    VkPhysicalDeviceFragmentDensityMapPropertiesEXT properties_fdm = {};
     properties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
     properties2.pNext = nullptr;
     properties_subgroup.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
@@ -50,6 +71,13 @@ VulkanContext::PhysicalDeviceInfo::PhysicalDeviceInfo(VkPhysicalDevice device)
     properties_multiview.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_PROPERTIES;
     InsertIntoChain(&properties2, &properties_multiview);
 
+    if (has_fdm_extension)
+    {
+      properties_fdm.sType =
+          VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_PROPERTIES_EXT;
+      InsertIntoChain(&properties2, &properties_fdm);
+    }
+
     if (apiVersion >= VK_API_VERSION_1_2)
     {
       properties_vk12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES;
@@ -57,6 +85,12 @@ VulkanContext::PhysicalDeviceInfo::PhysicalDeviceInfo(VkPhysicalDevice device)
     }
 
     vkGetPhysicalDeviceProperties2(device, &properties2);
+
+    if (has_fdm_extension)
+    {
+      minFragmentDensityTexelSize = properties_fdm.minFragmentDensityTexelSize;
+      maxFragmentDensityTexelSize = properties_fdm.maxFragmentDensityTexelSize;
+    }
 
     if (apiVersion >= VK_API_VERSION_1_2)
     {
@@ -82,6 +116,7 @@ VulkanContext::PhysicalDeviceInfo::PhysicalDeviceInfo(VkPhysicalDevice device)
     VkPhysicalDeviceFeatures2 features2 = {};
     VkPhysicalDeviceMultiviewFeatures features_multiview = {};
     VkPhysicalDeviceTimelineSemaphoreFeatures features_timeline_semaphore = {};
+    VkPhysicalDeviceFragmentDensityMapFeaturesEXT features_fdm = {};
     features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
     features_multiview.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES;
     InsertIntoChain(&features2, &features_multiview);
@@ -91,9 +126,17 @@ VulkanContext::PhysicalDeviceInfo::PhysicalDeviceInfo(VkPhysicalDevice device)
           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES;
       InsertIntoChain(&features2, &features_timeline_semaphore);
     }
+    if (has_fdm_extension)
+    {
+      features_fdm.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_FEATURES_EXT;
+      InsertIntoChain(&features2, &features_fdm);
+    }
     vkGetPhysicalDeviceFeatures2(device, &features2);
     multiview = features_multiview.multiview != VK_FALSE && maxMultiviewViewCount >= 2;
     timelineSemaphore = features_timeline_semaphore.timelineSemaphore != VK_FALSE;
+    fragmentDensityMap = features_fdm.fragmentDensityMap != VK_FALSE;
+    fragmentDensityMapNonSubsampled =
+        features_fdm.fragmentDensityMapNonSubsampledImages != VK_FALSE;
   }
 
   memcpy(deviceName, properties.deviceName, sizeof(deviceName));
@@ -527,6 +570,10 @@ void VulkanContext::PopulateBackendInfoFeatures(BackendInfo* backend_info, VkPhy
   backend_info->bSupportsSSAA = info.sampleRateShading;
   backend_info->bSupportsLogicOp = info.logicOp;
   backend_info->bSupportsMultiview = info.multiview;
+  // EFB foveation renders the (non-subsampled) EFB through a fragment density map, and
+  // is only wired for the multiview EFB path.
+  backend_info->bSupportsVRFoveatedEFB =
+      info.multiview && info.fragmentDensityMap && info.fragmentDensityMapNonSubsampled;
   backend_info->max_fragment_dual_src_attachments = info.maxFragmentDualSrcAttachments;
 #if defined(_WIN32) || defined(ANDROID)
   // Windows desktop and Quest standalone (Adreno). Not MoltenVK — its framebuffer-fetch
@@ -903,22 +950,21 @@ bool VulkanContext::CreateDevice(VkSurfaceKHR surface, bool enable_validation_la
   const bool use_timeline_semaphore =
       m_device_info.timelineSemaphore &&
       Common::Contains(m_device_extensions, VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME);
-  // VR foveation: enable the base fragmentDensityMap feature when the extension made it
-  // into the device extension list and the device really supports the feature.
+  // VR foveation: enable the fragmentDensityMap feature when the extension made it into
+  // the device extension list and the device supports it. nonSubsampledImages is what
+  // lets a fragment density map drive render passes over ordinary images (the EFB);
+  // without it only the runtime's subsampled swapchain images can be foveated.
   VkPhysicalDeviceFragmentDensityMapFeaturesEXT fdm_features = {};
-  bool use_fragment_density_map = false;
-  if (m_device_info.apiVersion >= VK_API_VERSION_1_1 &&
-      Common::Contains(m_device_extensions, VK_EXT_FRAGMENT_DENSITY_MAP_EXTENSION_NAME))
+  const bool use_fragment_density_map =
+      m_device_info.fragmentDensityMap && m_device_info.apiVersion >= VK_API_VERSION_1_1 &&
+      Common::Contains(m_device_extensions, VK_EXT_FRAGMENT_DENSITY_MAP_EXTENSION_NAME);
+  if (use_fragment_density_map)
   {
-    VkPhysicalDeviceFeatures2 fdm_query = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
     fdm_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_FEATURES_EXT;
-    fdm_query.pNext = &fdm_features;
-    vkGetPhysicalDeviceFeatures2(m_physical_device, &fdm_query);
-    use_fragment_density_map = fdm_features.fragmentDensityMap == VK_TRUE;
-    // Only the base feature; we neither modify density maps mid-frame nor render to
-    // non-subsampled images (the runtime creates foveated swapchain images subsampled).
+    fdm_features.fragmentDensityMap = VK_TRUE;
     fdm_features.fragmentDensityMapDynamic = VK_FALSE;
-    fdm_features.fragmentDensityMapNonSubsampledImages = VK_FALSE;
+    fdm_features.fragmentDensityMapNonSubsampledImages =
+        m_device_info.fragmentDensityMapNonSubsampled ? VK_TRUE : VK_FALSE;
   }
   if (use_multiview || use_timeline_semaphore || use_fragment_density_map)
   {
@@ -944,7 +990,11 @@ bool VulkanContext::CreateDevice(VkSurfaceKHR surface, bool enable_validation_la
     {
       InsertIntoChain(&features2, &fdm_features);
       m_fragment_density_map_enabled = true;
-      INFO_LOG_FMT(VIDEO, "Vulkan: Enabling fragmentDensityMap feature for VR foveation.");
+      m_fdm_non_subsampled_enabled = fdm_features.fragmentDensityMapNonSubsampledImages == VK_TRUE;
+      INFO_LOG_FMT(VIDEO, "Vulkan: Enabling fragmentDensityMap feature for VR foveation "
+                          "(nonSubsampledImages: {}).",
+                   m_fdm_non_subsampled_enabled ? "yes - EFB foveation available" :
+                                                  "no - swapchain foveation only");
     }
     device_info.pNext = &features2;
     device_info.pEnabledFeatures = nullptr;

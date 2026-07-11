@@ -214,13 +214,11 @@ void VideoConfig::Refresh()
   vr_dont_clear_screen = Config::Get(Config::GFX_VR_DONT_CLEAR_SCREEN);
   vr_load_custom_shaders = Config::Get(Config::GFX_VR_LOAD_CUSTOM_SHADERS);
   vr_disable_cpu_cull = Config::Get(Config::GFX_VR_DISABLE_CPU_CULL);
-  vr_opcode_replay_mode = Config::Get(Config::GFX_VR_OPCODE_REPLAY);
   vr_mirror_view = Config::Get(Config::GFX_VR_MIRROR_VIEW);
   vr_reference_space_mode = Config::Get(Config::GFX_VR_REFERENCE_SPACE_MODE);
   vr_tracking_mode = Config::Get(Config::GFX_VR_TRACKING_MODE);
-  vr_opcode_replay_target_refresh_rate = Config::NormalizeVROpcodeReplayTargetRefreshRate(
-      Config::Get(Config::GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE));
   vr_use_openxr_play_space_center = Config::Get(Config::GFX_VR_USE_OPENXR_PLAY_SPACE_CENTER);
+  vr_use_xr_pacing_thread = Config::Get(Config::GFX_VR_USE_XR_PACING_THREAD);
   if (!Config::GetAsString(Config::GFX_VR_REFERENCE_SPACE_MODE.GetLocation()) &&
       vr_use_openxr_play_space_center)
   {
@@ -264,6 +262,7 @@ void VideoConfig::Refresh()
                                   Config::GFX_VR_FOVEATION_LEVEL_OFF,
                                   Config::GFX_VR_FOVEATION_LEVEL_MAX);
   vr_foveation_dynamic = Config::Get(Config::GFX_VR_FOVEATION_DYNAMIC);
+  vr_efb_foveation = Config::Get(Config::GFX_VR_EFB_FOVEATION);
   bEFBAccessEnable = Config::Get(Config::GFX_HACK_EFB_ACCESS_ENABLE);
   bEFBAccessDeferInvalidation = Config::Get(Config::GFX_HACK_EFB_DEFER_INVALIDATION);
   bBBoxEnable = Config::Get(Config::GFX_HACK_BBOX_ENABLE);

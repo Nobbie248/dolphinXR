@@ -65,6 +65,12 @@ public:
                              VkFormat additional_color_format = VK_FORMAT_UNDEFINED,
                              bool fragment_density_map = false);
 
+  // VR foveation: view of Dolphin's own fragment density map for the EFB render pass
+  // (as opposed to the runtime-owned maps attached to the OpenXR swapchains). Lazily
+  // (re)created when the EFB size/layer count or the FoveationLevel setting changes;
+  // contents are a static elliptical falloff. Returns VK_NULL_HANDLE on failure.
+  VkImageView GetEFBFragmentDensityMapView(u32 fb_width, u32 fb_height, u32 layers);
+
   // Pipeline cache. Used when creating pipelines for drivers to store compiled programs.
   VkPipelineCache GetPipelineCache() const { return m_pipeline_cache; }
 
@@ -90,6 +96,7 @@ private:
   bool LoadPipelineCache();
   bool ValidatePipelineCache(const u8* data, size_t data_length);
   void DestroyPipelineCache();
+  void DestroyEFBFragmentDensityMap();
 
   std::array<VkDescriptorSetLayout, NUM_DESCRIPTOR_SET_LAYOUTS> m_descriptor_set_layouts = {};
   std::array<VkPipelineLayout, NUM_PIPELINE_LAYOUTS> m_pipeline_layouts = {};
@@ -112,6 +119,16 @@ private:
   // pipeline cache
   VkPipelineCache m_pipeline_cache = VK_NULL_HANDLE;
   std::string m_pipeline_cache_filename;
+
+  // EFB fragment density map (VR foveation). The image/view are recreated when the key
+  // below changes; old objects are defer-destroyed (in-flight frames may reference them).
+  VkImage m_efb_fdm_image = VK_NULL_HANDLE;
+  VmaAllocation m_efb_fdm_alloc = VK_NULL_HANDLE;
+  VkImageView m_efb_fdm_view = VK_NULL_HANDLE;
+  u32 m_efb_fdm_fb_width = 0;
+  u32 m_efb_fdm_fb_height = 0;
+  u32 m_efb_fdm_layers = 0;
+  int m_efb_fdm_level = 0;
 };
 
 extern std::unique_ptr<ObjectCache> g_object_cache;

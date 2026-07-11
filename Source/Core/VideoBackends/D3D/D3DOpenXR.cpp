@@ -324,6 +324,13 @@ bool D3DOpenXR::SubmitFrame()
          static_cast<int32_t>(m_eye_swapchains[eye].height)}};
   }
 
+  if (VR::g_openxr->IsFrameThreadActive())
+  {
+    // The pacing thread owns xrEndFrame; hand it the rendered views (poses included).
+    VR::g_openxr->PublishFrame(m_projection_views, VR::g_openxr->GetProjectionLayerExtraFlags());
+    return true;
+  }
+
   m_projection_layer = {XR_TYPE_COMPOSITION_LAYER_PROJECTION};
   m_projection_layer.space = VR::g_openxr->GetReferenceSpace();
   m_projection_layer.viewCount = 2;

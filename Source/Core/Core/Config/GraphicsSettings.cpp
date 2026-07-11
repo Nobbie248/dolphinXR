@@ -205,8 +205,6 @@ const Info<bool> GFX_VR_LOAD_CUSTOM_SHADERS{{System::GFX, "VR", "LoadCustomShade
 const Info<bool> GFX_VR_ENABLE_OPENXR_CONFIG_SCENE{{System::GFX, "VR", "EnableOpenXRConfigScene"},
                                                    true};
 const Info<bool> GFX_VR_DISABLE_CPU_CULL{{System::GFX, "VR", "DisableCPUCull"}, false};
-const Info<OpenXROpcodeReplayMode> GFX_VR_OPCODE_REPLAY{
-    {System::GFX, "VR", "OpcodeReplay"}, OpenXROpcodeReplayMode::Off};
 const Info<OpenXRMirrorView> GFX_VR_MIRROR_VIEW{{System::GFX, "VR", "MirrorView"},
                                                 OpenXRMirrorView::BothEyes};
 const Info<OpenXRReferenceSpaceMode> GFX_VR_REFERENCE_SPACE_MODE{
@@ -215,9 +213,7 @@ const Info<OpenXRTrackingMode> GFX_VR_TRACKING_MODE{{System::GFX, "VR", "Trackin
                                                     OpenXRTrackingMode::Full6DoF};
 const Info<bool> GFX_VR_USE_OPENXR_PLAY_SPACE_CENTER{
     {System::GFX, "VR", "UseOpenXRPlaySpaceCenter"}, false};
-const Info<int> GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE{
-    {System::GFX, "VR", "OpcodeReplayTargetRefreshRate"},
-    GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_AUTO};
+const Info<bool> GFX_VR_USE_XR_PACING_THREAD{{System::GFX, "VR", "UseXRPacingThread"}, true};
 #if defined(__ANDROID__) && defined(ENABLE_VR)
 constexpr bool DEFAULT_VR_ANDROID_DIRECT_TO_HMD = true;
 constexpr bool DEFAULT_IMMEDIATE_XFB = true;
@@ -271,6 +267,13 @@ const Info<float> GFX_VR_RESOLUTION_SCALE{{System::GFX, "VR", "ResolutionScale"}
 const Info<int> GFX_VR_FOVEATION_LEVEL{{System::GFX, "VR", "FoveationLevel"},
                                        DEFAULT_VR_FOVEATION_LEVEL};
 const Info<bool> GFX_VR_FOVEATION_DYNAMIC{{System::GFX, "VR", "DynamicFoveation"}, true};
+// Foveate the EFB (game render) pass too, not just the eye swapchains. Off by default:
+// attaching a fragment density map forces Adreno out of direct rendering into binned
+// mode, so games that interrupt the EFB pass with many EFB copies per frame (e.g. Mario
+// Kart Wii's bloom chain, ~20 splits/frame) pay a full GMEM load/store per interruption
+// — measured as a net GPU-time LOSS despite the fragment savings. Only worth enabling
+// per-game where the EFB pass runs long and uninterrupted.
+const Info<bool> GFX_VR_EFB_FOVEATION{{System::GFX, "VR", "FoveateEFB"}, false};
 // Graphics.Hacks
 
 const Info<bool> GFX_HACK_EFB_ACCESS_ENABLE{{System::GFX, "Hacks", "EFBAccessEnable"}, false};

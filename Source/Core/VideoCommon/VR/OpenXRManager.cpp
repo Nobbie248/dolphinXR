@@ -13,9 +13,11 @@
 #endif
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <thread>
 #if defined(ANDROID)
 #include <android/log.h>
 #include <mutex>
@@ -27,6 +29,8 @@
 #include "Common/Config/Config.h"
 #include "Common/Logging/Log.h"
 #include "Common/StringUtil.h"
+#include "Common/Thread.h"
+#include "Common/Timer.h"
 #include "Common/VR/OpenXRInputState.h"
 #include "Core/Config/GraphicsSettings.h"
 #include "VideoCommon/OnScreenDisplay.h"
@@ -440,6 +444,7 @@ OpenXRManager::OpenXRManager() = default;
 
 OpenXRManager::~OpenXRManager()
 {
+  StopFrameThread();
   DestroyInputActions();
   ResetInputActionsState();
   DestroyFBPassthrough();
@@ -589,17 +594,6 @@ bool OpenXRManager::CreateInstance(const std::vector<const char*>& extra_extensi
       m_xrGetDisplayRefreshRateFB = nullptr;
     }
 
-    refresh_rate_result = xrGetInstanceProcAddr(
-        m_instance, "xrRequestDisplayRefreshRateFB",
-        reinterpret_cast<PFN_xrVoidFunction*>(&m_xrRequestDisplayRefreshRateFB));
-    if (XR_FAILED(refresh_rate_result) || m_xrRequestDisplayRefreshRateFB == nullptr)
-    {
-      WARN_LOG_FMT(OPENXR,
-                   "OpenXR: XR_FB_display_refresh_rate enabled but "
-                   "xrRequestDisplayRefreshRateFB could not be loaded ({}).",
-                   static_cast<int>(refresh_rate_result));
-      m_xrRequestDisplayRefreshRateFB = nullptr;
-    }
     else
     {
       INFO_LOG_FMT(OPENXR, "OpenXR: XR_FB_display_refresh_rate enabled.");
@@ -985,7 +979,6 @@ void OpenXRManager::SetSession(XrSession session)
 
   if (m_session == XR_NULL_HANDLE)
   {
-    m_requested_display_refresh_rate_hz = 0.0f;
     DestroyInputActions();
     ResetInputActionsState();
     return;
@@ -1003,6 +996,203 @@ void OpenXRManager::SetSession(XrSession session)
     WARN_LOG_FMT(OPENXR, "OpenXR: Controller input actions unavailable.");
     ResetInputActionsState();
   }
+}
+
+void OpenXRManager::SetSwapchain(IOpenXRSwapchain* swapchain)
+{
+  if (swapchain == nullptr)
+  {
+    // Stop before the backend destroys the swapchains: the pacing thread's heartbeat
+    // layers reference swapchain handles, and EndFrame takes the graphics queue lock.
+    StopFrameThread();
+    m_swapchain = nullptr;
+    return;
+  }
+
+  m_swapchain = swapchain;
+  if (!swapchain->SupportsDetachedFrameLoop())
+  {
+    INFO_LOG_FMT(OPENXR, "OpenXR: backend requires the inline frame flow (no pacing thread).");
+  }
+  else if (Config::Get(Config::GFX_VR_USE_XR_PACING_THREAD))
+  {
+    StartFrameThread();
+  }
+  else
+  {
+    INFO_LOG_FMT(OPENXR, "OpenXR: XR pacing thread disabled by config (legacy frame flow).");
+  }
+}
+
+void OpenXRManager::StartFrameThread()
+{
+  if (m_frame_thread.joinable())
+    return;
+
+  m_frame_thread_should_exit.store(false, std::memory_order_release);
+  m_frame_thread_running.store(true, std::memory_order_release);
+  m_frame_thread = std::thread(&OpenXRManager::FrameThreadLoop, this);
+  INFO_LOG_FMT(OPENXR, "OpenXR: XR pacing thread started.");
+}
+
+void OpenXRManager::StopFrameThread()
+{
+  if (!m_frame_thread.joinable())
+    return;
+
+  m_frame_thread_should_exit.store(true, std::memory_order_release);
+  {
+    std::lock_guard<std::mutex> lock(m_publish_mutex);
+    m_publish_cv.notify_all();
+  }
+  m_frame_thread.join();
+  m_frame_thread_running.store(false, std::memory_order_release);
+  INFO_LOG_FMT(OPENXR, "OpenXR: XR pacing thread stopped.");
+}
+
+void OpenXRManager::PublishFrame(const std::array<XrCompositionLayerProjectionView, 2>& views,
+                                 XrCompositionLayerFlags layer_flags)
+{
+  std::lock_guard<std::mutex> lock(m_publish_mutex);
+  m_published_frame.is_quad = false;
+  m_published_frame.views = views;
+  m_published_frame.layer_flags = layer_flags;
+  m_publish_serial++;
+  m_publish_cv.notify_all();
+}
+
+void OpenXRManager::PublishQuadFrame(const XrCompositionLayerQuad& quad)
+{
+  std::lock_guard<std::mutex> lock(m_publish_mutex);
+  m_published_frame.is_quad = true;
+  m_published_frame.quad = quad;
+  m_publish_serial++;
+  m_publish_cv.notify_all();
+}
+
+void OpenXRManager::FrameThreadLoop()
+{
+  Common::SetCurrentThreadName("OpenXR Pacing");
+#if defined(ANDROID)
+  // Meta's runtime applies big.LITTLE pinning / DVFS escalation to tagged threads.
+  RegisterCurrentAndroidThread(AndroidThreadType::RendererWorker, "OpenXR Pacing");
+#endif
+
+  // Last content handed over by the game; re-submitted every display period while no
+  // fresh frame arrives ("heartbeat"). The compositor reprojects it with the current
+  // head pose (ATW), which is what makes sub-refresh-rate games feel smooth — the job
+  // the old Opcode Replay re-rendering used to do, at zero GPU cost.
+  PublishedXRFrame last_frame;
+  bool have_frame = false;
+  uint64_t consumed_serial = 0;
+
+  // Rolling 5s instrumentation window.
+  u64 stats_start_us = Common::Timer::NowUs();
+  u32 stat_cycles = 0, stat_fresh = 0, stat_repeat = 0, stat_empty = 0;
+  double stat_wait_ms = 0.0, stat_end_ms = 0.0, stat_content_wait_ms = 0.0;
+
+  while (!m_frame_thread_should_exit.load(std::memory_order_acquire))
+  {
+    if (!PollEvents())
+      break;
+
+    if (!m_session_running.load(std::memory_order_acquire))
+    {
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+      continue;
+    }
+
+    const u64 t0 = Common::Timer::NowUs();
+    if (!WaitFrame())
+    {
+      std::this_thread::sleep_for(std::chrono::milliseconds(2));
+      continue;
+    }
+    const u64 t1 = Common::Timer::NowUs();
+    if (!BeginFrame())
+      continue;
+
+    const bool should_render = m_should_render_snapshot.load(std::memory_order_acquire);
+    const int64_t period_ns = m_predicted_display_period_snapshot.load(std::memory_order_acquire);
+
+    // Give the game a short window to hand over a fresh frame before we fall back to
+    // re-submitting the previous one. Half a display period, clamped to 2–8 ms: long
+    // enough to catch a frame finishing "right now", short enough to never miss the
+    // compositor deadline.
+    const u64 t2 = Common::Timer::NowUs();
+    bool fresh = false;
+    if (should_render)
+    {
+      const auto budget = std::chrono::nanoseconds(
+          std::clamp<int64_t>(period_ns / 2, 2'000'000, 8'000'000));
+      std::unique_lock<std::mutex> lock(m_publish_mutex);
+      m_publish_cv.wait_for(lock, budget, [&] {
+        return m_publish_serial != consumed_serial ||
+               m_frame_thread_should_exit.load(std::memory_order_acquire);
+      });
+      if (m_publish_serial != consumed_serial)
+      {
+        last_frame = m_published_frame;
+        consumed_serial = m_publish_serial;
+        have_frame = true;
+        fresh = true;
+      }
+    }
+    const u64 t3 = Common::Timer::NowUs();
+
+    // Build the layer stack from the newest content we have. Passthrough layer
+    // prepending, blend mode, and the graphics queue lock live in EndFrameDetached.
+    XrCompositionLayerProjection projection_layer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
+    std::vector<XrCompositionLayerBaseHeader*> layers;
+    const bool submit_content = should_render && have_frame;
+    if (submit_content)
+    {
+      if (last_frame.is_quad)
+      {
+        layers.push_back(reinterpret_cast<XrCompositionLayerBaseHeader*>(&last_frame.quad));
+      }
+      else
+      {
+        projection_layer.layerFlags = last_frame.layer_flags;
+        projection_layer.space = m_reference_space;
+        projection_layer.viewCount = 2;
+        projection_layer.views = last_frame.views.data();
+        layers.push_back(reinterpret_cast<XrCompositionLayerBaseHeader*>(&projection_layer));
+      }
+    }
+
+    EndFrameDetached(m_frame_state.predictedDisplayTime, GetActiveBlendMode(), submit_content,
+                     layers);
+    const u64 t4 = Common::Timer::NowUs();
+
+    stat_cycles++;
+    if (fresh)
+      stat_fresh++;
+    else if (submit_content)
+      stat_repeat++;
+    else
+      stat_empty++;
+    stat_wait_ms += (t1 - t0) / 1000.0;
+    stat_content_wait_ms += (t3 - t2) / 1000.0;
+    stat_end_ms += (t4 - t3) / 1000.0;
+
+    const u64 now_us = Common::Timer::NowUs();
+    if (now_us - stats_start_us >= 5'000'000 && stat_cycles > 0)
+    {
+      INFO_LOG_FMT(OPENXR,
+                   "XRPacing: {:.1f} cycles/s (fresh={} repeat={} empty={}) | per cycle: "
+                   "xrWaitFrame={:.2f}ms content_wait={:.2f}ms xrEndFrame={:.2f}ms",
+                   stat_cycles / ((now_us - stats_start_us) / 1'000'000.0), stat_fresh,
+                   stat_repeat, stat_empty, stat_wait_ms / stat_cycles,
+                   stat_content_wait_ms / stat_cycles, stat_end_ms / stat_cycles);
+      stats_start_us = now_us;
+      stat_cycles = stat_fresh = stat_repeat = stat_empty = 0;
+      stat_wait_ms = stat_end_ms = stat_content_wait_ms = 0.0;
+    }
+  }
+
+  m_frame_thread_running.store(false, std::memory_order_release);
+  INFO_LOG_FMT(OPENXR, "OpenXR: XR pacing thread exiting.");
 }
 
 void OpenXRManager::CaptureStartupDisplayRefreshRateFromExtension()
@@ -1034,56 +1224,6 @@ void OpenXRManager::SetStartupDisplayRefreshRate(float refresh_rate_hz, std::str
   INFO_LOG_FMT(OPENXR, "OpenXR: Startup display refresh rate is {:.2f} Hz from {}.",
                m_startup_display_refresh_rate_hz, source);
   Config::OnConfigChanged();
-}
-
-void OpenXRManager::RequestConfiguredDisplayRefreshRate()
-{
-  if (g_ActiveConfig.vr_opcode_replay_mode == OpenXROpcodeReplayMode::Off)
-  {
-    m_requested_display_refresh_rate_hz = 0.0f;
-    return;
-  }
-
-  const int configured_refresh_rate = Config::NormalizeVROpcodeReplayTargetRefreshRate(
-      g_ActiveConfig.vr_opcode_replay_target_refresh_rate);
-  if (configured_refresh_rate == Config::GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_AUTO)
-  {
-    m_requested_display_refresh_rate_hz = 0.0f;
-    return;
-  }
-
-  if (m_session == XR_NULL_HANDLE || !m_session_running)
-    return;
-
-  const float target_refresh_rate_hz = static_cast<float>(configured_refresh_rate);
-  if (m_requested_display_refresh_rate_hz == target_refresh_rate_hz)
-    return;
-
-  if (m_xrRequestDisplayRefreshRateFB == nullptr)
-  {
-    if (!m_output_refresh_rate_unavailable_logged)
-    {
-      WARN_LOG_FMT(OPENXR,
-                   "OpenXR: Opcode Replay target refresh rate is set to {:.0f} Hz, but this "
-                   "runtime does not expose xrRequestDisplayRefreshRateFB.",
-                   target_refresh_rate_hz);
-      m_output_refresh_rate_unavailable_logged = true;
-    }
-    return;
-  }
-
-  const XrResult result = m_xrRequestDisplayRefreshRateFB(m_session, target_refresh_rate_hz);
-  m_requested_display_refresh_rate_hz = target_refresh_rate_hz;
-  if (XR_FAILED(result))
-  {
-    WARN_LOG_FMT(OPENXR,
-                 "OpenXR: xrRequestDisplayRefreshRateFB({:.0f} Hz) failed ({}).",
-                 target_refresh_rate_hz, static_cast<int>(result));
-    return;
-  }
-
-  INFO_LOG_FMT(OPENXR, "OpenXR: Requested {:.0f} Hz output refresh rate for Opcode Replay.",
-               target_refresh_rate_hz);
 }
 
 bool OpenXRManager::InitializeInputActions()
@@ -1756,7 +1896,7 @@ void OpenXRManager::UpdateInputActions()
   {
     INFO_LOG_FMT(OPENXR,
                  "OpenXR input: sync={}, focused={}, left_connected={}, right_connected={}",
-                 static_cast<int>(sync_result), m_session_focused,
+                 static_cast<int>(sync_result), m_session_focused.load(),
                  controllers[0].connected, controllers[1].connected);
   }
 
@@ -1889,7 +2029,6 @@ void OpenXRManager::HandleSessionStateChange(XrSessionState new_state)
     {
       m_session_running = true;
       INFO_LOG_FMT(OPENXR, "OpenXR: Session running.");
-      RequestConfiguredDisplayRefreshRate();
 #if defined(ANDROID)
       // Quest 3/3S expose the extra sustained CPU level through the manifest
       // CPU-for-GPU trade hint. Request sustained high when the session starts,
@@ -1913,7 +2052,6 @@ void OpenXRManager::HandleSessionStateChange(XrSessionState new_state)
 
   case XR_SESSION_STATE_FOCUSED:
     m_session_focused = true;
-    RequestConfiguredDisplayRefreshRate();
     INFO_LOG_FMT(OPENXR, "OpenXR: Session FOCUSED — controller input is now active.");
 #if defined(ANDROID)
     // Meta Quest may ignore perf settings before the session is FOCUSED. Re-issue
@@ -1926,7 +2064,6 @@ void OpenXRManager::HandleSessionStateChange(XrSessionState new_state)
     xrEndSession(m_session);
     m_session_running = false;
     m_session_focused = false;
-    m_requested_display_refresh_rate_hz = 0.0f;
     ResetInputActionsState();
     INFO_LOG_FMT(OPENXR, "OpenXR: Session stopped.");
     break;
@@ -1948,7 +2085,15 @@ bool OpenXRManager::WaitFrame()
   XrFrameWaitInfo wait_info{XR_TYPE_FRAME_WAIT_INFO};
   m_frame_state = {XR_TYPE_FRAME_STATE};
   XR_CHECK(xrWaitFrame(m_session, &wait_info, &m_frame_state));
-  RequestConfiguredDisplayRefreshRate();
+
+  // Cross-thread snapshots: LocateViews/blit gating on the video thread read these
+  // while the pacing thread owns m_frame_state itself.
+  m_predicted_display_time_snapshot.store(m_frame_state.predictedDisplayTime,
+                                          std::memory_order_release);
+  m_predicted_display_period_snapshot.store(m_frame_state.predictedDisplayPeriod,
+                                            std::memory_order_release);
+  m_should_render_snapshot.store(m_frame_state.shouldRender == XR_TRUE,
+                                 std::memory_order_release);
 
   if (m_startup_display_refresh_rate_hz <= 0.0f && m_frame_state.predictedDisplayPeriod > 0)
   {
@@ -1967,10 +2112,9 @@ bool OpenXRManager::WaitFrame()
     const double delta_ms = static_cast<double>(delta) * ns_to_ms;
     if (delta_ms > 0.5 && delta_ms < 50.0)
     {
-      if (m_estimated_display_period_ms <= 0.0)
-        m_estimated_display_period_ms = delta_ms;
-      else
-        m_estimated_display_period_ms = (m_estimated_display_period_ms * 0.75) + (delta_ms * 0.25);
+      const double prev = m_estimated_display_period_ms.load(std::memory_order_relaxed);
+      m_estimated_display_period_ms.store(
+          prev <= 0.0 ? delta_ms : (prev * 0.75) + (delta_ms * 0.25), std::memory_order_release);
     }
   }
 
@@ -2195,9 +2339,20 @@ bool OpenXRManager::EndFrameDetached(XrTime display_time,
 
 bool OpenXRManager::LocateViews()
 {
+  // Runs on the video/emu thread. With the pacing thread active, m_frame_state belongs
+  // to that thread — use the cross-thread snapshot instead, one display period ahead
+  // (the frame being rendered now will reach the compositor no earlier than that).
+  const XrTime snapshot_time = m_predicted_display_time_snapshot.load(std::memory_order_acquire);
+  if (snapshot_time == 0)
+    return false;  // No xrWaitFrame yet this session.
+  const XrTime display_time =
+      IsFrameThreadActive() ?
+          snapshot_time + m_predicted_display_period_snapshot.load(std::memory_order_acquire) :
+          snapshot_time;
+
   XrViewLocateInfo locate_info{XR_TYPE_VIEW_LOCATE_INFO};
   locate_info.viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
-  locate_info.displayTime = m_frame_state.predictedDisplayTime;
+  locate_info.displayTime = display_time;
   locate_info.space = m_reference_space;
 
   XrViewState view_state{XR_TYPE_VIEW_STATE};
@@ -2311,7 +2466,7 @@ XrPosef OpenXRManager::GetFlatScreenPose() const
 bool OpenXRManager::SubmitFlatQuadFrame(XrSwapchain swapchain, uint32_t width, uint32_t height)
 {
   if (swapchain == XR_NULL_HANDLE || width == 0 || height == 0)
-    return EndFrame({});
+    return IsFrameThreadActive() ? true : EndFrame({});
 
   const float height_m = g_ActiveConfig.vr_screen_size;
   const float aspect =
@@ -2328,6 +2483,12 @@ bool OpenXRManager::SubmitFlatQuadFrame(XrSwapchain swapchain, uint32_t width, u
   m_flat_quad_layer.subImage.imageRect.offset = {0, 0};
   m_flat_quad_layer.subImage.imageRect.extent = {static_cast<int32_t>(width),
                                                  static_cast<int32_t>(height)};
+
+  if (IsFrameThreadActive())
+  {
+    PublishQuadFrame(m_flat_quad_layer);
+    return true;
+  }
 
   const std::vector<XrCompositionLayerBaseHeader*> layers = {
       reinterpret_cast<XrCompositionLayerBaseHeader*>(&m_flat_quad_layer)};

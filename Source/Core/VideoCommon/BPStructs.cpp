@@ -27,7 +27,6 @@
 #include "VideoCommon/Fifo.h"
 #include "VideoCommon/FramebufferManager.h"
 #include "VideoCommon/GeometryShaderManager.h"
-#include "VideoCommon/OpenXROpcodeReplay.h"
 #include "VideoCommon/OpcodeDecoding.h"
 #include "VideoCommon/PerfQueryBase.h"
 #include "VideoCommon/PixelEngine.h"
@@ -354,11 +353,7 @@ static void BPWritten(PixelShaderManager& pixel_shader_manager, XFStateManager& 
       // render multiple sub-frames and arrange the XFB copies in next to each-other in main memory
       // so they form a single completed XFB.
       // See https://dolphin-emu.org/blog/2017/11/19/hybridxfb/ for examples and more detail.
-      if (!VideoCommon::OpenXROpcodeReplay::IsReplaying())
-      {
-        VideoCommon::OpenXROpcodeReplay::NotifyFrameBoundary();
-        system.GetVideoEvents().after_frame_event.Trigger(system);
-      }
+      system.GetVideoEvents().after_frame_event.Trigger(system);
 
       // Note: Theoretically, in the future we could track the VI configuration and try to detect
       //       when an XFB is the last XFB copy of a frame. Not only would we get a clean "end of
@@ -366,12 +361,7 @@ static void BPWritten(PixelShaderManager& pixel_shader_manager, XFStateManager& 
       //       Might also clean up some issues with games doing XFB copies they don't intend to
       //       display.
 
-      if (VideoCommon::OpenXROpcodeReplay::IsReplaying())
-      {
-        VideoCommon::OpenXROpcodeReplay::RecordReplayImmediateSwap(destAddr, destStride / 2,
-                                                                   destStride, height, true);
-      }
-      else if (g_ActiveConfig.bImmediateXFB)
+      if (g_ActiveConfig.bImmediateXFB)
       {
         // below div two to convert from bytes to pixels - it expects width, not stride
         g_presenter->ImmediateSwap(destAddr, destStride / 2, destStride, height);
@@ -393,8 +383,7 @@ static void BPWritten(PixelShaderManager& pixel_shader_manager, XFStateManager& 
       // Must run for BOTH the ImmediateXFB and non-ImmediateXFB paths (games
       // like Zack & Wiki use ImmediateXFB; without this firing the GS pose
       // cache never gets invalidated and head tracking locks).
-      if (!VideoCommon::OpenXROpcodeReplay::IsReplaying() &&
-          g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
+      if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
           g_ActiveConfig.vr_lock_head_pose && VR::g_openxr &&
           VR::g_openxr->IsSessionRunning() && VR::g_openxr->ShouldRender())
       {

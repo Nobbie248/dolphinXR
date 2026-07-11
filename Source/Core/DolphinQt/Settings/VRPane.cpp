@@ -237,31 +237,8 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
         QString::asprintf("%.2f", m_head_locked_curvature->GetValue()));
   });
 
-  m_opcode_replay_mode = new ConfigChoiceMap<OpenXROpcodeReplayMode>(
-      {{tr("Off"), OpenXROpcodeReplayMode::Off},
-       {tr("25 Hz Input"), OpenXROpcodeReplayMode::Input25Hz},
-       {tr("30 Hz Input"), OpenXROpcodeReplayMode::Input30Hz},
-       {tr("50 Hz Input"), OpenXROpcodeReplayMode::Input50Hz},
-       {tr("60 Hz Input"), OpenXROpcodeReplayMode::Input60Hz}},
-      Config::GFX_VR_OPCODE_REPLAY);
-  framerate_layout->addWidget(new QLabel(tr("Opcode Replay Input:")), 0, 0);
-  framerate_layout->addWidget(m_opcode_replay_mode, 0, 1, 1, 2);
-
-  m_replay_refresh_rate = new ConfigChoiceMap<int>(
-      {{tr("Auto"), Config::GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_AUTO},
-       {tr("72 Hz"), Config::GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_72},
-       {tr("90 Hz"), Config::GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_90},
-       {tr("120 Hz"), Config::GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE_120}},
-      Config::GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE);
-  framerate_layout->addWidget(new QLabel(tr("Replay Refresh Rate:")), 1, 0);
-  framerate_layout->addWidget(m_replay_refresh_rate, 1, 1, 1, 2);
-  auto update_replay_refresh_rate_enabled = [this] {
-    m_replay_refresh_rate->setEnabled(m_opcode_replay_mode->currentIndex() > 0);
-  };
-  update_replay_refresh_rate_enabled();
-  connect(m_opcode_replay_mode, &QComboBox::currentIndexChanged, this,
-          update_replay_refresh_rate_enabled);
-
+  // Sub-refresh-rate games are paced by the XR pacing thread, which re-submits the
+  // last frame at HMD cadence for ATW reprojection (replaced the legacy Opcode Replay).
   m_forced_vbi_frequency = new ConfigChoiceMap<int>(
       {{tr("Auto"), Config::GFX_VR_FORCED_VBI_FREQUENCY_AUTO},
        {tr("Off"), Config::GFX_VR_FORCED_VBI_FREQUENCY_OFF},
@@ -334,6 +311,14 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   rendering_layout->addWidget(new QLabel(tr("Foveated Rendering:")), 3, 0);
   rendering_layout->addWidget(m_foveation_level, 3, 1);
   rendering_layout->addWidget(m_dynamic_foveation, 3, 2);
+
+  m_foveate_efb = new ConfigBool(tr("Foveate Game Render (EFB)"), Config::GFX_VR_EFB_FOVEATION);
+  m_foveate_efb->setToolTip(
+      tr("Applies foveation to the game's own render pass, not just the eye buffers. Helps "
+         "games with long uninterrupted render passes, but hurts games that interrupt "
+         "rendering with many EFB copies per frame (it forces tiled GPUs out of direct "
+         "rendering mode). Leave off unless a specific game benefits."));
+  rendering_layout->addWidget(m_foveate_efb, 4, 1, 1, 2);
 
   // Auto Layer Spread
   m_auto_layer_spread =
@@ -674,26 +659,6 @@ void VRPane::AddDescriptions()
       "<br><br>This may fix missing geometry in some games at the cost of a small performance hit."
       "<br><br>This only affects Dolphin's CPU culling optimization. It does not override "
       "the game's own backface culling state.");
-  static constexpr char TR_OPCODE_REPLAY_DESCRIPTION[] = QT_TR_NOOP(
-      "Selects the expected input cadence for Opcode Replay."
-      "<br><br>25 Hz and 50 Hz Input are intended for PAL games. 30 Hz and 60 Hz Input are "
-      "intended for NTSC games."
-      "<br><br>Opcode Replay submits extra synthetic OpenXR frames between real emulation frames "
-      "to better match the selected Replay Refresh Rate."
-      "<br><br>This only affects OpenXR HMD output. The desktop mirror stays at the real game "
-      "frame cadence."
-      "<br><br><dolphin_emphasis>If unsure, leave this set to Off.</dolphin_emphasis>");
-  static constexpr char TR_REPLAY_REFRESH_RATE_DESCRIPTION[] = QT_TR_NOOP(
-      "Selects the headset refresh rate target for Opcode Replay."
-      "<br><br>Auto uses the current HMD refresh rate, choosing the closest supported value: "
-      "72, 90, or 120 Hz."
-      "<br><br>For explicit 72 Hz, 90 Hz, and 120 Hz selections, Dolphin requests that OpenXR "
-      "display refresh rate from the runtime when Opcode Replay is enabled. Replay only arms "
-      "when the active OpenXR display period matches the selected target."
-      "<br><br>This covers 25/30/50/60 Hz input to 72/90/120 Hz replay targets."
-      "<br><br>If the runtime does not support display refresh requests, Dolphin logs a warning "
-      "and continues using the current headset refresh rate."
-      "<br><br><dolphin_emphasis>If unsure, use Auto.</dolphin_emphasis>");
   static constexpr char TR_MIRROR_VIEW_DESCRIPTION[] = QT_TR_NOOP(
       "Selects what the desktop render window shows while OpenXR is active."
       "<br><br>Both Eyes shows the current side-by-side mirror. Left Eye and Right Eye fill the "
@@ -859,9 +824,7 @@ void VRPane::AddDescriptions()
   m_head_locked_curvature->SetDescription(tr(TR_HEAD_LOCKED_CURVATURE_DESCRIPTION));
   m_dont_clear_screen->SetDescription(tr(TR_DONT_CLEAR_SCREEN_DESCRIPTION));
   m_disable_cpu_cull->SetDescription(tr(TR_DISABLE_CPU_CULL_DESCRIPTION));
-  m_opcode_replay_mode->SetDescription(tr(TR_OPCODE_REPLAY_DESCRIPTION));
   m_mirror_view->SetDescription(tr(TR_MIRROR_VIEW_DESCRIPTION));
-  m_replay_refresh_rate->SetDescription(tr(TR_REPLAY_REFRESH_RATE_DESCRIPTION));
   m_forced_vbi_frequency->SetDescription(tr(TR_FORCED_VBI_FREQUENCY_DESCRIPTION));
   m_clear_efb_slider->SetDescription(tr(TR_CLEAR_EFB_COPIES_DESCRIPTION));
   m_remove_bars->SetDescription(tr(TR_REMOVE_BARS_DESCRIPTION));
@@ -927,13 +890,8 @@ void VRPane::ResetGeneralSettings()
                            Config::GFX_VR_SCREEN_SIZE.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_HEAD_LOCKED_CURVATURE,
                            Config::GFX_VR_HEAD_LOCKED_CURVATURE.GetDefaultValue());
-  Config::SetBaseOrCurrent(Config::GFX_VR_OPCODE_REPLAY,
-                           Config::GFX_VR_OPCODE_REPLAY.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_MIRROR_VIEW,
                            Config::GFX_VR_MIRROR_VIEW.GetDefaultValue());
-  Config::SetBaseOrCurrent(Config::GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE,
-                           Config::GFX_VR_OPCODE_REPLAY_TARGET_REFRESH_RATE.GetDefaultValue());
-  m_replay_refresh_rate->setEnabled(false);
   Config::SetBaseOrCurrent(Config::GFX_VR_FORCED_VBI_FREQUENCY,
                            Config::GFX_VR_FORCED_VBI_FREQUENCY.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_AUTO_VBI_FROM_HMD,
