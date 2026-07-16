@@ -215,6 +215,15 @@ const Info<bool> GFX_VR_USE_OPENXR_PLAY_SPACE_CENTER{
     {System::GFX, "VR", "UseOpenXRPlaySpaceCenter"}, false};
 const Info<bool> GFX_VR_USE_XR_PACING_THREAD{{System::GFX, "VR", "UseXRPacingThread"}, true};
 #if defined(__ANDROID__) && defined(ENABLE_VR)
+// Standalone runtimes have no automatic motion smoothing, so fill every compositor slot.
+constexpr bool DEFAULT_VR_EAGER_HEARTBEAT = true;
+#else
+// PC runtimes (SteamVR, Virtual Desktop, Meta Link) have SSW/ASW; pace to the game.
+constexpr bool DEFAULT_VR_EAGER_HEARTBEAT = false;
+#endif
+const Info<bool> GFX_VR_EAGER_HEARTBEAT{{System::GFX, "VR", "EagerHeartbeat"},
+                                        DEFAULT_VR_EAGER_HEARTBEAT};
+#if defined(__ANDROID__) && defined(ENABLE_VR)
 constexpr bool DEFAULT_VR_ANDROID_DIRECT_TO_HMD = true;
 constexpr bool DEFAULT_IMMEDIATE_XFB = true;
 #else

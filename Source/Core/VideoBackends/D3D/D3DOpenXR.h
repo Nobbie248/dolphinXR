@@ -47,6 +47,12 @@ public:
   D3DOpenXR(const D3DOpenXR&) = delete;
   D3DOpenXR& operator=(const D3DOpenXR&) = delete;
 
+  // The runtime received our ID3D11Device in the graphics binding and may drive its
+  // (non-thread-safe) immediate context inside xrEndFrame. An xrEndFrame issued from
+  // the pacing thread then races the video thread's rendering — observed as a hard
+  // crash under Virtual Desktop. Keep the legacy inline frame flow on D3D11.
+  bool SupportsDetachedFrameLoop() const override { return false; }
+
   // Full initialization: creates XrInstance + system, D3D11-bound XrSession,
   // reference space, and per-eye swapchains.
   bool Initialize();

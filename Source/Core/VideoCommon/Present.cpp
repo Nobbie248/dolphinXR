@@ -1086,6 +1086,12 @@ bool Presenter::SubmitOpenXRFrameFromCurrentSource(const AbstractTexture* source
 
   if (VR::IOpenXRSwapchain* sc = VR::g_openxr->GetSwapchain())
   {
+    // Bracket the eye-image release (inside the blit) and the pose publish (inside
+    // SubmitFrame) as one unit so the pacing thread's eager heartbeat can't fire between
+    // them and submit a new image with a stale pose. No-op when the pacing thread is off.
+    VR::OpenXRManager::ScopedVideoFrameHandoff handoff(
+        VR::g_openxr->IsFrameThreadActive() ? VR::g_openxr.get() : nullptr);
+
     if (IsOpenXRFlat())
     {
       // Flat mode always (re)blits at submit time: on PC the earlier RenderXFBToScreen path
@@ -1157,7 +1163,12 @@ void Presenter::RenderXFBToScreen(const MathUtil::Rectangle<int>& target_rc,
       break;
     }
 
-    BlitCurrentSourceToOpenXREyes(source_texture, source_rc);
+    // Eye blit. With the pacing thread active, defer it to submit time (below) so the
+    // swapchain-image release ends up adjacent to the pose publish — otherwise the
+    // release and publish straddle DrawImGui + PresentBackbuffer, and an eager heartbeat
+    // firing in that gap submits the new image with the previous pose (stutter).
+    if (!VR::g_openxr || !VR::g_openxr->IsFrameThreadActive())
+      BlitCurrentSourceToOpenXREyes(source_texture, source_rc);
   }
 #endif
   // Every other case will be treated the same (stereo or not).
@@ -1299,10 +1310,14 @@ void Presenter::Present(PresentInfo* present_info)
 #ifdef ENABLE_VR
   if (vr_frame_started)
   {
-    // Pacing thread active: blits the eyes and publishes the layers for the thread to
-    // submit (and heartbeat). Legacy flow: blits and calls xrEndFrame inline.
+    // Pacing thread active: the eye blit was deferred from RenderXFBToScreen to here so
+    // its swapchain release sits right next to the pose publish (both inside the handoff
+    // bracket in SubmitOpenXRFrameFromCurrentSource). Legacy flow already blit inline, so
+    // it only publishes/ends here. Flat and direct-to-HMD manage their own blit.
+    const bool blit_at_submit = VR::g_openxr && VR::g_openxr->IsFrameThreadActive() &&
+                                !openxr_direct_to_hmd && !IsOpenXRFlat();
     SubmitOpenXRFrameFromCurrentSource(m_xfb_entry ? m_xfb_entry->texture.get() : nullptr,
-                                       m_xfb_rect, false);
+                                       m_xfb_rect, blit_at_submit);
     m_openxr_frame_prepared = false;
   }
 #endif

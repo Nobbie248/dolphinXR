@@ -206,6 +206,11 @@ extern const Info<int> GFX_VR_FORCED_VBI_FREQUENCY;
 // legacy Opcode Replay). INI-only escape hatch; disable to fall back to the inline
 // synchronous frame flow.
 extern const Info<bool> GFX_VR_USE_XR_PACING_THREAD;
+// Pacing thread heartbeat mode. Eager (default on standalone): re-submit the last frame
+// at HMD cadence to fill every compositor slot — best where the runtime has no motion
+// smoothing (Quest standalone). Lazy (default on PC): pace to the game's cadence so the
+// runtime's SSW/ASW motion smoothing engages; heartbeat only as a keep-alive.
+extern const Info<bool> GFX_VR_EAGER_HEARTBEAT;
 extern const Info<bool> GFX_VR_AUTO_VBI_FROM_HMD;
 extern const Info<bool> GFX_VR_AUTO_LAYER_SPREAD;
 extern const Info<float> GFX_VR_LAYER_OFFSET;

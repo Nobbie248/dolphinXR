@@ -376,6 +376,7 @@ struct VideoConfig final
   OpenXRTrackingMode vr_tracking_mode = OpenXRTrackingMode::Full6DoF;
   bool vr_use_openxr_play_space_center = false;
   bool vr_use_xr_pacing_thread = true;  // Dedicated xrWaitFrame/Begin/EndFrame thread + heartbeat
+  bool vr_eager_heartbeat = false;  // Fill every HMD slot (standalone) vs pace to game (PC SSW/ASW)
   bool vr_auto_layer_spread = false;
   bool vr_remove_bars = true;       // Expand scissor/viewport to remove cinematic letterbox bars
   bool vr_ortho_scissor_fix = true;  // Expand scissor for orthographic VR draws

@@ -81,6 +81,7 @@ private:
   ConfigChoiceMap<int>* m_foveation_level = nullptr;
   ConfigBool* m_dynamic_foveation = nullptr;
   ConfigBool* m_foveate_efb = nullptr;
+  ConfigBool* m_eager_heartbeat = nullptr;
   ConfigBool* m_auto_layer_spread = nullptr;
   ConfigFloatSlider* m_layer_offset = nullptr;
   QLabel* m_layer_offset_value = nullptr;

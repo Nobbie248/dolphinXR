@@ -211,6 +211,34 @@ public:
   // Flat mono panel variant: a fully built world-locked quad layer.
   void PublishQuadFrame(const XrCompositionLayerQuad& quad);
 
+  // Brackets the video thread's release-swapchain-images → publish-poses sequence.
+  // Releasing an eye image flips the compositor's front image immediately, but the
+  // matching pose only becomes visible to the pacing thread at PublishFrame — so an
+  // eager heartbeat firing in between submits the NEW image with the OLD pose, which
+  // ATW warps backwards (a previously shown frame flashes during head motion). The
+  // pacing thread waits out this window before its own xrEndFrame. RAII helper below.
+  void BeginVideoFrameHandoff() { m_video_handoff_active.fetch_add(1, std::memory_order_release); }
+  void EndVideoFrameHandoff() { m_video_handoff_active.fetch_sub(1, std::memory_order_release); }
+  class ScopedVideoFrameHandoff
+  {
+  public:
+    explicit ScopedVideoFrameHandoff(OpenXRManager* mgr) : m_mgr(mgr)
+    {
+      if (m_mgr)
+        m_mgr->BeginVideoFrameHandoff();
+    }
+    ~ScopedVideoFrameHandoff()
+    {
+      if (m_mgr)
+        m_mgr->EndVideoFrameHandoff();
+    }
+    ScopedVideoFrameHandoff(const ScopedVideoFrameHandoff&) = delete;
+    ScopedVideoFrameHandoff& operator=(const ScopedVideoFrameHandoff&) = delete;
+
+  private:
+    OpenXRManager* m_mgr;
+  };
+
   // xrLocateViews — fills m_eye_views with the predicted head pose for each eye.
   // Call between BeginFrame and rendering.
   bool LocateViews();
@@ -450,6 +478,8 @@ private:
   std::condition_variable m_publish_cv;
   PublishedXRFrame m_published_frame;  // guarded by m_publish_mutex
   uint64_t m_publish_serial = 0;       // guarded by m_publish_mutex
+  // >0 while the video thread is mid release-images/publish-poses (see handoff helpers).
+  std::atomic<int> m_video_handoff_active{0};
 
   // OpenXR input action set used to expose VR controller input to Dolphin's
   // regular controller mapping UI.

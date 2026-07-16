@@ -1053,6 +1053,17 @@ void OpenXRManager::StopFrameThread()
 void OpenXRManager::PublishFrame(const std::array<XrCompositionLayerProjectionView, 2>& views,
                                  XrCompositionLayerFlags layer_flags)
 {
+  // Frames rendered before the first LocateViews of a session carry unseeded (all-zero
+  // orientation) poses; submitting or heartbeating those gets XR_ERROR_POSE_INVALID.
+  const auto valid_orientation = [](const XrQuaternionf& q) {
+    return q.x != 0.0f || q.y != 0.0f || q.z != 0.0f || q.w != 0.0f;
+  };
+  if (!valid_orientation(views[0].pose.orientation) ||
+      !valid_orientation(views[1].pose.orientation))
+  {
+    return;
+  }
+
   std::lock_guard<std::mutex> lock(m_publish_mutex);
   m_published_frame.is_quad = false;
   m_published_frame.views = views;
@@ -1089,10 +1100,33 @@ void OpenXRManager::FrameThreadLoop()
   // Rolling 5s instrumentation window.
   u64 stats_start_us = Common::Timer::NowUs();
   u32 stat_cycles = 0, stat_fresh = 0, stat_repeat = 0, stat_empty = 0;
+  u32 stat_handoff_waited = 0;  // 50us slices spent waiting out a video-thread handoff
   double stat_wait_ms = 0.0, stat_end_ms = 0.0, stat_content_wait_ms = 0.0;
+
+  // Smoothed xrEndFrame cost. Cheap on Quest (~0.5ms) but 1–5ms on PC runtimes like
+  // Virtual Desktop; the content-wait budget must shrink accordingly or a full pacing
+  // cycle exceeds the display period and the thread can no longer hold refresh rate.
+  double endframe_ema_us = 500.0;
+  u64 last_cycle_us = 0;
+
+  // Heartbeat mode (g_ActiveConfig.vr_eager_heartbeat, read live each cycle so it can be
+  // toggled mid-session for A/B testing):
+  //
+  // Eager (standalone default): run one cycle per display period and re-submit the last
+  // frame whenever the game is slower — there is no runtime motion smoothing on Quest,
+  // so filling every compositor slot is a straight win (measured: 72/72, 0 stales).
+  //
+  // Lazy (PC default): wait for the game to publish BEFORE starting a frame cycle, so the
+  // runtime sees the app's true cadence. PC runtimes (Virtual Desktop, SteamVR, Meta
+  // Link) key their motion smoothing (SSW/ASW) off the app frame rate — a full-rate
+  // heartbeat makes them disable it and exposes the raw sub-refresh cadence beat as
+  // head-tracking judder. Heartbeat then fires only as a keep-alive when content stops
+  // flowing entirely (loading screens, shader compilation).
 
   while (!m_frame_thread_should_exit.load(std::memory_order_acquire))
   {
+    const bool eager_heartbeat = g_ActiveConfig.vr_eager_heartbeat;
+    const u64 cycle_start_us = Common::Timer::NowUs();
     if (!PollEvents())
       break;
 
@@ -1100,6 +1134,19 @@ void OpenXRManager::FrameThreadLoop()
     {
       std::this_thread::sleep_for(std::chrono::milliseconds(5));
       continue;
+    }
+
+    if (!eager_heartbeat)
+    {
+      // Pace to the game: block here (outside the XR frame protocol) until a frame is
+      // published or the keep-alive interval elapses.
+      std::unique_lock<std::mutex> lock(m_publish_mutex);
+      m_publish_cv.wait_for(lock, std::chrono::milliseconds(150), [&] {
+        return m_publish_serial != consumed_serial ||
+               m_frame_thread_should_exit.load(std::memory_order_acquire);
+      });
+      if (m_frame_thread_should_exit.load(std::memory_order_acquire))
+        break;
     }
 
     const u64 t0 = Common::Timer::NowUs();
@@ -1115,21 +1162,61 @@ void OpenXRManager::FrameThreadLoop()
     const bool should_render = m_should_render_snapshot.load(std::memory_order_acquire);
     const int64_t period_ns = m_predicted_display_period_snapshot.load(std::memory_order_acquire);
 
-    // Give the game a short window to hand over a fresh frame before we fall back to
-    // re-submitting the previous one. Half a display period, clamped to 2–8 ms: long
-    // enough to catch a frame finishing "right now", short enough to never miss the
-    // compositor deadline.
+    // Wait for the game to hand over a fresh frame for as long as this cycle can afford:
+    // one display period minus the time already spent since xrWaitFrame returned, minus
+    // the (smoothed) xrEndFrame cost on this runtime, minus a scheduling margin. This is
+    // the longest pickup window that still keeps the full cycle within one period — a
+    // shorter window makes frames slip a whole cycle (visible judder), a longer one
+    // makes the pacing thread miss compositor deadlines (VDXR's xrEndFrame alone costs
+    // 1–5 ms, vs ~0.5 ms on Quest).
     const u64 t2 = Common::Timer::NowUs();
     bool fresh = false;
     if (should_render)
     {
-      const auto budget = std::chrono::nanoseconds(
-          std::clamp<int64_t>(period_ns / 2, 2'000'000, 8'000'000));
+      const int64_t since_wait_ns = static_cast<int64_t>(t2 - t1) * 1000;
+      int64_t budget_ns = period_ns - since_wait_ns -
+                          static_cast<int64_t>(endframe_ema_us * 1000.0) - 1'000'000;
+      budget_ns = std::clamp<int64_t>(budget_ns, 0, period_ns);
+      // Catch-up: a healthy cycle equals one period (xrWaitFrame throttles), so only
+      // treat >125% of a period as an overrun worth skipping the content wait for.
+      if (static_cast<int64_t>(last_cycle_us) * 1000 > period_ns + period_ns / 4)
+        budget_ns = 0;
+      // Lazy mode already waited for content before the cycle started; just consume.
+      if (!eager_heartbeat)
+        budget_ns = 0;
+
       std::unique_lock<std::mutex> lock(m_publish_mutex);
-      m_publish_cv.wait_for(lock, budget, [&] {
-        return m_publish_serial != consumed_serial ||
-               m_frame_thread_should_exit.load(std::memory_order_acquire);
-      });
+      if (budget_ns > 0 && m_publish_serial == consumed_serial)
+      {
+        m_publish_cv.wait_for(lock, std::chrono::nanoseconds(budget_ns), [&] {
+          return m_publish_serial != consumed_serial ||
+                 m_frame_thread_should_exit.load(std::memory_order_acquire);
+        });
+      }
+      if (m_publish_serial != consumed_serial)
+      {
+        last_frame = m_published_frame;
+        consumed_serial = m_publish_serial;
+        have_frame = true;
+        fresh = true;
+      }
+    }
+
+    // Never submit while the video thread is swapping the front swapchain image and
+    // publishing its matching pose — landing in that window submits the new image with
+    // the old pose (backwards ATW warp = a previously shown frame flashes). Bounded so
+    // a stuck video thread can never hang the pacing loop; on the last iteration we
+    // proceed anyway (a rare single-frame mismatch beats missing the compositor).
+    for (int spins = 0;
+         m_video_handoff_active.load(std::memory_order_acquire) > 0 && spins < 40; ++spins)
+    {
+      stat_handoff_waited++;
+      std::this_thread::sleep_for(std::chrono::microseconds(50));
+    }
+    // A publish may have completed during that wait; consume it so the pose we submit
+    // matches the image the video thread just made front.
+    {
+      std::unique_lock<std::mutex> lock(m_publish_mutex);
       if (m_publish_serial != consumed_serial)
       {
         last_frame = m_published_frame;
@@ -1164,6 +1251,8 @@ void OpenXRManager::FrameThreadLoop()
     EndFrameDetached(m_frame_state.predictedDisplayTime, GetActiveBlendMode(), submit_content,
                      layers);
     const u64 t4 = Common::Timer::NowUs();
+    endframe_ema_us = endframe_ema_us * 0.8 + static_cast<double>(t4 - t3) * 0.2;
+    last_cycle_us = t4 - cycle_start_us;
 
     stat_cycles++;
     if (fresh)
@@ -1181,12 +1270,15 @@ void OpenXRManager::FrameThreadLoop()
     {
       INFO_LOG_FMT(OPENXR,
                    "XRPacing: {:.1f} cycles/s (fresh={} repeat={} empty={}) | per cycle: "
-                   "xrWaitFrame={:.2f}ms content_wait={:.2f}ms xrEndFrame={:.2f}ms",
+                   "xrWaitFrame={:.2f}ms content_wait={:.2f}ms xrEndFrame={:.2f}ms | "
+                   "handoff_waits={} (x50us)",
                    stat_cycles / ((now_us - stats_start_us) / 1'000'000.0), stat_fresh,
                    stat_repeat, stat_empty, stat_wait_ms / stat_cycles,
-                   stat_content_wait_ms / stat_cycles, stat_end_ms / stat_cycles);
+                   stat_content_wait_ms / stat_cycles, stat_end_ms / stat_cycles,
+                   stat_handoff_waited);
       stats_start_us = now_us;
       stat_cycles = stat_fresh = stat_repeat = stat_empty = 0;
+      stat_handoff_waited = 0;
       stat_wait_ms = stat_end_ms = stat_content_wait_ms = 0.0;
     }
   }
