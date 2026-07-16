@@ -176,6 +176,45 @@ void Gfx::SetPipeline(const AbstractPipeline* pipeline)
   }
 }
 
+void Gfx::SetForcePixelShader(const AbstractShader* shader)
+{
+  if (!shader || !m_current_pipeline)
+    return;
+
+  const AbstractPipeline* base_pipeline = m_current_pipeline;
+  auto it = m_forced_pipelines.find({base_pipeline, shader});
+  if (it == m_forced_pipelines.end())
+  {
+    // Bound the cache; a hunting session touches at most a handful of base pipelines.
+    if (m_forced_pipelines.size() >= 64)
+      ClearForcedPipelines();
+
+    auto config = base_pipeline->m_config;
+    config.pixel_shader = shader;
+    it = m_forced_pipelines
+             .emplace(std::make_pair(base_pipeline, shader), DXPipeline::Create(config, nullptr, 0))
+             .first;
+  }
+
+  // Failures are cached too: draw with the original pipeline rather than binding null.
+  if (!it->second)
+    return;
+
+  SetPipeline(it->second.get());
+}
+
+void Gfx::ClearForcedPipelines()
+{
+  // In-flight command lists may still reference these PSOs, so keep them alive past the
+  // current fence via the deferred-destruction queue before ~DXPipeline drops its ref.
+  for (auto& [key, pipeline] : m_forced_pipelines)
+  {
+    if (pipeline)
+      g_dx_context->DeferObjectDestruction(pipeline->GetPipeline());
+  }
+  m_forced_pipelines.clear();
+}
+
 void Gfx::BindFramebuffer(DXFramebuffer* fb)
 {
   fb->TransitionRenderTargets();
@@ -414,6 +453,11 @@ SurfaceInfo Gfx::GetSurfaceInfo() const
 void Gfx::OnConfigChanged(u32 bits)
 {
   AbstractGfx::OnConfigChanged(bits);
+
+  // The shader cache rebuilds its pipelines on host-config changes, so the base-pipeline
+  // pointers keying the forced-PS cache would dangle.
+  if (bits & CONFIG_CHANGE_BIT_HOST_CONFIG)
+    ClearForcedPipelines();
 
   // For quad-buffered stereo we need to change the layer count, so recreate the swap chain.
   if (m_swap_chain && bits & CONFIG_CHANGE_BIT_STEREO_MODE)

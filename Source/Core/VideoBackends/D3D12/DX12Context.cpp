@@ -522,8 +522,13 @@ void DXContext::ExecuteCommandList(bool wait_for_completion)
 
 void DXContext::DeferResourceDestruction(ID3D12Resource* resource)
 {
-  resource->AddRef();
-  m_command_lists[m_current_command_list].pending_resources.push_back(resource);
+  DeferObjectDestruction(resource);
+}
+
+void DXContext::DeferObjectDestruction(IUnknown* object)
+{
+  object->AddRef();
+  m_command_lists[m_current_command_list].pending_resources.push_back(object);
 }
 
 void DXContext::DeferDescriptorDestruction(DescriptorHeapManager& manager, u32 index)
@@ -550,7 +555,7 @@ void DXContext::DestroyPendingResources(CommandListResources& cmdlist)
     dd.first.Free(dd.second);
   cmdlist.pending_descriptors.clear();
 
-  for (ID3D12Resource* res : cmdlist.pending_resources)
+  for (IUnknown* res : cmdlist.pending_resources)
     res->Release();
   cmdlist.pending_resources.clear();
 }

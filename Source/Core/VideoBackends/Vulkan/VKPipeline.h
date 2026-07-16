@@ -4,6 +4,7 @@
 #pragma once
 
 #include <memory>
+#include <utility>
 
 #include "VideoBackends/Vulkan/VulkanLoader.h"
 #include "VideoCommon/AbstractPipeline.h"
@@ -18,6 +19,10 @@ public:
   ~VKPipeline() override;
 
   VkPipeline GetVkPipeline() const { return m_pipeline; }
+
+  // Relinquishes ownership of the handle so the caller can hand it to deferred destruction;
+  // the destructor then destroys VK_NULL_HANDLE, which is a no-op.
+  VkPipeline Release() { return std::exchange(m_pipeline, VK_NULL_HANDLE); }
   VkPipelineLayout GetVkPipelineLayout() const { return m_pipeline_layout; }
   AbstractPipelineUsage GetUsage() const { return m_usage; }
   static std::unique_ptr<VKPipeline> Create(const AbstractPipelineConfig& config);

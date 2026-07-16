@@ -3,6 +3,10 @@
 
 #pragma once
 
+#include <map>
+#include <memory>
+#include <utility>
+
 #include "VideoCommon/AbstractGfx.h"
 #include "VideoCommon/Constants.h"
 
@@ -11,6 +15,7 @@ class GLContext;
 namespace OGL
 {
 class OGLFramebuffer;
+class OGLPipeline;
 class OGLTexture;
 
 class OGLGfx final : public AbstractGfx
@@ -42,6 +47,7 @@ public:
                     std::vector<AbstractTexture*> additional_color_attachments) override;
 
   void SetPipeline(const AbstractPipeline* pipeline) override;
+  void SetForcePixelShader(const AbstractShader* shader) override;
   void SetFramebuffer(AbstractFramebuffer* framebuffer) override;
   void SetAndDiscardFramebuffer(AbstractFramebuffer* framebuffer) override;
   void SetAndClearFramebuffer(AbstractFramebuffer* framebuffer, const ClearColor& color_value = {},
@@ -111,6 +117,11 @@ private:
   RasterizationState m_current_rasterization_state;
   DepthState m_current_depth_state;
   BlendingState m_current_blend_state;
+
+  // Forced-PS (pink highlight) pipeline clones, keyed by (base pipeline, forced shader).
+  std::map<std::pair<const AbstractPipeline*, const AbstractShader*>,
+           std::unique_ptr<OGLPipeline>>
+      m_forced_pipelines;
   u32 m_shared_read_framebuffer = 0;
   u32 m_shared_draw_framebuffer = 0;
   float m_backbuffer_scale;

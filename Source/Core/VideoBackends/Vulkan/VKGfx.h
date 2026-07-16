@@ -4,8 +4,10 @@
 #pragma once
 
 #include <array>
+#include <map>
 #include <memory>
 #include <string_view>
+#include <utility>
 
 #include "Common/CommonTypes.h"
 #include "VideoBackends/Vulkan/Constants.h"
@@ -99,12 +101,18 @@ private:
   void OnSwapChainResized();
   void BindFramebuffer(VKFramebuffer* fb);
 
+  void ClearForcedPipelines();
+
   std::unique_ptr<SwapChain> m_swap_chain;
   float m_backbuffer_scale;
   const AbstractPipeline* m_current_pipeline = nullptr;
-  const AbstractPipeline* m_forced_pipeline_base = nullptr;
-  const AbstractShader* m_forced_pipeline_shader = nullptr;
-  std::unique_ptr<AbstractPipeline> m_forced_pipeline;
+
+  // Forced-PS (pink highlight) pipeline clones, keyed by (base pipeline, forced shader).
+  // Entries may be referenced by in-flight command buffers, so eviction must go through
+  // deferred destruction (see ClearForcedPipelines), never straight to vkDestroyPipeline.
+  std::map<std::pair<const AbstractPipeline*, const AbstractShader*>,
+           std::unique_ptr<AbstractPipeline>>
+      m_forced_pipelines;
 
   // Keep a copy of sampler states to avoid cache lookups every draw
   std::array<SamplerState, VideoCommon::MAX_PIXEL_SHADER_SAMPLERS> m_sampler_states = {};

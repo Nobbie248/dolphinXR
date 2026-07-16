@@ -4,6 +4,9 @@
 #pragma once
 
 #include <d3d12.h>
+#include <map>
+#include <memory>
+#include <utility>
 
 #include "VideoBackends/D3D12/DescriptorAllocator.h"
 #include "VideoBackends/D3D12/DescriptorHeapManager.h"
@@ -56,6 +59,7 @@ public:
                    bool z_enable, u32 color, u32 z) override;
 
   void SetPipeline(const AbstractPipeline* pipeline) override;
+  void SetForcePixelShader(const AbstractShader* shader) override;
   void SetFramebuffer(AbstractFramebuffer* framebuffer) override;
   void SetAndDiscardFramebuffer(AbstractFramebuffer* framebuffer) override;
   void SetAndClearFramebuffer(AbstractFramebuffer* framebuffer, const ClearColor& color_value = {},
@@ -139,6 +143,7 @@ private:
   };
 
   void CheckForSwapChainChanges();
+  void ClearForcedPipelines();
 
   void BindFramebuffer(DXFramebuffer* fb);
   void SetRootSignatures();
@@ -154,6 +159,12 @@ private:
 
   // Owned objects
   std::unique_ptr<SwapChain> m_swap_chain;
+
+  // Forced-PS (pink highlight) PSO clones, keyed by (base pipeline, forced shader).
+  // In-flight command lists may still reference evicted PSOs, so eviction releases them
+  // through the deferred-destruction queue (see ClearForcedPipelines).
+  std::map<std::pair<const AbstractPipeline*, const AbstractShader*>, std::unique_ptr<DXPipeline>>
+      m_forced_pipelines;
 
   // Current state
   struct

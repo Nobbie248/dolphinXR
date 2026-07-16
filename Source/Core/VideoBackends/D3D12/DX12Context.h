@@ -121,6 +121,9 @@ public:
   // Defers destruction of a D3D resource (associates it with the current list).
   void DeferResourceDestruction(ID3D12Resource* resource);
 
+  // Defers destruction of any other device object, e.g. a pipeline state.
+  void DeferObjectDestruction(IUnknown* object);
+
   // Defers destruction of a descriptor handle (associates it with the current list).
   void DeferDescriptorDestruction(DescriptorHeapManager& manager, u32 index);
 
@@ -143,7 +146,7 @@ private:
     ComPtr<ID3D12GraphicsCommandList> command_list;
     DescriptorAllocator descriptor_allocator;
     SamplerAllocator sampler_allocator;
-    std::vector<ID3D12Resource*> pending_resources;
+    std::vector<IUnknown*> pending_resources;
     std::vector<std::pair<DescriptorHeapManager&, u32>> pending_descriptors;
     u64 ready_fence_value = 0;
   };

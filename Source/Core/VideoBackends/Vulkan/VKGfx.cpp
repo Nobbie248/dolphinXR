@@ -108,17 +108,40 @@ void VKGfx::SetForcePixelShader(const AbstractShader* shader)
   if (!shader || !m_current_pipeline)
     return;
 
-  if (m_forced_pipeline_base != m_current_pipeline || m_forced_pipeline_shader != shader ||
-      !m_forced_pipeline)
+  auto it = m_forced_pipelines.find({m_current_pipeline, shader});
+  if (it == m_forced_pipelines.end())
   {
+    // Bound the cache; a hunting session touches at most a handful of base pipelines.
+    if (m_forced_pipelines.size() >= 64)
+      ClearForcedPipelines();
+
     auto config = m_current_pipeline->m_config;
     config.pixel_shader = shader;
-    m_forced_pipeline = CreatePipeline(config);
-    m_forced_pipeline_base = m_current_pipeline;
-    m_forced_pipeline_shader = shader;
+    it = m_forced_pipelines
+             .emplace(std::make_pair(m_current_pipeline, shader), CreatePipeline(config))
+             .first;
   }
 
-  StateTracker::GetInstance()->SetPipeline(static_cast<const VKPipeline*>(m_forced_pipeline.get()));
+  // Failures are cached too: draw with the original pipeline rather than binding null.
+  if (!it->second)
+    return;
+
+  StateTracker::GetInstance()->SetPipeline(static_cast<const VKPipeline*>(it->second.get()));
+}
+
+void VKGfx::ClearForcedPipelines()
+{
+  // In-flight command buffers may still reference these pipelines, so their handles must
+  // outlive the current fence — hand them to the deferred-destruction queue.
+  for (auto& [key, pipeline] : m_forced_pipelines)
+  {
+    if (pipeline)
+    {
+      g_command_buffer_mgr->DeferPipelineDestruction(
+          static_cast<VKPipeline*>(pipeline.get())->Release());
+    }
+  }
+  m_forced_pipelines.clear();
 }
 
 void VKGfx::ClearRegion(const MathUtil::Rectangle<int>& target_rc, bool color_enable,
@@ -475,7 +498,12 @@ void VKGfx::OnConfigChanged(u32 bits)
   AbstractGfx::OnConfigChanged(bits);
 
   if (bits & CONFIG_CHANGE_BIT_HOST_CONFIG)
+  {
     g_object_cache->ReloadPipelineCache();
+    // The shader cache rebuilds its pipelines on host-config changes, so the base-pipeline
+    // pointers keying the forced-PS cache would dangle.
+    ClearForcedPipelines();
+  }
 
   // For vsync, we need to change the present mode, which means recreating the swap chain.
   if (m_swap_chain && (bits & CONFIG_CHANGE_BIT_VSYNC))

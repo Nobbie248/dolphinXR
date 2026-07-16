@@ -446,6 +446,11 @@ void OGLGfx::OnConfigChanged(u32 bits)
 {
   AbstractGfx::OnConfigChanged(bits);
 
+  // The shader cache rebuilds its pipelines on host-config changes, so the base-pipeline
+  // pointers keying the forced-PS cache would dangle.
+  if (bits & CONFIG_CHANGE_BIT_HOST_CONFIG)
+    m_forced_pipelines.clear();
+
   if (bits & CONFIG_CHANGE_BIT_VSYNC && !DriverDetails::HasBug(DriverDetails::BUG_BROKEN_VSYNC))
   {
     // Keep the mirror-window swap non-blocking while OpenXR paces the frame loop.
@@ -659,6 +664,34 @@ void OGLGfx::SetPipeline(const AbstractPipeline* pipeline)
     glUseProgram(0);
   }
   m_current_pipeline = pipeline;
+}
+
+void OGLGfx::SetForcePixelShader(const AbstractShader* shader)
+{
+  if (!shader || !m_current_pipeline)
+    return;
+
+  const AbstractPipeline* base_pipeline = m_current_pipeline;
+  auto it = m_forced_pipelines.find({base_pipeline, shader});
+  if (it == m_forced_pipelines.end())
+  {
+    // Bound the cache; unlike the D3D12/Vulkan equivalents this can drop entries directly,
+    // as GL defers deletion of in-use programs internally.
+    if (m_forced_pipelines.size() >= 64)
+      m_forced_pipelines.clear();
+
+    auto config = base_pipeline->m_config;
+    config.pixel_shader = shader;
+    it = m_forced_pipelines
+             .emplace(std::make_pair(base_pipeline, shader), OGLPipeline::Create(config, nullptr, 0))
+             .first;
+  }
+
+  // Failures are cached too: draw with the original pipeline rather than binding null.
+  if (!it->second)
+    return;
+
+  SetPipeline(it->second.get());
 }
 
 void OGLGfx::SetTexture(u32 index, const AbstractTexture* texture)
