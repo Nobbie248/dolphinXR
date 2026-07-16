@@ -206,6 +206,10 @@ extern const Info<int> GFX_VR_FORCED_VBI_FREQUENCY;
 // legacy Opcode Replay). INI-only escape hatch; disable to fall back to the inline
 // synchronous frame flow.
 extern const Info<bool> GFX_VR_USE_XR_PACING_THREAD;
+// Android big.LITTLE: pin the CPU (JIT) and Video threads to dedicated performance cores
+// so they never migrate onto a slow core or contend with each other. INI-only escape
+// hatch; default on for Android/Quest.
+extern const Info<bool> GFX_VR_PIN_EMULATION_CORES;
 // Pacing thread heartbeat mode. Eager (default on standalone): re-submit the last frame
 // at HMD cadence to fill every compositor slot — best where the runtime has no motion
 // smoothing (Quest standalone). Lazy (default on PC): pace to the game's cadence so the

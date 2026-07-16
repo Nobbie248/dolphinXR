@@ -214,6 +214,13 @@ const Info<OpenXRTrackingMode> GFX_VR_TRACKING_MODE{{System::GFX, "VR", "Trackin
 const Info<bool> GFX_VR_USE_OPENXR_PLAY_SPACE_CENTER{
     {System::GFX, "VR", "UseOpenXRPlaySpaceCenter"}, false};
 const Info<bool> GFX_VR_USE_XR_PACING_THREAD{{System::GFX, "VR", "UseXRPacingThread"}, true};
+#if defined(__ANDROID__)
+constexpr bool DEFAULT_VR_PIN_EMULATION_CORES = true;
+#else
+constexpr bool DEFAULT_VR_PIN_EMULATION_CORES = false;
+#endif
+const Info<bool> GFX_VR_PIN_EMULATION_CORES{{System::GFX, "VR", "PinEmulationCores"},
+                                            DEFAULT_VR_PIN_EMULATION_CORES};
 #if defined(__ANDROID__) && defined(ENABLE_VR)
 // Standalone runtimes have no automatic motion smoothing, so fill every compositor slot.
 constexpr bool DEFAULT_VR_EAGER_HEARTBEAT = true;

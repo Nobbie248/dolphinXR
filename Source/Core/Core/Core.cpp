@@ -41,6 +41,8 @@
 #include "Core/Boot/Boot.h"
 #include "Core/BootManager.h"
 #include "Core/CPUThreadConfigCallback.h"
+#include "Common/Config/Config.h"
+#include "Core/Config/GraphicsSettings.h"
 #include "Core/Config/MainSettings.h"
 #include "Core/ConfigManager.h"
 #include "Core/CoreTiming.h"
@@ -127,6 +129,24 @@ static void RegisterCurrentThreadWithOpenXR(VR::OpenXRManager::AndroidThreadType
     VR::g_openxr->RegisterCurrentAndroidThread(type, label);
 }
 #endif
+
+// Android big.LITTLE: pin the calling emulator thread to a dedicated performance core.
+// No-op off Android or when PinEmulationCores is disabled. Logs the chosen core.
+static void PinEmulationThreadToPerformanceCore(Common::ThreadCoreRole role, const char* label)
+{
+#if defined(ANDROID)
+  if (!Config::Get(Config::GFX_VR_PIN_EMULATION_CORES))
+    return;
+  const int core = Common::PinCurrentThreadToPerformanceCore(role);
+  if (core >= 0)
+    INFO_LOG_FMT(CORE, "Pinned {} to performance core cpu{}.", label, core);
+  else
+    WARN_LOG_FMT(CORE, "Could not pin {} to a performance core.", label);
+#else
+  (void)role;
+  (void)label;
+#endif
+}
 
 static void Callback_FramePresented(const PresentInfo& present_info);
 
@@ -346,6 +366,10 @@ static void CpuThread(Core::System& system, const std::optional<std::string>& sa
                                       VR::OpenXRManager::AndroidThreadType::RendererMain,
                                   system.IsDualCoreMode() ? "CPU thread" : "CPU-GPU thread");
 #endif
+  // The PPC JIT is the serial, latency-critical path. In single-core it also runs the
+  // GPU work, so it stays the top-priority pin either way.
+  PinEmulationThreadToPerformanceCore(Common::ThreadCoreRole::EmuCPU,
+                                      system.IsDualCoreMode() ? "CPU thread" : "CPU-GPU thread");
 
   // This needs to be delayed until after the video backend is ready.
   DolphinAnalytics::Instance().ReportGameStart();
@@ -507,6 +531,8 @@ static void FifoPlayerThread(Core::System& system, const std::optional<std::stri
                                         "Video thread");
       }
 #endif
+      // Dedicated fast core for FIFO/GPU submit, distinct from the CPU thread's.
+      PinEmulationThreadToPerformanceCore(Common::ThreadCoreRole::EmuVideo, "Video thread");
       init_from_thread.set_value(is_init);
 
       if (!is_init)

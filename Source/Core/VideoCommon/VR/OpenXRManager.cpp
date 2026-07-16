@@ -1087,6 +1087,15 @@ void OpenXRManager::FrameThreadLoop()
 #if defined(ANDROID)
   // Meta's runtime applies big.LITTLE pinning / DVFS escalation to tagged threads.
   RegisterCurrentAndroidThread(AndroidThreadType::RendererWorker, "OpenXR Pacing");
+  // A fast core, but off the CPU/Video cores so the wakeup-heavy pacing loop doesn't
+  // steal cycles from the emulator's hot threads.
+  if (Config::Get(Config::GFX_VR_PIN_EMULATION_CORES))
+  {
+    const int core =
+        Common::PinCurrentThreadToPerformanceCore(Common::ThreadCoreRole::VRPacing);
+    if (core >= 0)
+      INFO_LOG_FMT(OPENXR, "OpenXR: Pinned pacing thread to performance core cpu{}.", core);
+  }
 #endif
 
   // Last content handed over by the game; re-submitted every display period while no
