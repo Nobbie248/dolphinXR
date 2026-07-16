@@ -862,11 +862,13 @@ ShaderCode GenerateVertexShaderCode(APIType api_type, const ShaderHostConfig& ho
     out.Write("\telse if (" I_STEREOPARAMS ".w < -1.5f)\n\t{{\n");
     if (api_type == APIType::Vulkan)
     {
+      // Vulkan only guards the divide (w ~ 0 gives NaN/Inf and vanishing geometry);
+      // do NOT clamp x/y — that squashes elements extending past the screen bounds.
       out.Write("\t\tfloat safe_w = (abs(o.pos.w) > 1.0e-5) ? o.pos.w : "
                 "((o.pos.w < 0.0) ? -1.0e-5 : 1.0e-5);\n");
-      out.Write("\t\tfloat ndc_x = clamp(o.pos.x / safe_w, -1.0, 1.0);\n");
-      out.Write("\t\tfloat ndc_y = clamp(o.pos.y / safe_w, -1.0, 1.0);\n");
-      out.Write("\t\tfloat ndc_z = clamp(o.pos.z / safe_w, -1.0, 1.0);\n");
+      out.Write("\t\tfloat ndc_x = o.pos.x / safe_w;\n");
+      out.Write("\t\tfloat ndc_y = o.pos.y / safe_w;\n");
+      out.Write("\t\tfloat ndc_z = o.pos.z / safe_w;\n");
     }
     else
     {
@@ -907,11 +909,13 @@ ShaderCode GenerateVertexShaderCode(APIType api_type, const ShaderHostConfig& ho
     out.Write("\telse if (" I_STEREOPARAMS ".w < -0.5f)\n\t{{\n");
     if (api_type == APIType::Vulkan)
     {
+      // Vulkan only guards the divide (w ~ 0 gives NaN/Inf and vanishing geometry);
+      // do NOT clamp x/y — that squashes elements extending past the screen bounds.
       out.Write("\t\tfloat safe_w = (abs(o.pos.w) > 1.0e-5) ? o.pos.w : "
                 "((o.pos.w < 0.0) ? -1.0e-5 : 1.0e-5);\n");
-      out.Write("\t\tfloat ndc_x = clamp(o.pos.x / safe_w, -1.0, 1.0);\n");
-      out.Write("\t\tfloat ndc_y = clamp(o.pos.y / safe_w, -1.0, 1.0);\n");
-      out.Write("\t\tfloat ndc_z = clamp(o.pos.z / safe_w, -1.0, 1.0);\n");
+      out.Write("\t\tfloat ndc_x = o.pos.x / safe_w;\n");
+      out.Write("\t\tfloat ndc_y = o.pos.y / safe_w;\n");
+      out.Write("\t\tfloat ndc_z = o.pos.z / safe_w;\n");
     }
     else
     {
