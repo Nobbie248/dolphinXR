@@ -138,7 +138,7 @@ public:
                 std::vector<AbstractTexture*> additional_color_attachments, u32 width, u32 height,
                 u32 layers, u32 samples, VkFramebuffer fb, VkRenderPass load_render_pass,
                 VkRenderPass discard_render_pass, VkRenderPass clear_render_pass,
-                bool has_fragment_density_map = false);
+                bool has_fragment_density_map = false, bool multiview = false);
   ~VKFramebuffer() override;
 
   VkFramebuffer GetFB() const { return m_fb; }
@@ -147,6 +147,11 @@ public:
   VkRenderPass GetLoadRenderPass() const { return m_load_render_pass; }
   VkRenderPass GetDiscardRenderPass() const { return m_discard_render_pass; }
   VkRenderPass GetClearRenderPass() const { return m_clear_render_pass; }
+
+  // True when the render passes use VK_KHR_multiview (VR stereo EFB). The VkFramebuffer
+  // was then created with layers = 1 — per-view replication comes from the view mask, and
+  // vkCmdClearAttachments requires VkClearRect layerCount == 1 inside such a pass.
+  bool IsMultiview() const { return m_multiview; }
 
   void Unbind();
   void TransitionForRender();
@@ -175,6 +180,7 @@ protected:
   VkRenderPass m_load_render_pass;
   VkRenderPass m_discard_render_pass;
   VkRenderPass m_clear_render_pass;
+  bool m_multiview = false;
 };
 
 }  // namespace Vulkan

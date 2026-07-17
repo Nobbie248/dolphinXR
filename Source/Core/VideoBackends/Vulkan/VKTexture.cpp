@@ -1066,14 +1066,15 @@ VKFramebuffer::VKFramebuffer(VKTexture* color_attachment, VKTexture* depth_attac
                              std::vector<AbstractTexture*> additional_color_attachments, u32 width,
                              u32 height, u32 layers, u32 samples, VkFramebuffer fb,
                              VkRenderPass load_render_pass, VkRenderPass discard_render_pass,
-                             VkRenderPass clear_render_pass, bool has_fragment_density_map)
+                             VkRenderPass clear_render_pass, bool has_fragment_density_map,
+                             bool multiview)
     : AbstractFramebuffer(
           color_attachment, depth_attachment, std::move(additional_color_attachments),
           color_attachment ? color_attachment->GetFormat() : AbstractTextureFormat::Undefined,
           depth_attachment ? depth_attachment->GetFormat() : AbstractTextureFormat::Undefined,
           width, height, layers, samples),
       m_fb(fb), m_load_render_pass(load_render_pass), m_discard_render_pass(discard_render_pass),
-      m_clear_render_pass(clear_render_pass)
+      m_clear_render_pass(clear_render_pass), m_multiview(multiview)
 {
   m_has_fragment_density_map = has_fragment_density_map;
 }
@@ -1215,7 +1216,8 @@ CreateFramebufferInternal(VKTexture* color_attachment, VKTexture* depth_attachme
 
   return std::make_unique<VKFramebuffer>(
       color_attachment, depth_attachment, std::move(additional_color_attachments), width, height,
-      layers, samples, fb, load_render_pass, discard_render_pass, clear_render_pass, use_fdm);
+      layers, samples, fb, load_render_pass, discard_render_pass, clear_render_pass, use_fdm,
+      use_multiview);
 }
 
 std::unique_ptr<VKFramebuffer>

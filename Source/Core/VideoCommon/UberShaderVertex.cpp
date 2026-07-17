@@ -14,7 +14,7 @@
 
 namespace UberShader
 {
-static constexpr u32 UBER_VERTEX_SHADER_CODE_VERSION = 1;
+static constexpr u32 UBER_VERTEX_SHADER_CODE_VERSION = 2;
 
 VertexShaderUid GetVertexShaderUid()
 {
@@ -43,9 +43,16 @@ ShaderCode GenVertexShader(APIType api_type, const ShaderHostConfig& host_config
   const bool vertex_loader =
       host_config.backend_dynamic_vertex_loader || host_config.backend_vs_point_line_expand;
   const u32 num_texgen = uid_data->num_texgens;
+  // Multiview VR path: no GS stage for triangles, so this VS applies the per-eye HMD
+  // projection itself via gl_ViewIndex (shared with the specialized VS generator).
+  const bool vr_multiview_vs = UseVRMultiviewVSProjection(api_type, host_config);
   ShaderCode out;
 
   out.Write("// {}\n\n", *uid_data);
+
+  if (vr_multiview_vs)
+    out.Write("#extension GL_EXT_multiview : require\n");
+
   out.Write("{}", s_lighting_struct);
 
   // uniforms
@@ -53,7 +60,9 @@ ShaderCode GenVertexShader(APIType api_type, const ShaderHostConfig& host_config
   out.Write("{}", s_shader_uniforms);
   out.Write("}};\n");
 
-  if (vertex_loader)
+  // The GSBlock UBO is consumed here by the dynamic vertex loader (vs_expand,
+  // vertex_stride, ...) and by the multiview VR path (per-eye projection uniforms).
+  if (vertex_loader || vr_multiview_vs)
   {
     out.Write("UBO_BINDING(std140, 4) uniform GSBlock {{\n");
     out.Write("{}", s_geometry_shader_uniforms);
@@ -405,6 +414,13 @@ float3 load_input_float3_rawtex(uint vtx_offset, uint attr_offset) {{
               "  o.colors_1 = float4(0.0, 0.0, 0.0, 0.0);\n");
   }
 
+  // Multiview VR path: replace the projected o.pos with per-eye HMD clip coordinates
+  // (see GenerateVRMultiviewVSProjection in VertexShaderGen.cpp). The emitted
+  // vr_pos_replaced flag suppresses the trailing depth-range/pixel-center fixups
+  // below to avoid double-remapping — same structure as the specialized VS.
+  if (vr_multiview_vs)
+    GenerateVRMultiviewVSProjection(out, api_type, host_config, "pos");
+
   if (!host_config.fast_depth_calc)
   {
     // clipPos/w needs to be done in pixel shader, not here
@@ -436,12 +452,32 @@ float3 load_input_float3_rawtex(uint vtx_offset, uint attr_offset) {{
     out.Write("float clipDepth = o.pos.z * (1.0 - 1e-7);\n"
               "float clipDist0 = clipDepth + o.pos.w;\n"  // Near: z < -w
               "float clipDist1 = -clipDepth;\n");         // Far: z > 0
-    if (host_config.backend_geometry_shaders)
+
+    // Under multiview VR the VR projection already produced per-eye clip-space values
+    // that don't follow the console depth convention — disable user clipping for
+    // replaced positions, mirroring the specialized VS and the GS Vulkan VR path.
+    if (vr_multiview_vs)
+    {
+      out.Write("if (vr_pos_replaced) {{\n"
+                "  clipDist0 = 1.0;\n"
+                "  clipDist1 = 1.0;\n"
+                "}}\n");
+    }
+
+    // Under multiview the GS is gone for triangles — the VS itself writes
+    // gl_ClipDistance below, and the o.clipDist members don't exist.
+    if (host_config.backend_geometry_shaders && !host_config.vk_multiview)
     {
       out.Write("o.clipDist0 = clipDist0;\n"
                 "o.clipDist1 = clipDist1;\n");
     }
   }
+
+  // Skip the trailing depth-range / pixel-center fixups when the VR multiview block
+  // already replaced o.pos with per-eye HMD coordinates — those branches applied the
+  // same fixups using the VR uniforms (cvr_depth, cvr_pixelcenter).
+  if (vr_multiview_vs)
+    out.Write("if (!vr_pos_replaced) {{\n");
 
   // Write the true depth value. If the game uses depth textures, then the pixel shader will
   // override it with the correct values if not then early z culling will improve speed.
@@ -476,6 +512,9 @@ float3 load_input_float3_rawtex(uint vtx_offset, uint attr_offset) {{
   // Hence, we compensate for this pixel center difference so that primitives
   // get rasterized correctly.
   out.Write("o.pos.xy = o.pos.xy - o.pos.w * " I_PIXELCENTERCORRECTION ".xy;\n");
+
+  if (vr_multiview_vs)
+    out.Write("}}\n");
 
   if (vertex_rounding && !host_config.vr_stereo)
   {

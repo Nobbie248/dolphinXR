@@ -102,3 +102,19 @@ ShaderCode GenerateVertexShaderCode(APIType api_type, const ShaderHostConfig& ho
                                     CustomVertexContents custom_contents);
 void WriteVertexBody(APIType api_type, const ShaderHostConfig& host_config,
                      const vertex_shader_uid_data* uid_data, ShaderCode& out);
+
+// True when the VS itself must apply the per-eye VR projection (VK_KHR_multiview /
+// GL_OVR_multiview path — no GS stage for triangles). Shared between the specialized
+// and uber vertex shader generators so the two can never disagree.
+bool UseVRMultiviewVSProjection(APIType api_type, const ShaderHostConfig& host_config);
+
+// Emits the multiview VR position block: declares `bool vr_pos_replaced` and replaces
+// o.pos with per-eye clip coordinates selected via gl_ViewIndex (perspective VR,
+// head-locked perspective HUD, head-locked 2D, orthographic virtual screen).
+// `view_space_pos` is the expression holding the view-space (pre-projection) position.
+// Callers must suppress the trailing depth-range/pixel-center fixups and neutralize
+// clip distances when `vr_pos_replaced` is true. Mirrors GeometryShaderGen's stereo
+// paths — any change here must be kept in sync with the GS.
+void GenerateVRMultiviewVSProjection(ShaderCode& out, APIType api_type,
+                                     const ShaderHostConfig& host_config,
+                                     std::string_view view_space_pos);

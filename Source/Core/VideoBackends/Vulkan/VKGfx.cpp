@@ -230,7 +230,13 @@ void VKGfx::ClearRegion(const MathUtil::Rectangle<int>& target_rc, bool color_en
     }
     if (!clear_attachments.empty())
     {
-      VkClearRect vk_rect = {target_vk_rc, 0, g_framebuffer_manager->GetEFBLayers()};
+      // In a multiview render pass the clear is broadcast to every view in the view mask,
+      // and the spec requires layerCount == 1 (VUID-vkCmdClearAttachments-baseArrayLayer-00018).
+      // Passing the EFB layer count (2) there is undefined behavior — on Adreno it corrupts
+      // the clear into misplaced rectangles in the left eye.
+      const u32 clear_layers =
+          vk_frame_buffer->IsMultiview() ? 1u : g_framebuffer_manager->GetEFBLayers();
+      VkClearRect vk_rect = {target_vk_rc, 0, clear_layers};
       if (!StateTracker::GetInstance()->IsWithinRenderArea(
               target_vk_rc.offset.x, target_vk_rc.offset.y, target_vk_rc.extent.width,
               target_vk_rc.extent.height))
@@ -285,7 +291,11 @@ bool VKGfx::ClearAdditionalColorAttachments(const MathUtil::Rectangle<int>& targ
     clear_attachments.push_back(std::move(clear_attachment));
   }
 
-  const VkClearRect vk_rect = {target_vk_rc, 0, g_framebuffer_manager->GetEFBLayers()};
+  // Same multiview constraint as ClearRegion: VkClearRect layerCount must be 1 inside a
+  // multiview render pass; the view mask replicates the clear to both eyes.
+  const u32 clear_layers =
+      vk_frame_buffer->IsMultiview() ? 1u : g_framebuffer_manager->GetEFBLayers();
+  const VkClearRect vk_rect = {target_vk_rc, 0, clear_layers};
   if (!StateTracker::GetInstance()->IsWithinRenderArea(target_vk_rc.offset.x,
                                                        target_vk_rc.offset.y,
                                                        target_vk_rc.extent.width,
