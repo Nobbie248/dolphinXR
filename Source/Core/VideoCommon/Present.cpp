@@ -997,13 +997,13 @@ void Presenter::BlitCurrentSourceToOpenXREyes(const AbstractTexture* source_text
   // the OpenXR swapchain so the compositor can show the camera feed there.
   const float clear_alpha = g_ActiveConfig.VRPassthroughEnabled() ? 0.0f : 1.0f;
 
-  if (sc->SupportsLayeredRendering() && m_post_processor->CanBlitFromTextureLayeredMultiview())
+  if (sc->SupportsLayeredRendering() && m_post_processor->CanBlitFromTextureLayered())
   {
     AbstractFramebuffer* layered_fb = sc->AcquireLayeredFramebuffer();
     if (layered_fb)
     {
       g_gfx->SetAndClearFramebuffer(layered_fb, {0.f, 0.f, 0.f, clear_alpha});
-      if (m_post_processor->BlitFromTextureLayeredMultiview(eye_rect, source_rc, source_texture))
+      if (m_post_processor->BlitFromTextureLayered(eye_rect, source_rc, source_texture))
       {
         sc->ReleaseLayeredTexture();
         restore_post_process_state();
@@ -1014,7 +1014,7 @@ void Presenter::BlitCurrentSourceToOpenXREyes(const AbstractTexture* source_text
       if (!s_logged_layered_blit_fallback)
       {
         WARN_LOG_FMT(VIDEO,
-                     "OpenXR: layered multiview post-process blit failed; falling back to "
+                     "OpenXR: layered post-process blit failed; falling back to "
                      "per-eye swapchains.");
         s_logged_layered_blit_fallback = true;
       }

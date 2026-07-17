@@ -112,10 +112,13 @@ public:
 
   void BlitFromTexture(const MathUtil::Rectangle<int>& dst, const MathUtil::Rectangle<int>& src,
                        const AbstractTexture* src_tex, int src_layer = -1);
-  bool CanBlitFromTextureLayeredMultiview() const;
-  bool BlitFromTextureLayeredMultiview(const MathUtil::Rectangle<int>& dst,
-                                       const MathUtil::Rectangle<int>& src,
-                                       const AbstractTexture* src_tex);
+  // Single-pass blit of a 2-layer source into a 2-layer framebuffer (OpenXR layered
+  // swapchains). Vulkan renders it via VK_KHR_multiview; D3D via the passthrough
+  // geometry shader (SV_RenderTargetArrayIndex).
+  bool CanBlitFromTextureLayered() const;
+  bool BlitFromTextureLayered(const MathUtil::Rectangle<int>& dst,
+                              const MathUtil::Rectangle<int>& src,
+                              const AbstractTexture* src_tex);
 
   bool IsColorCorrectionActive() const;
   bool NeedsIntermediaryBuffer() const;
@@ -137,6 +140,8 @@ protected:
   {
     std::unique_ptr<AbstractPipeline> default_pipeline;
     std::unique_ptr<AbstractPipeline> pipeline;
+    // Single-pass layered blit pipelines (both eye layers in one draw). On Vulkan these
+    // are multiview pipelines; on D3D they use the passthrough geometry shader.
     std::unique_ptr<AbstractPipeline> default_multiview_pipeline;
     std::unique_ptr<AbstractPipeline> multiview_pipeline;
     // Variants built against fragment-density-map render passes, for blitting into

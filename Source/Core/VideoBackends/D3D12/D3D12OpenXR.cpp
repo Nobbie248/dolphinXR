@@ -30,6 +30,11 @@ namespace DX12
 {
 std::unique_ptr<D3D12OpenXR> g_openxr_d3d12;
 
+XRLayeredSwapchain::XRLayeredSwapchain() = default;
+XRLayeredSwapchain::~XRLayeredSwapchain() = default;
+XRLayeredSwapchain::XRLayeredSwapchain(XRLayeredSwapchain&&) noexcept = default;
+XRLayeredSwapchain& XRLayeredSwapchain::operator=(XRLayeredSwapchain&&) noexcept = default;
+
 D3D12OpenXR::D3D12OpenXR() = default;
 
 D3D12OpenXR::~D3D12OpenXR()
@@ -176,12 +181,175 @@ bool D3D12OpenXR::CreateSwapchains()
 {
   ASSERT(VR::g_openxr != nullptr);
 
-  const auto& view_cfgs = VR::g_openxr->GetViewConfigViews();
   // Both the D3D11 and D3D12 bindings enumerate DXGI_FORMAT values, so the D3D11-named
   // format-selection helper applies unchanged.
   int64_t swapchain_format = 0;
   if (!VR::D3D11OpenXR::SelectSwapchainFormat(VR::g_openxr->GetSession(), &swapchain_format))
     return false;
+
+  m_use_layered_swapchain = false;
+  m_frame_uses_layered_swapchain = false;
+
+  // Layered fast path: one arraySize=2 swapchain the presenter fills in a single
+  // GS-expanded blit, halving the full-res blits and acquire/release pairs per frame.
+  // Only the stereo projection path benefits (the flat panel is mono), and the shared
+  // image size requires both eyes to agree.
+  if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR && g_backend_info.bSupportsGeometryShaders)
+  {
+    const auto& view_cfgs = VR::g_openxr->GetViewConfigViews();
+    const bool matching_eye_sizes =
+        view_cfgs[0].recommendedImageRectWidth == view_cfgs[1].recommendedImageRectWidth &&
+        view_cfgs[0].recommendedImageRectHeight == view_cfgs[1].recommendedImageRectHeight;
+    if (matching_eye_sizes)
+    {
+      if (CreateLayeredSwapchain(swapchain_format))
+      {
+        m_use_layered_swapchain = true;
+      }
+      else
+      {
+        WARN_LOG_FMT(VIDEO, "OpenXR: Layered D3D12 swapchain creation failed; falling back to "
+                            "two per-eye swapchains.");
+      }
+    }
+    else
+    {
+      WARN_LOG_FMT(VIDEO,
+                   "OpenXR: Layered D3D12 swapchain disabled because eye sizes differ "
+                   "({}x{} vs {}x{}).",
+                   view_cfgs[0].recommendedImageRectWidth,
+                   view_cfgs[0].recommendedImageRectHeight,
+                   view_cfgs[1].recommendedImageRectWidth,
+                   view_cfgs[1].recommendedImageRectHeight);
+    }
+  }
+
+  return CreateEyeSwapchains(swapchain_format);
+}
+
+bool D3D12OpenXR::CreateLayeredSwapchain(int64_t swapchain_format)
+{
+  ASSERT(VR::g_openxr != nullptr);
+
+  const auto& view_cfgs = VR::g_openxr->GetViewConfigViews();
+
+  auto& sc = m_layered_swapchain;
+  sc.width = view_cfgs[0].recommendedImageRectWidth;
+  sc.height = view_cfgs[0].recommendedImageRectHeight;
+
+  const auto cleanup = [&sc]() {
+    // Same ordering as DestroySwapchains: drop the DXTexture wrappers (their resource
+    // references are released on a fence), flush so the references are really gone,
+    // then let the runtime free its images.
+    const bool had_wrappers = !sc.textures.empty() || !sc.framebuffers.empty();
+    sc.framebuffers.clear();
+    sc.textures.clear();
+    if (had_wrappers && g_dx_context)
+    {
+      if (g_gfx)
+        Gfx::GetInstance()->ExecuteCommandList(true);
+      else
+        g_dx_context->ExecuteCommandList(true);
+    }
+    if (sc.swapchain != XR_NULL_HANDLE)
+    {
+      xrDestroySwapchain(sc.swapchain);
+      sc.swapchain = XR_NULL_HANDLE;
+    }
+    sc.width = 0;
+    sc.height = 0;
+  };
+
+  XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
+  info.arraySize = 2;
+  info.format = swapchain_format;
+  info.width = sc.width;
+  info.height = sc.height;
+  info.mipCount = 1;
+  info.faceCount = 1;
+  info.sampleCount = 1;
+  // Same usage as the per-eye swapchains: color target only, MUTABLE_FORMAT so a UNORM
+  // RTV can alias the sRGB-declared texture (avoids a double gamma encode).
+  info.usageFlags =
+      XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_MUTABLE_FORMAT_BIT;
+
+  XrResult result = xrCreateSwapchain(VR::g_openxr->GetSession(), &info, &sc.swapchain);
+  if (XR_FAILED(result))
+  {
+    WARN_LOG_FMT(VIDEO, "OpenXR: xrCreateSwapchain failed for layered D3D12 swapchain ({}).",
+                 static_cast<int>(result));
+    cleanup();
+    return false;
+  }
+
+  uint32_t image_count = 0;
+  result = xrEnumerateSwapchainImages(sc.swapchain, 0, &image_count, nullptr);
+  if (XR_FAILED(result) || image_count == 0)
+  {
+    WARN_LOG_FMT(VIDEO,
+                 "OpenXR: xrEnumerateSwapchainImages failed for layered D3D12 swapchain ({}).",
+                 static_cast<int>(result));
+    cleanup();
+    return false;
+  }
+
+  std::vector<XrSwapchainImageD3D12KHR> images(image_count, {XR_TYPE_SWAPCHAIN_IMAGE_D3D12_KHR});
+  result = xrEnumerateSwapchainImages(sc.swapchain, image_count, &image_count,
+                                      reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data()));
+  if (XR_FAILED(result))
+  {
+    WARN_LOG_FMT(VIDEO,
+                 "OpenXR: xrEnumerateSwapchainImages data failed for layered D3D12 swapchain "
+                 "({}).",
+                 static_cast<int>(result));
+    cleanup();
+    return false;
+  }
+
+  sc.textures.resize(image_count);
+  sc.framebuffers.resize(image_count);
+
+  for (uint32_t i = 0; i < image_count; ++i)
+  {
+    // CreateAdopted reads the resource descriptor, so the wrapper picks up both array
+    // slices (layers=2) and DXFramebuffer's RTV spans them.
+    sc.textures[i] =
+        DXTexture::CreateAdopted(images[i].texture, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    if (!sc.textures[i])
+    {
+      WARN_LOG_FMT(VIDEO, "OpenXR: DXTexture::CreateAdopted failed for layered image {}.", i);
+      cleanup();
+      return false;
+    }
+    if (sc.textures[i]->GetLayers() < 2)
+    {
+      // A single-slice resource would silently leave the right eye black — fall back.
+      WARN_LOG_FMT(VIDEO,
+                   "OpenXR: Layered D3D12 swapchain image {} has {} layer(s), expected 2.", i,
+                   sc.textures[i]->GetLayers());
+      cleanup();
+      return false;
+    }
+
+    sc.framebuffers[i] = DXFramebuffer::Create(sc.textures[i].get(), nullptr, {});
+    if (!sc.framebuffers[i])
+    {
+      WARN_LOG_FMT(VIDEO, "OpenXR: DXFramebuffer::Create failed for layered image {}.", i);
+      cleanup();
+      return false;
+    }
+  }
+
+  INFO_LOG_FMT(VIDEO, "OpenXR: Layered D3D12 swapchain ready: {}x{}, {} images, arraySize=2.",
+               sc.width, sc.height, image_count);
+  return true;
+}
+
+bool D3D12OpenXR::CreateEyeSwapchains(int64_t swapchain_format)
+{
+  ASSERT(VR::g_openxr != nullptr);
+
+  const auto& view_cfgs = VR::g_openxr->GetViewConfigViews();
 
   for (uint32_t eye = 0; eye < 2; ++eye)
   {
@@ -263,6 +431,26 @@ void D3D12OpenXR::DestroySwapchains()
 {
   bool had_wrappers = false;
 
+  if (m_layered_image_acquired && m_layered_swapchain.swapchain != XR_NULL_HANDLE)
+  {
+    XrSwapchainImageReleaseInfo release_info{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+    const XrResult release_result =
+        xrReleaseSwapchainImage(m_layered_swapchain.swapchain, &release_info);
+    if (XR_FAILED(release_result))
+    {
+      WARN_LOG_FMT(VIDEO,
+                   "OpenXR: xrReleaseSwapchainImage during shutdown failed for layered "
+                   "swapchain ({}).",
+                   static_cast<int>(release_result));
+    }
+    m_layered_image_acquired = false;
+  }
+
+  had_wrappers |=
+      !m_layered_swapchain.textures.empty() || !m_layered_swapchain.framebuffers.empty();
+  m_layered_swapchain.framebuffers.clear();
+  m_layered_swapchain.textures.clear();
+
   for (uint32_t eye = 0; eye < 2; ++eye)
   {
     auto& sc = m_eye_swapchains[eye];
@@ -297,6 +485,21 @@ void D3D12OpenXR::DestroySwapchains()
       g_dx_context->ExecuteCommandList(true);
   }
 
+  if (m_layered_swapchain.swapchain != XR_NULL_HANDLE)
+  {
+    const XrResult destroy_result = xrDestroySwapchain(m_layered_swapchain.swapchain);
+    if (XR_FAILED(destroy_result))
+    {
+      WARN_LOG_FMT(VIDEO, "OpenXR: xrDestroySwapchain failed for layered swapchain ({}).",
+                   static_cast<int>(destroy_result));
+    }
+    m_layered_swapchain.swapchain = XR_NULL_HANDLE;
+  }
+  m_layered_swapchain.width = 0;
+  m_layered_swapchain.height = 0;
+  m_use_layered_swapchain = false;
+  m_frame_uses_layered_swapchain = false;
+
   for (uint32_t eye = 0; eye < 2; ++eye)
   {
     auto& sc = m_eye_swapchains[eye];
@@ -317,6 +520,7 @@ AbstractFramebuffer* D3D12OpenXR::AcquireEyeFramebuffer(uint32_t eye_index)
 {
   ASSERT(eye_index < 2);
   auto& sc = m_eye_swapchains[eye_index];
+  m_frame_uses_layered_swapchain = false;
 
   XrSwapchainImageAcquireInfo acquire_info{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
   if (XR_FAILED(xrAcquireSwapchainImage(sc.swapchain, &acquire_info,
@@ -383,6 +587,81 @@ void D3D12OpenXR::ReleaseEyeTexture(uint32_t eye_index)
   m_image_acquired[eye_index] = false;
 }
 
+AbstractFramebuffer* D3D12OpenXR::AcquireLayeredFramebuffer()
+{
+  static unsigned int s_openxr_d3d12_layered_acquire_log_count = 0;
+  auto& sc = m_layered_swapchain;
+  if (!m_use_layered_swapchain || sc.swapchain == XR_NULL_HANDLE)
+    return nullptr;
+
+  XrSwapchainImageAcquireInfo acquire_info{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
+  if (XR_FAILED(
+          xrAcquireSwapchainImage(sc.swapchain, &acquire_info, &m_acquired_layered_image_index)))
+  {
+    ERROR_LOG_FMT(VIDEO, "OpenXR: xrAcquireSwapchainImage failed for layered swapchain.");
+    m_frame_uses_layered_swapchain = false;
+    return nullptr;
+  }
+  m_layered_image_acquired = true;
+
+  XrSwapchainImageWaitInfo wait_info{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
+  wait_info.timeout = XR_INFINITE_DURATION;
+  if (XR_FAILED(xrWaitSwapchainImage(sc.swapchain, &wait_info)))
+  {
+    ERROR_LOG_FMT(VIDEO, "OpenXR: xrWaitSwapchainImage failed for layered swapchain.");
+
+    XrSwapchainImageReleaseInfo release_info{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+    const XrResult release_result = xrReleaseSwapchainImage(sc.swapchain, &release_info);
+    if (XR_FAILED(release_result))
+    {
+      WARN_LOG_FMT(VIDEO,
+                   "OpenXR: xrReleaseSwapchainImage after layered wait failure failed ({}).",
+                   static_cast<int>(release_result));
+    }
+    m_layered_image_acquired = false;
+    m_frame_uses_layered_swapchain = false;
+    return nullptr;
+  }
+
+  // The runtime hands acquired color images over in a RENDER_TARGET-compatible state;
+  // resync our tracking without recording a barrier.
+  const uint32_t idx = m_acquired_layered_image_index;
+  sc.textures[idx]->OverrideState(D3D12_RESOURCE_STATE_RENDER_TARGET);
+  m_frame_uses_layered_swapchain = true;
+
+  if (s_openxr_d3d12_layered_acquire_log_count < 12)
+  {
+    INFO_LOG_FMT(OPENXR, "OpenXR D3D12 layered acquire #{}: image={} format={} size={}x{} layers={}",
+                 s_openxr_d3d12_layered_acquire_log_count + 1, idx,
+                 static_cast<int>(sc.textures[idx]->GetFormat()), sc.width, sc.height,
+                 sc.textures[idx]->GetLayers());
+    s_openxr_d3d12_layered_acquire_log_count++;
+  }
+
+  return sc.framebuffers[idx].get();
+}
+
+void D3D12OpenXR::ReleaseLayeredTexture()
+{
+  if (!m_layered_image_acquired)
+    return;
+
+  // Same contract as ReleaseEyeTexture: hand the image back in RENDER_TARGET state and
+  // make sure the blit is submitted to the queue before releasing.
+  m_layered_swapchain.textures[m_acquired_layered_image_index]->TransitionToState(
+      D3D12_RESOURCE_STATE_RENDER_TARGET);
+  Gfx::GetInstance()->ExecuteCommandList(false);
+
+  XrSwapchainImageReleaseInfo release_info{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+  const XrResult result = xrReleaseSwapchainImage(m_layered_swapchain.swapchain, &release_info);
+  if (XR_FAILED(result))
+  {
+    WARN_LOG_FMT(VIDEO, "OpenXR: xrReleaseSwapchainImage failed for layered swapchain ({}).",
+                 static_cast<int>(result));
+  }
+  m_layered_image_acquired = false;
+}
+
 bool D3D12OpenXR::SubmitFrame()
 {
   ASSERT(VR::g_openxr != nullptr);
@@ -391,6 +670,8 @@ bool D3D12OpenXR::SubmitFrame()
   // live m_eye_views here would pick up LocateViews that ran between the last draw and
   // xrEndFrame, causing ATW to reproject against the wrong pose.
   const auto& eye_views = VR::g_openxr->GetSubmittedEyeViews();
+  const bool submit_layered = m_frame_uses_layered_swapchain && m_use_layered_swapchain &&
+                              m_layered_swapchain.swapchain != XR_NULL_HANDLE;
 
   for (uint32_t eye = 0; eye < 2; ++eye)
   {
@@ -398,18 +679,30 @@ bool D3D12OpenXR::SubmitFrame()
     pv = {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};
     pv.pose = eye_views[eye].pose;
     pv.fov = eye_views[eye].fov;
-    pv.subImage.swapchain = m_eye_swapchains[eye].swapchain;
-    pv.subImage.imageArrayIndex = 0;
-    pv.subImage.imageRect = {
-        {0, 0},
-        {static_cast<int32_t>(m_eye_swapchains[eye].width),
-         static_cast<int32_t>(m_eye_swapchains[eye].height)}};
+    if (submit_layered)
+    {
+      pv.subImage.swapchain = m_layered_swapchain.swapchain;
+      pv.subImage.imageArrayIndex = eye;
+      pv.subImage.imageRect = {{0, 0},
+                               {static_cast<int32_t>(m_layered_swapchain.width),
+                                static_cast<int32_t>(m_layered_swapchain.height)}};
+    }
+    else
+    {
+      pv.subImage.swapchain = m_eye_swapchains[eye].swapchain;
+      pv.subImage.imageArrayIndex = 0;
+      pv.subImage.imageRect = {
+          {0, 0},
+          {static_cast<int32_t>(m_eye_swapchains[eye].width),
+           static_cast<int32_t>(m_eye_swapchains[eye].height)}};
+    }
   }
 
   if (VR::g_openxr->IsFrameThreadActive())
   {
     // The pacing thread owns xrEndFrame; hand it the rendered views (poses included).
     VR::g_openxr->PublishFrame(m_projection_views, VR::g_openxr->GetProjectionLayerExtraFlags());
+    m_frame_uses_layered_swapchain = false;
     return true;
   }
 
@@ -422,7 +715,9 @@ bool D3D12OpenXR::SubmitFrame()
   const std::vector<XrCompositionLayerBaseHeader*> layers = {
       reinterpret_cast<XrCompositionLayerBaseHeader*>(&m_projection_layer)};
 
-  return VR::g_openxr->EndFrame(layers);
+  const bool result = VR::g_openxr->EndFrame(layers);
+  m_frame_uses_layered_swapchain = false;
+  return result;
 }
 
 }  // namespace DX12

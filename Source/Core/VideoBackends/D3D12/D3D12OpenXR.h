@@ -40,6 +40,29 @@ struct XREyeSwapchain
   std::vector<std::unique_ptr<DXFramebuffer>> framebuffers;
 };
 
+// Both eyes in a single arraySize=2 swapchain. Each image is a Texture2DArray whose
+// DXFramebuffer RTV spans both slices, so the presenter writes both eyes in one
+// GS-expanded blit; SubmitFrame points each projection view at its array slice.
+// Special members are defined out-of-line so TUs that only see the forward-declared
+// DXTexture/DXFramebuffer never instantiate the unique_ptr deleters.
+struct XRLayeredSwapchain
+{
+  XRLayeredSwapchain();
+  ~XRLayeredSwapchain();
+  XRLayeredSwapchain(XRLayeredSwapchain&&) noexcept;
+  XRLayeredSwapchain& operator=(XRLayeredSwapchain&&) noexcept;
+
+  XRLayeredSwapchain(const XRLayeredSwapchain&) = delete;
+  XRLayeredSwapchain& operator=(const XRLayeredSwapchain&) = delete;
+
+  XrSwapchain swapchain = XR_NULL_HANDLE;
+  uint32_t width = 0;
+  uint32_t height = 0;
+
+  std::vector<std::unique_ptr<DXTexture>> textures;
+  std::vector<std::unique_ptr<DXFramebuffer>> framebuffers;
+};
+
 // D3D12-specific OpenXR backend. Implements VR::IOpenXRSwapchain so that
 // Presenter::RenderXFBToScreen() can acquire/release eye images and submit
 // frames using only VideoCommon-visible types (AbstractFramebuffer*).
@@ -68,11 +91,22 @@ public:
   // Release the current swapchain image back to the runtime.
   void ReleaseEyeTexture(uint32_t eye_index) override;
 
+  // Layered fast path: both eyes rendered in one pass into the arraySize=2 swapchain.
+  bool SupportsLayeredRendering() const override { return m_use_layered_swapchain; }
+  AbstractFramebuffer* AcquireLayeredFramebuffer() override;
+  void ReleaseLayeredTexture() override;
+
   // Build the XrCompositionLayerProjection and call xrEndFrame.
   bool SubmitFrame() override;
 
-  uint32_t GetEyeWidth() const override { return m_eye_swapchains[0].width; }
-  uint32_t GetEyeHeight() const override { return m_eye_swapchains[0].height; }
+  uint32_t GetEyeWidth() const override
+  {
+    return m_use_layered_swapchain ? m_layered_swapchain.width : m_eye_swapchains[0].width;
+  }
+  uint32_t GetEyeHeight() const override
+  {
+    return m_use_layered_swapchain ? m_layered_swapchain.height : m_eye_swapchains[0].height;
+  }
 
   // Flat mono panel path reuses eye swapchain #0; the base class handles acquire/release/submit.
   XrSwapchain GetFlatSwapchain() const override { return m_eye_swapchains[0].swapchain; }
@@ -83,16 +117,25 @@ private:
   // Creates XrSession with XrGraphicsBindingD3D12KHR (device + command queue).
   bool CreateSessionD3D12();
 
-  // Allocates m_eye_swapchains and wraps images as DXTexture / DXFramebuffer.
+  // Allocates the swapchains and wraps images as DXTexture / DXFramebuffer.
+  // The layered swapchain is optional (falls back to per-eye); the per-eye
+  // swapchains are always created (fallback path + flat panel mode).
   bool CreateSwapchains();
+  bool CreateLayeredSwapchain(int64_t swapchain_format);
+  bool CreateEyeSwapchains(int64_t swapchain_format);
 
   void DestroySwapchains();
 
   std::array<XREyeSwapchain, 2> m_eye_swapchains{};
+  XRLayeredSwapchain m_layered_swapchain{};
 
   // Image index selected by xrAcquireSwapchainImage for the current frame.
   std::array<uint32_t, 2> m_acquired_image_index{0, 0};
   std::array<bool, 2> m_image_acquired{false, false};
+  uint32_t m_acquired_layered_image_index = 0;
+  bool m_layered_image_acquired = false;
+  bool m_use_layered_swapchain = false;
+  bool m_frame_uses_layered_swapchain = false;
 
   // Reused per-frame composition data (avoids per-frame heap allocation).
   std::array<XrCompositionLayerProjectionView, 2> m_projection_views{};
