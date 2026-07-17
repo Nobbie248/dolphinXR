@@ -57,6 +57,12 @@ public:
     RuntimeElement = 2
   };
 
+  // Version of the family-signature scheme. Bump when ComputeShaderFamilySignature's field lists
+  // change. Version 1 (files saved without a marker) computed VS/GS families as a CRC32 over the
+  // raw UID bytes — the same value as the exact shader hash — so persisted v1 signatures are
+  // matched against draw hashes for backward compatibility and flagged for re-capture in the UI.
+  static constexpr u32 FAMILY_SCHEME_VERSION = 2;
+
   struct RuntimeElementSignature
   {
     bool valid = false;
@@ -154,6 +160,7 @@ public:
     bool texture_hashes_excluded = false;  // false=Include list, true=Exclude list
     bool hash_family_match = false;  // false=exact hash, true=family signature
     u64 family_signature = 0;        // 0=resolve from current hash when available
+    u32 family_version = FAMILY_SCHEME_VERSION;  // scheme of the persisted family_signature
     bool enabled = true;
     bool user_defined = true;
     std::string flag_group;      // For Flag handling: the flag name this shader sets
@@ -301,6 +308,7 @@ private:
     u64 hash = 0;
     bool hash_family_match = false;
     u64 family_signature = 0;
+    u32 family_version = FAMILY_SCHEME_VERSION;
     std::string flag_group;
     std::vector<u64> texture_hashes;
     bool texture_hashes_excluded = false;
@@ -328,6 +336,7 @@ private:
     bool texture_hashes_excluded;     // false=Include list, true=Exclude list
     bool hash_family_match;           // false=exact hash, true=family signature
     u64 family_signature;             // 0=resolve from current hash when available
+    u32 family_version;               // scheme of the persisted family_signature
     std::string condition_flag;
     bool condition_inverted;
   };
@@ -336,7 +345,8 @@ private:
   bool IsConditionFlagMatch(const ConditionalOverride& cond) const;
   bool IsConditionalHashMatch(const ConditionalOverride& cond, u64 vs_hash, u64 ps_hash,
                               u64 gs_hash) const;
-  u64 ResolveConditionalFamilySignature(const ConditionalOverride& cond) const;
+  u64 ResolveConditionalFamilySignature(const ConditionalOverride& cond,
+                                        bool* out_legacy_scheme) const;
   bool ShouldBypassSelectedOverrideForTextureTool(u64 vs_hash, u64 ps_hash, u64 gs_hash) const;
 
   // Texture tracking: current draw's bound textures + per-element capture during hunting.

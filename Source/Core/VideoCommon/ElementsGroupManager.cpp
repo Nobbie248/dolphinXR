@@ -439,6 +439,7 @@ void SaveSelectedSubgroupSignature(std::ostringstream& out,
                                    const ElementsGroupManager::SelectedSubgroupSignature& signature,
                                    const std::string& prefix)
 {
+  out << prefix << "family_version=" << signature.family_version << "\n";
   if (signature.vs_family != 0)
     out << prefix << "vs_family=" << fmt::format("{:016x}", signature.vs_family) << "\n";
   if (signature.ps_family != 0)
@@ -484,6 +485,12 @@ bool ParseSelectedSubgroupField(ElementsGroupManager::SelectedSubgroupSignature*
     signature->ps_family = std::strtoull(value.c_str(), nullptr, 16);
   else if (key == "gs_family")
     signature->gs_family = std::strtoull(value.c_str(), nullptr, 16);
+  else if (key == "family_version")
+  {
+    signature->family_version = static_cast<u32>(std::strtoul(value.c_str(), nullptr, 10));
+    if (signature->family_version == 0)
+      signature->family_version = 1;
+  }
   else if (key == "texture")
   {
     const u64 parsed = std::strtoull(value.c_str(), nullptr, 16);
@@ -620,7 +627,8 @@ LoadElementGroupOverridesFromINIFile(const std::string& path)
   auto commit_entry = [&]() {
     const bool runtime_format =
         current_format == "element_only_v2" || current_format == "element_only_v3" ||
-        current_format == "element_only_v4" || current_format == "element_only_v5";
+        current_format == "element_only_v4" || current_format == "element_only_v5" ||
+        current_format == "element_only_v6";
     const bool profile_format = current_format == "element_profile_v1";
     if (!has_entry || current.name.empty() || (!runtime_format && !profile_format))
       return;
@@ -640,6 +648,7 @@ LoadElementGroupOverridesFromINIFile(const std::string& path)
         subgroup.ps_family = signature.ps_family;
         subgroup.gs_family = signature.gs_family;
         subgroup.texture_hashes = signature.texture_hashes;
+        subgroup.family_version = 1;  // pre-v6 formats used the raw-UID CRC32 scheme for VS/GS
         if ((subgroup.vs_family != 0 || subgroup.ps_family != 0 || subgroup.gs_family != 0 ||
              !subgroup.texture_hashes.empty()) &&
             std::none_of(current.selected_match_filter.begin(), current.selected_match_filter.end(),
@@ -651,7 +660,8 @@ LoadElementGroupOverridesFromINIFile(const std::string& path)
         }
       }
     }
-    else if (current_format == "element_only_v4" || current_format == "element_only_v5")
+    else if (current_format == "element_only_v4" || current_format == "element_only_v5" ||
+             current_format == "element_only_v6")
     {
       for (auto& [index, signature] : current_selected_match_filters_v4)
       {
@@ -659,6 +669,9 @@ LoadElementGroupOverridesFromINIFile(const std::string& path)
         signature.texture_hashes.erase(
             std::unique(signature.texture_hashes.begin(), signature.texture_hashes.end()),
             signature.texture_hashes.end());
+        // v4/v5 predate the family_version key; their families used the raw-UID CRC32 scheme.
+        if (current_format != "element_only_v6")
+          signature.family_version = 1;
         if ((signature.vs_family != 0 || signature.ps_family != 0 || signature.gs_family != 0 ||
              !signature.texture_hashes.empty()) &&
             std::none_of(current.selected_match_filter.begin(), current.selected_match_filter.end(),
@@ -800,7 +813,8 @@ LoadElementGroupOverridesFromINIFile(const std::string& path)
         ParseStableSubMatchField(&current_selected_match_filters_v3[match_index], subkey, value);
       }
     }
-    else if ((current_format == "element_only_v4" || current_format == "element_only_v5") &&
+    else if ((current_format == "element_only_v4" || current_format == "element_only_v5" ||
+              current_format == "element_only_v6") &&
              key.rfind("selected_match_", 0) == 0)
     {
       const size_t prefix_len = std::string("selected_match_").size();
@@ -901,7 +915,7 @@ void ElementsGroupManager::SaveOverridesToINI(const std::string& game_id,
   {
     out << "$" << entry.name << "\n";
     out << "format="
-        << (entry.match_kind == MatchKind::ProfileLayer ? "element_profile_v1" : "element_only_v5")
+        << (entry.match_kind == MatchKind::ProfileLayer ? "element_profile_v1" : "element_only_v6")
         << "\n";
     out << "handling=" << GetHandlingName(entry.handling) << "\n";
     if (entry.layer >= 0)
@@ -1769,11 +1783,19 @@ bool ElementsGroupManager::DoesSelectedMatchFilterPass(const ElementGroupOverrid
     return true;
 
   const SelectedSubgroupSignature stable_signature = MakeSelectedSubgroupSignature(draw);
-  const bool included =
-      std::any_of(entry.selected_match_filter.begin(), entry.selected_match_filter.end(),
-                  [&stable_signature](const SelectedSubgroupSignature& filter) {
-                    return SelectedSubgroupSignaturesEqual(filter, stable_signature);
-                  });
+  const bool included = std::any_of(
+      entry.selected_match_filter.begin(), entry.selected_match_filter.end(),
+      [&stable_signature, &draw](const SelectedSubgroupSignature& filter) {
+        // Legacy (pre-v6) filters stored VS/GS families computed as a CRC32 over the raw UID
+        // bytes — the same value as the exact shader hash — so compare those against the draw's
+        // hashes. Pixel families were always semantic and keep using the current scheme.
+        const bool legacy = filter.family_version < ShaderHunter::FAMILY_SCHEME_VERSION;
+        const u64 draw_vs = legacy ? draw.vs_hash : stable_signature.vs_family;
+        const u64 draw_gs = legacy ? draw.gs_hash : stable_signature.gs_family;
+        return filter.vs_family == draw_vs && filter.ps_family == stable_signature.ps_family &&
+               filter.gs_family == draw_gs &&
+               filter.texture_hashes == stable_signature.texture_hashes;
+      });
   return entry.selected_match_filter_excluded ? !included : included;
 }
 

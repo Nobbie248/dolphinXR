@@ -162,8 +162,9 @@ constexpr Common::EnumMap<const char*, TevOutput::Color2> tev_a_output_table{
 
 constexpr Common::EnumMap<char, ColorChannel::Alpha> rgba_swizzle{'r', 'g', 'b', 'a'};
 
-// Bumped to 4: coverage output carries the fragment blend alpha for blended draws.
-static constexpr u32 PIXEL_SHADER_CODE_VERSION = 4;
+// Bumped to 5: force shader regeneration to validate that family-mode overrides survive a
+// code_version change (exact hashes change, semantic family signatures do not).
+static constexpr u32 PIXEL_SHADER_CODE_VERSION = 5;
 
 PixelShaderUid GetPixelShaderUid()
 {

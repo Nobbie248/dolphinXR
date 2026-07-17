@@ -86,6 +86,58 @@ u64 ComputePixelFamilySignature(const pixel_shader_uid_data& uid)
   return signature;
 }
 
+u64 ComputeVertexFamilySignature(const vertex_shader_uid_data& uid)
+{
+  u64 signature = FAMILY_HASH_OFFSET;
+
+  // Game-derived vertex configuration only. Deliberately excluded so signatures survive shader
+  // updates and match across devices: code_version (bumped on every generator change), vs_expand
+  // (backend capability, differs between PC and Quest), and lighting.light_mask (scene-variant as
+  // games toggle lights at runtime).
+  MixFamilyHash(signature, uid.components);
+  MixFamilyHash(signature, uid.numTexGens);
+  MixFamilyHash(signature, uid.numColorChans);
+  MixFamilyHash(signature, uid.dualTexTrans_enabled);
+  MixFamilyHash(signature, uid.position_has_3_elems);
+  MixFamilyHash(signature, uid.texcoord_elem_count);
+  MixFamilyHash(signature, uid.texMtxInfo_n_projection);
+
+  const u32 texgen_count = std::min<u32>(uid.numTexGens, 8);
+  for (u32 i = 0; i < texgen_count; ++i)
+  {
+    const auto& texinfo = uid.texMtxInfo[i];
+    MixFamilyHash(signature, static_cast<u64>(texinfo.inputform));
+    MixFamilyHash(signature, static_cast<u64>(texinfo.texgentype));
+    MixFamilyHash(signature, static_cast<u64>(texinfo.sourcerow));
+    MixFamilyHash(signature, texinfo.embosssourceshift);
+    MixFamilyHash(signature, texinfo.embosslightshift);
+
+    const auto& postinfo = uid.postMtxInfo[i];
+    MixFamilyHash(signature, postinfo.index);
+    MixFamilyHash(signature, postinfo.normalize);
+  }
+
+  MixFamilyHash(signature, uid.lighting.matsource);
+  MixFamilyHash(signature, uid.lighting.enablelighting);
+  MixFamilyHash(signature, uid.lighting.ambsource);
+  MixFamilyHash(signature, uid.lighting.diffusefunc);
+  MixFamilyHash(signature, uid.lighting.attnfunc);
+
+  return signature;
+}
+
+u64 ComputeGeometryFamilySignature(const geometry_shader_uid_data& uid)
+{
+  u64 signature = FAMILY_HASH_OFFSET;
+
+  // Everything game-derived in the GS UID; code_version is excluded (bumped on every generator
+  // change).
+  MixFamilyHash(signature, uid.numTexGens);
+  MixFamilyHash(signature, uid.primitive_type);
+
+  return signature;
+}
+
 u64 ComputeShaderFamilySignature(ShaderHunter::ShaderType type, const u8* uid_data, size_t uid_size)
 {
   if (!uid_data || uid_size == 0)
@@ -95,6 +147,18 @@ u64 ComputeShaderFamilySignature(ShaderHunter::ShaderType type, const u8* uid_da
   {
     const auto* ps_uid = reinterpret_cast<const pixel_shader_uid_data*>(uid_data);
     return ComputePixelFamilySignature(*ps_uid);
+  }
+
+  if (type == ShaderHunter::ShaderType::Vertex && uid_size >= sizeof(vertex_shader_uid_data))
+  {
+    const auto* vs_uid = reinterpret_cast<const vertex_shader_uid_data*>(uid_data);
+    return ComputeVertexFamilySignature(*vs_uid);
+  }
+
+  if (type == ShaderHunter::ShaderType::Geometry && uid_size >= sizeof(geometry_shader_uid_data))
+  {
+    const auto* gs_uid = reinterpret_cast<const geometry_shader_uid_data*>(uid_data);
+    return ComputeGeometryFamilySignature(*gs_uid);
   }
 
   return static_cast<u64>(Common::ComputeCRC32(uid_data, static_cast<u32>(uid_size)));
@@ -765,6 +829,9 @@ LoadShaderOverridesFromINIFile(const std::string& path)
       current.condition_flag.clear();
       current.condition_inverted = false;
       current.match_mode = MatchMode::ExactHash;
+      // Entries saved before the family_version key existed used the v1 scheme (raw-UID CRC32
+      // for VS/GS family signatures).
+      current.family_version = 1;
       has_entry = true;
     }
     else if (has_entry)
@@ -901,6 +968,12 @@ LoadShaderOverridesFromINIFile(const std::string& path)
       {
         current.family_signature = std::strtoull(value.c_str(), nullptr, 16);
       }
+      else if (key == "family_version")
+      {
+        current.family_version = static_cast<u32>(std::strtoul(value.c_str(), nullptr, 10));
+        if (current.family_version == 0)
+          current.family_version = 1;
+      }
     }
   }
 
@@ -1018,12 +1091,13 @@ void ShaderHunter::SaveOverridesToINI(const std::string& game_id,
       out << "condition=" << ovr.condition_flag << "\n";
       out << "condition_mode=" << (ovr.condition_inverted ? "deactivate" : "activate") << "\n";
     }
+    out << "family_version=" << ovr.family_version << "\n";
     if (ovr.hash_family_match)
-    {
       out << "hash_family=1\n";
-      if (ovr.family_signature != 0)
-        out << "family_signature=" << fmt::format("{:016x}", ovr.family_signature) << "\n";
-    }
+    // Persist the family signature whenever we have one (even for exact-hash entries) so the
+    // entry can be switched to family matching later without the game running.
+    if (ovr.family_signature != 0)
+      out << "family_signature=" << fmt::format("{:016x}", ovr.family_signature) << "\n";
     if (!ovr.texture_hashes.empty())
     {
       out << "texture_mode=" << (ovr.texture_hashes_excluded ? "exclude" : "include") << "\n";
@@ -1090,7 +1164,8 @@ void ShaderHunter::LoadOverrides(const std::string& game_id)
     // Any override with a flag_group sets a flag when drawn (regardless of handling type)
     if (!ovr.flag_group.empty())
       m_flag_rules.push_back({ovr.type, ovr.hash, ovr.hash_family_match, ovr.family_signature,
-                              ovr.flag_group, ovr.texture_hashes, ovr.texture_hashes_excluded});
+                              ovr.family_version, ovr.flag_group, ovr.texture_hashes,
+                              ovr.texture_hashes_excluded});
 
     // Flag-only overrides: just set the flag, render normally (no handling change)
     if (ovr.handling == HandlingType::Flag)
@@ -1107,7 +1182,7 @@ void ShaderHunter::LoadOverrides(const std::string& game_id)
       m_conditional_overrides.push_back(
           {ovr.hash, ovr.handling, ovr.type, ovr.layer, ovr.element_depth, ovr.units_per_meter,
            ovr.passthrough_opacity, ovr.texture_hashes, ovr.texture_hashes_excluded,
-           ovr.hash_family_match, ovr.family_signature, ovr.condition_flag,
+           ovr.hash_family_match, ovr.family_signature, ovr.family_version, ovr.condition_flag,
            ovr.condition_inverted});
       m_overrides.push_back(std::move(ovr));
       continue;
@@ -1188,8 +1263,6 @@ void ShaderHunter::LoadOverridesIfNeeded(const std::string& game_id)
 void ShaderHunter::AddAndSaveOverride(const std::string& game_id, const std::string& name,
                                       ShaderType type, u64 hash, HandlingType handling)
 {
-  std::lock_guard lock(m_mutex);
-
   // Load all existing overrides from INI (including disabled ones)
   auto all = LoadOverridesFromINI(game_id);
 
@@ -1201,55 +1274,22 @@ void ShaderHunter::AddAndSaveOverride(const std::string& game_id, const std::str
   entry.handling = handling;
   entry.enabled = true;
   entry.user_defined = true;
+
+  // Prefer family matching so the override survives shader-generator updates; exact hashes embed
+  // code_version and break on every bump.
+  if (const auto family = GetShaderFamilySignature(type, hash))
+  {
+    entry.hash_family_match = true;
+    entry.match_mode = MatchMode::ShaderFamily;
+    entry.family_signature = *family;
+  }
+
   all.push_back(entry);
 
-  // Save all overrides back to INI
+  // Save all overrides back to INI, then rebuild the runtime handling sets so the new entry takes
+  // effect immediately (family-mode entries live in the conditional set, not the plain hash sets).
   SaveOverridesToINI(game_id, all);
-
-  // Also add to runtime handling sets so it takes effect immediately.
-  m_overrides.push_back(entry);
-  switch (handling)
-  {
-  case HandlingType::Skip:
-    switch (type)
-    {
-    case ShaderType::Pixel:
-      m_override_ps_hashes.insert(hash);
-      break;
-    case ShaderType::Vertex:
-      m_override_vs_hashes.insert(hash);
-      break;
-    case ShaderType::Geometry:
-      m_override_gs_hashes.insert(hash);
-      break;
-    default:
-      break;
-    }
-    break;
-  case HandlingType::Screen:
-    m_screen_hashes.insert(hash);
-    break;
-  case HandlingType::Fullscreen:
-    m_fullscreen_hashes.insert(hash);
-    break;
-  case HandlingType::FullscreenMono:
-    m_fullscreen_hashes.insert(hash);
-    break;
-  case HandlingType::HeadLocked:
-    m_headlocked_hashes.insert(hash);
-    break;
-  case HandlingType::Flag:
-    // Flag overrides are added via the UI with flag_group set on the ShaderOverride.
-    // AddAndSaveOverride is used from ShaderHunterWidget quick-add which defaults to Skip.
-    break;
-  case HandlingType::UnitsPerMeter:
-    // AddAndSaveOverride currently has no UPM parameter; this handling is authored through edit UIs.
-    break;
-  case HandlingType::Passthrough:
-    // Quick-add defaults to fully see-through (opacity 0); edit UIs adjust the opacity.
-    m_passthrough_opacities[hash] = 0.0f;
-    break;
-  }
+  LoadOverrides(game_id);
 
   INFO_LOG_FMT(VIDEO, "ShaderHunter: Saved override '{}' (hash={:016x}, type={}, handling={}) for game {}",
                name, hash,
@@ -1312,15 +1352,21 @@ void ShaderHunter::RegisterFlags(u64 vs_hash, u64 ps_hash, u64 gs_hash)
     if (rule.hash_family_match)
     {
       u64 rule_family = rule.family_signature;
+      // Legacy (scheme v1) VS/GS family signatures were CRC32 over the raw UID bytes — the same
+      // value as the exact shader hash — so compare them against the draw's hash instead.
+      bool legacy_scheme =
+          rule.family_version < FAMILY_SCHEME_VERSION && rule.type != ShaderType::Pixel;
       if (rule_family == 0)
       {
         const auto& per_type = m_shader_family_signatures[static_cast<int>(rule.type)];
         const auto it = per_type.find(rule.hash);
         if (it != per_type.end())
           rule_family = it->second;
+        legacy_scheme = false;  // live table always holds current-scheme signatures
       }
-      if (rule_family != 0 && current_family != 0)
-        return rule_family == current_family;
+      const u64 comparand = legacy_scheme ? current_hash : current_family;
+      if (rule_family != 0 && comparand != 0)
+        return rule_family == comparand;
     }
     return current_hash == rule.hash;
   };
@@ -1445,13 +1491,23 @@ bool ShaderHunter::IsConditionFlagMatch(const ConditionalOverride& cond) const
   return cond.condition_inverted ? !is_active : is_active;
 }
 
-u64 ShaderHunter::ResolveConditionalFamilySignature(const ConditionalOverride& cond) const
+u64 ShaderHunter::ResolveConditionalFamilySignature(const ConditionalOverride& cond,
+                                                    bool* out_legacy_scheme) const
 {
+  *out_legacy_scheme = false;
   if (!cond.hash_family_match)
     return 0;
   if (cond.family_signature != 0)
+  {
+    // Legacy (scheme v1) VS/GS family signatures were CRC32 over the raw UID bytes — the same
+    // value as the exact shader hash — so they must be compared against the draw's hash rather
+    // than the semantic family. Pixel families were semantic from the start.
+    *out_legacy_scheme =
+        cond.family_version < FAMILY_SCHEME_VERSION && cond.type != ShaderType::Pixel;
     return cond.family_signature;
+  }
 
+  // Resolved from the live table, which always holds current-scheme signatures.
   const auto& per_type = m_shader_family_signatures[static_cast<int>(cond.type)];
   const auto it = per_type.find(cond.hash);
   if (it == per_type.end())
@@ -1484,9 +1540,11 @@ bool ShaderHunter::IsConditionalHashMatch(const ConditionalOverride& cond, u64 v
 
   if (cond.hash_family_match)
   {
-    const u64 cond_family = ResolveConditionalFamilySignature(cond);
-    if (cond_family != 0 && current_family != 0)
-      return cond_family == current_family;
+    bool legacy_scheme = false;
+    const u64 cond_family = ResolveConditionalFamilySignature(cond, &legacy_scheme);
+    const u64 comparand = legacy_scheme ? current_hash : current_family;
+    if (cond_family != 0 && comparand != 0)
+      return cond_family == comparand;
   }
 
   return current_hash == cond.hash;
@@ -2093,6 +2151,15 @@ bool ShaderHunter::SaveSelectedShaderOverride(const std::string& game_id, Handli
     entry.units_per_meter = g_Config.vr_units_per_meter;
   if (texture_hash != 0)
     entry.texture_hashes.push_back(texture_hash);
+
+  // Prefer family matching so the override survives shader-generator updates; exact hashes embed
+  // code_version and break on every bump.
+  if (const auto family = GetShaderFamilySignature(type, hash))
+  {
+    entry.hash_family_match = true;
+    entry.match_mode = MatchMode::ShaderFamily;
+    entry.family_signature = *family;
+  }
 
   all.push_back(entry);
   SaveOverridesToINI(game_id, all);

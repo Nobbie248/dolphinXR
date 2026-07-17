@@ -194,10 +194,23 @@ ShaderOverrideAddEditDialog::ShaderOverrideAddEditDialog(
   m_texture_hash_scroll->setWidget(m_texture_hash_container);
   AddTextureHashField(QString());
 
+  // New overrides default to Shader Family matching: family signatures are semantic (computed
+  // from game-derived shader configuration) and survive shader-generator updates, while exact
+  // hashes embed code_version and break on every bump.
+  if (!edit_override)
+  {
+    const int family_idx =
+        m_match_mode_combo->findData(static_cast<int>(ShaderHunter::MatchMode::ShaderFamily));
+    if (family_idx >= 0)
+      m_match_mode_combo->setCurrentIndex(family_idx);
+  }
+
   // Pre-fill fields in edit mode
   if (edit_override)
   {
     m_edit_family_signature = edit_override->family_signature;
+    m_edit_family_version = edit_override->family_version;
+    m_edit_original_hash = edit_override->hash;
     m_name_edit->setText(QString::fromStdString(edit_override->name));
     m_comments_edit->setPlainText(QString::fromStdString(edit_override->comments));
     m_credits_edit->setText(QString::fromStdString(edit_override->credits));
@@ -321,19 +334,23 @@ ShaderHunter::ShaderOverride ShaderOverrideAddEditDialog::GetResult() const
       static_cast<ShaderHunter::ShaderType>(m_type_combo->currentData().toInt());
   result.match_mode =
       static_cast<ShaderHunter::MatchMode>(m_match_mode_combo->currentData().toInt());
-  result.hash_family_match = false;
-  result.family_signature = 0;
+  result.hash_family_match = result.match_mode == ShaderHunter::MatchMode::ShaderFamily;
+  // Keep the stored family signature/scheme version (even for exact-hash entries, so the mode
+  // can be switched later without the game running); a hand-edited hash is assumed to come from
+  // the current build.
+  result.family_signature = m_edit_family_signature;
+  result.family_version = m_edit_family_version;
+  if (result.hash != m_edit_original_hash)
+    result.family_version = ShaderHunter::FAMILY_SCHEME_VERSION;
 
-  if (result.match_mode == ShaderHunter::MatchMode::ShaderFamily)
+  // When the game is running, re-resolve the family live — that always yields a current-scheme
+  // signature and upgrades legacy entries in place.
+  if (const auto signature =
+          ShaderHunter::GetInstance().GetShaderFamilySignature(result.type, result.hash);
+      signature.has_value())
   {
-    result.hash_family_match = true;
-    result.family_signature = m_edit_family_signature;
-    if (const auto signature =
-            ShaderHunter::GetInstance().GetShaderFamilySignature(result.type, result.hash);
-        signature.has_value())
-    {
-      result.family_signature = *signature;
-    }
+    result.family_signature = *signature;
+    result.family_version = ShaderHunter::FAMILY_SCHEME_VERSION;
   }
   result.handling =
       static_cast<ShaderHunter::HandlingType>(m_handling_combo->currentData().toInt());

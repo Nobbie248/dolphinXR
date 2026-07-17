@@ -158,6 +158,13 @@ void ElementsGroupOverrideWidget::UpdateList()
                    .arg(entry.selected_match_filter_excluded ? QStringLiteral("match_exclude") :
                                                                QStringLiteral("matches"))
                    .arg(entry.selected_match_filter.size());
+      const auto legacy_count = std::count_if(
+          entry.selected_match_filter.begin(), entry.selected_match_filter.end(),
+          [](const ElementsGroupManager::SelectedSubgroupSignature& filter) {
+            return filter.family_version < ShaderHunter::FAMILY_SCHEME_VERSION;
+          });
+      if (legacy_count > 0)
+        label += tr(" [%1 legacy - re-capture to survive shader updates]").arg(legacy_count);
     }
     if (!entry.condition_flag.empty())
       label += QStringLiteral(" when(%1%2)")

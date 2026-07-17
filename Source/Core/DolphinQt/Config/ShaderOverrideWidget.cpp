@@ -253,7 +253,16 @@ void ShaderOverrideWidget::UpdateList()
     }
 
     if (ovr.hash_family_match)
+    {
       label += QStringLiteral(" family");
+      // Pre-v2 VS/GS family signatures were raw-UID CRC32s; they still match via the exact-hash
+      // fallback but break on the next shader-generator update.
+      if (ovr.family_version < ShaderHunter::FAMILY_SCHEME_VERSION &&
+          ovr.type != ShaderHunter::ShaderType::Pixel && ovr.family_signature != 0)
+      {
+        label += tr(" [legacy - re-capture to survive shader updates]");
+      }
+    }
 
     if (!ovr.texture_hashes.empty())
     {

@@ -14,7 +14,7 @@
 #include "VideoCommon/VideoConfig.h"
 #include "VideoCommon/XFMemory.h"
 
-static constexpr u32 VERTEX_SHADER_CODE_VERSION = 18;
+static constexpr u32 VERTEX_SHADER_CODE_VERSION = 19;
 
 VertexShaderUid GetVertexShaderUid()
 {

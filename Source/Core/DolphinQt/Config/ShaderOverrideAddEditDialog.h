@@ -75,4 +75,6 @@ private:
   std::vector<QLineEdit*> m_texture_hash_edits;
   bool m_updating_texture_hash_fields = false;
   u64 m_edit_family_signature = 0;
+  u32 m_edit_family_version = ShaderHunter::FAMILY_SCHEME_VERSION;
+  u64 m_edit_original_hash = 0;
 };

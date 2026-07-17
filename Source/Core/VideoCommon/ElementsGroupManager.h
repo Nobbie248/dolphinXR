@@ -72,6 +72,11 @@ public:
     u64 ps_family = 0;
     u64 gs_family = 0;
     std::vector<u64> texture_hashes;
+    // Scheme of the family values (see ShaderHunter::FAMILY_SCHEME_VERSION). Filters from pre-v6
+    // INIs are version 1: their vs/gs families are raw-UID CRC32s (equal to the exact shader
+    // hashes) and are matched against draw hashes for backward compatibility. Not part of
+    // signature equality.
+    u32 family_version = ShaderHunter::FAMILY_SCHEME_VERSION;
   };
 
   struct CurrentMatchCandidate

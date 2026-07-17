@@ -127,6 +127,8 @@ QString FormatSelectedMatchSummary(const ElementsGroupManager::SelectedSubgroupS
                .arg(QStringLiteral("%1")
                         .arg(static_cast<qulonglong>(sig.gs_family), 16, 8, QLatin1Char('0')));
   label += QObject::tr(" | Tex %1").arg(FormatTextureSummary(sig.texture_hashes));
+  if (sig.family_version < ShaderHunter::FAMILY_SCHEME_VERSION)
+    label += QObject::tr(" [legacy - re-capture to survive shader updates]");
   return label;
 }
 
