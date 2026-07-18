@@ -365,6 +365,10 @@ struct VideoConfig final
   // per pixel (flat-interpolated, bit-exact) instead of the synthesized layer/element depth.
   // Restores GX's deterministic depth semantics — eliminates menu z-fighting by construction.
   bool vr_exact_screen_depth = true;
+  // Auto-detect ortho draws sampling EFB copies (bloom, motion blur, post-processing) and render
+  // them natively over each eye (like a Fullscreen override) instead of capturing them onto the
+  // virtual screen. Downscaled copies always qualify; full-res copies only when blended.
+  bool vr_auto_native_efb_effects = true;
   // Render the whole game as a flat mono panel in the VR scene (StereoMode::Off), while the
   // OpenXR session still runs. Used by the "Launch games in VR = off" cinema path on Quest.
   bool vr_flat_screen = false;

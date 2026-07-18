@@ -227,6 +227,7 @@ void VideoConfig::Refresh()
   }
   vr_auto_layer_spread = Config::Get(Config::GFX_VR_AUTO_LAYER_SPREAD);
   vr_exact_screen_depth = Config::Get(Config::GFX_VR_EXACT_SCREEN_DEPTH);
+  vr_auto_native_efb_effects = Config::Get(Config::GFX_VR_AUTO_NATIVE_EFB_EFFECTS);
   vr_remove_bars = Config::Get(Config::GFX_VR_REMOVE_BARS);
   vr_ortho_scissor_fix = Config::Get(Config::GFX_VR_ORTHO_SCISSOR_FIX);
   vr_detect_skybox = Config::Get(Config::GFX_VR_DETECT_SKYBOX);

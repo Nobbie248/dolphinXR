@@ -346,20 +346,35 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
          "Disable only to fall back to the legacy layer system for troubleshooting."));
   virtual_screen_layout->addWidget(m_exact_screen_depth, 4, 0, 1, 3);
 
+  // Auto-Exclude EFB Effects
+  m_auto_native_efb_effects =
+      new ConfigBool(tr("Auto-Exclude EFB Effects"), Config::GFX_VR_AUTO_NATIVE_EFB_EFFECTS);
+  m_auto_native_efb_effects->setToolTip(
+      tr("Automatically keeps full-screen EFB effects (bloom, motion blur, heat distortion and "
+         "other post-processing) off the 2D Virtual Screen.<br><br>"
+         "These effects draw as 2D quads sampling a copy of the rendered frame, so the virtual "
+         "screen would otherwise capture them and smear the whole-scene effect across the 2D "
+         "screen. Detected draws render natively over each eye instead, exactly as if they had "
+         "a manual Fullscreen override.<br><br>"
+         "Genuine 2D content that samples a frame copy opaquely (e.g. a frozen pause-menu "
+         "background) stays on the virtual screen. Disable this if a game's 2D element is "
+         "misdetected and leaves the screen."));
+  virtual_screen_layout->addWidget(m_auto_native_efb_effects, 5, 0, 1, 3);
+
   // Auto Layer Spread
   m_auto_layer_spread =
       new ConfigBool(tr("Auto Layer Spread"), Config::GFX_VR_AUTO_LAYER_SPREAD);
-  virtual_screen_layout->addWidget(m_auto_layer_spread, 5, 0, 1, 3);
+  virtual_screen_layout->addWidget(m_auto_layer_spread, 6, 0, 1, 3);
 
   m_layer_offset = new ConfigFloatSlider(Config::GFX_VR_LAYER_OFFSET_MIN,
                                           Config::GFX_VR_LAYER_OFFSET_MAX,
                                           Config::GFX_VR_LAYER_OFFSET,
                                           Config::GFX_VR_LAYER_OFFSET_STEP);
   m_layer_offset_value = new QLabel();
-  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("Layer Offset:"), m_layer_offset), 6,
+  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("Layer Offset:"), m_layer_offset), 7,
                                    0);
-  virtual_screen_layout->addWidget(m_layer_offset, 6, 1);
-  virtual_screen_layout->addWidget(m_layer_offset_value, 6, 2);
+  virtual_screen_layout->addWidget(m_layer_offset, 7, 1);
+  virtual_screen_layout->addWidget(m_layer_offset_value, 7, 2);
 
   m_layer_offset_value->setText(QString::asprintf("%.4f", m_layer_offset->GetValue()));
   connect(m_layer_offset, &ConfigFloatSlider::valueChanged, this, [this] {
@@ -371,10 +386,10 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
                                            Config::GFX_VR_ELEMENT_DEPTH,
                                            Config::GFX_VR_ELEMENT_DEPTH_STEP);
   m_element_depth_value = new QLabel();
-  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("Element Depth:"), m_element_depth), 7,
+  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("Element Depth:"), m_element_depth), 8,
                                    0);
-  virtual_screen_layout->addWidget(m_element_depth, 7, 1);
-  virtual_screen_layout->addWidget(m_element_depth_value, 7, 2);
+  virtual_screen_layout->addWidget(m_element_depth, 8, 1);
+  virtual_screen_layout->addWidget(m_element_depth_value, 8, 2);
 
   m_element_depth_value->setText(QString::asprintf("%.4f", m_element_depth->GetValue()));
   connect(m_element_depth, &ConfigFloatSlider::valueChanged, this, [this] {
@@ -386,10 +401,10 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
                                           Config::GFX_VR_HUD_THICKNESS,
                                           Config::GFX_VR_HUD_THICKNESS_STEP);
   m_hud_thickness_value = new QLabel();
-  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("HUD Thickness:"), m_hud_thickness), 8,
+  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("HUD Thickness:"), m_hud_thickness), 9,
                                    0);
-  virtual_screen_layout->addWidget(m_hud_thickness, 8, 1);
-  virtual_screen_layout->addWidget(m_hud_thickness_value, 8, 2);
+  virtual_screen_layout->addWidget(m_hud_thickness, 9, 1);
+  virtual_screen_layout->addWidget(m_hud_thickness_value, 9, 2);
 
   auto update_hud_thickness_label = [this] {
     const float val = m_hud_thickness->GetValue();
@@ -927,6 +942,8 @@ void VRPane::ResetGeneralSettings()
                            Config::GFX_VR_AUTO_LAYER_SPREAD.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_EXACT_SCREEN_DEPTH,
                            Config::GFX_VR_EXACT_SCREEN_DEPTH.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_AUTO_NATIVE_EFB_EFFECTS,
+                           Config::GFX_VR_AUTO_NATIVE_EFB_EFFECTS.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_LAYER_OFFSET,
                            Config::GFX_VR_LAYER_OFFSET.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_ELEMENT_DEPTH,

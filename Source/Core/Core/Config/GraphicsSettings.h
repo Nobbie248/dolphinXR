@@ -218,6 +218,9 @@ extern const Info<bool> GFX_VR_EAGER_HEARTBEAT;
 extern const Info<bool> GFX_VR_AUTO_VBI_FROM_HMD;
 extern const Info<bool> GFX_VR_AUTO_LAYER_SPREAD;
 extern const Info<bool> GFX_VR_EXACT_SCREEN_DEPTH;
+// Auto-detect ortho draws sampling EFB copies (bloom, motion blur, post-processing) and render
+// them natively over each eye instead of capturing them onto the 2D Virtual Screen.
+extern const Info<bool> GFX_VR_AUTO_NATIVE_EFB_EFFECTS;
 extern const Info<float> GFX_VR_LAYER_OFFSET;
 extern const Info<float> GFX_VR_ELEMENT_DEPTH;
 extern const Info<float> GFX_VR_HUD_THICKNESS;

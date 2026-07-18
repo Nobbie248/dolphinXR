@@ -1223,6 +1223,20 @@ std::string TextureCacheBase::GetBoundTextureName(u32 stage) const
   return m_bound_textures[stage]->texture_info_name;
 }
 
+bool TextureCacheBase::IsBoundEfbCopy(u32 stage, u32* native_width, u32* native_height) const
+{
+  if (stage >= m_bound_textures.size() || !m_bound_textures[stage])
+    return false;
+
+  const RcTcacheEntry& entry = m_bound_textures[stage];
+  if (!entry->is_efb_copy || entry->is_xfb_copy)
+    return false;
+
+  *native_width = entry->native_width;
+  *native_height = entry->native_height;
+  return true;
+}
+
 bool TextureCacheBase::IsBoundMetroidPrime2DarkTexture(u32 stage) const
 {
   if (stage >= m_bound_textures.size() || !m_bound_textures[stage])

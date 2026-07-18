@@ -292,6 +292,9 @@ public:
   std::string GetBoundTextureName(u32 stage) const;
   bool IsBoundMetroidPrime2DarkTexture(u32 stage) const;
   bool IsBoundMetroidPrime2DarkHighlightTexture(u32 stage) const;
+  // Returns true if the texture bound to the given stage is an EFB copy (not an XFB copy),
+  // reporting its native dimensions for the VR effect-buffer heuristic.
+  bool IsBoundEfbCopy(u32 stage, u32* native_width, u32* native_height) const;
   void CopyRenderTargetToTexture(u32 dstAddr, EFBCopyFormat dstFormat, u32 width, u32 height,
                                  u32 dstStride, bool is_depth_copy,
                                  const MathUtil::Rectangle<int>& srcRect, bool isIntensity,

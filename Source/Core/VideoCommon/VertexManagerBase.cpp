@@ -1453,6 +1453,36 @@ void VertexManagerBase::Flush()
           }
         }
 
+        // Auto-detect EFB-copy effects: bloom, motion blur, and post-processing draw as ortho
+        // quads sampling textures the game just copied out of the EFB, so the virtual-screen
+        // path would capture them and smear a whole-scene effect across the 2D screen. When
+        // such a draw has no explicit override, render it natively into both eye layers
+        // instead (same as a manual Fullscreen override). Downscaled copies are effect
+        // buffers by construction; full-resolution copies qualify only when blended over the
+        // scene, so opaque frozen-frame quads (pause-menu backgrounds) stay on the screen.
+        if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR && !vr_flat_mode &&
+            g_ActiveConfig.vr_virtual_screen && g_ActiveConfig.vr_auto_native_efb_effects &&
+            !hunter_skip && !elements_skip && !texmgr_skip &&
+            std::isnan(geometry_shader_manager.vr_stereo_override) &&
+            xfmem.projection.type != ProjectionType::Perspective)
+        {
+          const bool blend_active = bpmem.blendmode.blend_enable || bpmem.blendmode.subtract;
+          for (const u32 i : used_textures)
+          {
+            u32 copy_width = 0;
+            u32 copy_height = 0;
+            if (!g_texture_cache->IsBoundEfbCopy(i, &copy_width, &copy_height))
+              continue;
+            const bool downscaled =
+                copy_width * 2 <= EFB_WIDTH && copy_height * 2 <= EFB_HEIGHT;
+            if (downscaled || blend_active)
+            {
+              geometry_shader_manager.vr_stereo_override = 0.0f;
+              break;
+            }
+          }
+        }
+
         // Increment ortho draw counter for depth layering on the VR virtual screen.
         // Applies to natural ortho draws and draws forced to screen/head-locked by override.
         // Keep read-only EQUAL passes on the previous layer to preserve multi-pass HUD rendering.
