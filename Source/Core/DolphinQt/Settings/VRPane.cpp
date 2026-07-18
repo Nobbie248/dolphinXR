@@ -764,14 +764,12 @@ void VRPane::AddDescriptions()
   static constexpr char TR_LOCK_HEAD_POSE_DESCRIPTION[] = QT_TR_NOOP(
       "Snaps OpenXR head-tracking updates to game-frame boundaries (XFB copies) so every draw "
       "call within a single game frame uses one consistent head pose."
-      "<br><br>Without this, when <b>Immediately Present XFB</b> is disabled, "
-      "<code>LocateViews()</code> can mutate the head pose mid-frame on the video thread, "
-      "causing different parts of the same frame (e.g. level geometry vs. dynamic objects) "
-      "to be rendered with different poses. The visible symptom is objects appearing to "
-      "&quot;stay in place&quot; and jump to their correct positions a few frames later."
-      "<br><br>This option captures a single head pose at the XFB-copy point in FIFO order, "
-      "guaranteeing all draws of a frame are coherent. It has no effect when "
-      "<b>Immediately Present XFB</b> is on (that path is already coherent)."
+      "<br><br>Without this, <code>LocateViews()</code> can mutate the head pose mid-frame on "
+      "the video thread, causing different parts of the same frame (e.g. level geometry vs. "
+      "dynamic objects) to be rendered with different poses."
+      "<br><br>This behavior is applied automatically whenever <b>Immediately Present XFB</b> "
+      "is disabled (deferred presentation is only coherent with a locked pose). The checkbox "
+      "additionally forces it for games running with <b>Immediately Present XFB</b> on."
       "<br><br><dolphin_emphasis>If unsure, leave this checked.</dolphin_emphasis>");
   static constexpr char TR_VR_GAMMA_DESCRIPTION[] = QT_TR_NOOP(
       "Adjusts gamma correction for VR eye output."

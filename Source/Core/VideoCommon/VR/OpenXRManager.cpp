@@ -1006,6 +1006,10 @@ void OpenXRManager::SetSwapchain(IOpenXRSwapchain* swapchain)
     // layers reference swapchain handles, and EndFrame takes the graphics queue lock.
     StopFrameThread();
     m_swapchain = nullptr;
+    // XFB pose stamps hold poses in the (possibly outgoing) session's reference space.
+    m_xfb_pose_stamps = {};
+    m_xfb_pose_stamp_next = 0;
+    m_present_eye_views_valid = false;
     return;
   }
 
@@ -2610,6 +2614,57 @@ void OpenXRManager::RecordRenderedEyeViews()
     m_submitted_eye_views = m_eye_views;
   else
     m_submitted_eye_views = m_rendered_eye_views;
+}
+
+void OpenXRManager::StampXFBPose(uint32_t xfb_addr)
+{
+  // Runs at the XFB copy in FIFO order: the just-copied XFB is the completed frame,
+  // and m_submitted_eye_views still holds the pose its draws used — the next frame's
+  // first draw (RecordRenderedEyeViews via the GS cache refresh) is what overwrites it.
+  XFBPoseStamp* slot = nullptr;
+  for (auto& stamp : m_xfb_pose_stamps)
+  {
+    if (stamp.serial != 0 && stamp.xfb_addr == xfb_addr)
+    {
+      slot = &stamp;
+      break;
+    }
+  }
+  if (!slot)
+  {
+    slot = &m_xfb_pose_stamps[m_xfb_pose_stamp_next];
+    m_xfb_pose_stamp_next = (m_xfb_pose_stamp_next + 1) % m_xfb_pose_stamps.size();
+  }
+  slot->xfb_addr = xfb_addr;
+  slot->serial = ++m_xfb_pose_stamp_serial;
+  slot->views = m_submitted_eye_views;
+}
+
+void OpenXRManager::SelectPresentPoseForXFB(uint32_t xfb_addr)
+{
+  // Exact address match first: a VI duplicate present of an older XFB must keep that
+  // XFB's own pose even after a newer copy stamped a different buffer. Fall back to
+  // the newest stamp (stitched hybrid XFBs can present an address no single copy
+  // used); with no stamps at all GetPresentEyeViews falls through to the live
+  // snapshot, which is the pre-stamping behavior.
+  const XFBPoseStamp* match = nullptr;
+  const XFBPoseStamp* newest = nullptr;
+  for (const auto& stamp : m_xfb_pose_stamps)
+  {
+    if (stamp.serial == 0)
+      continue;
+    if (stamp.xfb_addr == xfb_addr)
+      match = &stamp;
+    if (!newest || stamp.serial > newest->serial)
+      newest = &stamp;
+  }
+  if (!match)
+    match = newest;
+  if (match)
+  {
+    m_present_eye_views = match->views;
+    m_present_eye_views_valid = true;
+  }
 }
 
 void OpenXRManager::EnsureHomePositionFromCurrentViews() const

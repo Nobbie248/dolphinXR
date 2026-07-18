@@ -1519,7 +1519,10 @@ bool VulkanOpenXR::SubmitFrame()
 
     pending_frame.layer_flags = VR::g_openxr->GetProjectionLayerExtraFlags();
 
-    const auto& eye_views = VR::g_openxr->GetSubmittedEyeViews();
+    // Pose the presented XFB was rendered with (stamped at its XFB copy, selected in
+    // FetchXFB) — not the live snapshot, which can already belong to the next frame
+    // when presentation is deferred to VI time.
+    const auto& eye_views = VR::g_openxr->GetPresentEyeViews();
     const bool submit_layered =
         m_frame_uses_layered_swapchain && m_use_layered_swapchain &&
         m_layered_swapchain.swapchain != XR_NULL_HANDLE;
@@ -1601,7 +1604,8 @@ bool VulkanOpenXR::SubmitFrame()
   }
 #endif
 
-  const auto& eye_views = VR::g_openxr->GetSubmittedEyeViews();
+  // See above: stamped present pose, not the live snapshot.
+  const auto& eye_views = VR::g_openxr->GetPresentEyeViews();
   const bool submit_layered =
       m_frame_uses_layered_swapchain && m_use_layered_swapchain &&
       m_layered_swapchain.swapchain != XR_NULL_HANDLE;

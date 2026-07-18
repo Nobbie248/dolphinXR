@@ -470,6 +470,11 @@ struct VideoConfig final
   {
     return stereo_mode == StereoMode::OpenXR || vr_flat_screen;
   }
+  // Lock Head Pose Per Frame is implied whenever ImmediateXFB is off: presentation
+  // then happens at VI time, interleaved with the NEXT frame's draw stream, so
+  // per-draw pose refresh would change the pose mid-frame and desync draws within
+  // one game frame. The checkbox only adds forcing the lock for ImmediateXFB games.
+  bool VRLockHeadPoseEffective() const { return vr_lock_head_pose || !bImmediateXFB; }
   // VR passthrough (headset camera feed behind unrendered areas) is only meaningful
   // while rendering through OpenXR.
   bool VRPassthroughEnabled() const

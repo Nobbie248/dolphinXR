@@ -174,6 +174,15 @@ bool Presenter::FetchXFB(u32 xfb_addr, u32 fb_width, u32 fb_stride, u32 fb_heigh
     m_last_xfb_id = m_xfb_entry->id;
 
     m_xfb_entry->AcquireContentLock();
+
+#ifdef ENABLE_VR
+    // Pair the frame about to be presented with the pose it was rendered with (stamped
+    // at its XFB copy). With ImmediateXFB off this present runs mid-way through the
+    // NEXT frame's draw stream, where the live submit snapshot may already hold the
+    // next frame's pose — submitting that misplaces the content under ATW.
+    if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR && VR::g_openxr)
+      VR::g_openxr->SelectPresentPoseForXFB(xfb_addr);
+#endif
   }
   m_last_xfb_addr = xfb_addr;
   m_last_xfb_ticks = ticks;
@@ -877,8 +886,10 @@ bool Presenter::StartOpenXRFrameNow(double* wait_frame_ms, double* locate_views_
     // the latest predicted pose, but we intentionally do NOT invalidate the GS
     // cache here. The cache is only invalidated by BPStructs' XFB-copy boundary
     // (guaranteed FIFO-ordered between game frames), so every draw within a
-    // single game frame sees one consistent pose snapshot.
-    if (!g_ActiveConfig.vr_lock_head_pose)
+    // single game frame sees one consistent pose snapshot. The lock is implied
+    // when ImmediateXFB is off (VRLockHeadPoseEffective) — a per-present
+    // invalidate would land mid-frame there.
+    if (!g_ActiveConfig.VRLockHeadPoseEffective())
       geometry_shader_manager.InvalidateVRHeadPose();
   }
 
@@ -904,8 +915,8 @@ void Presenter::PrepareNextOpenXRFrame()
       auto& geometry_shader_manager = Core::System::GetInstance().GetGeometryShaderManager();
       geometry_shader_manager.SetProjectionChanged();
       // Lock Head Pose Per Frame: see StartOpenXRFrameNow — the GS pose cache is only
-      // invalidated at the XFB-copy boundary when the lock is enabled.
-      if (!g_ActiveConfig.vr_lock_head_pose)
+      // invalidated at the XFB-copy boundary when the lock (or implied lock) is on.
+      if (!g_ActiveConfig.VRLockHeadPoseEffective())
         geometry_shader_manager.InvalidateVRHeadPose();
     }
     m_last_openxr_wait_frame_ms = 0.0;
@@ -943,11 +954,11 @@ void Presenter::PrepareNextOpenXRFrame()
     m_openxr_timing_locate_ms = 0.0;
   }
 
-  if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR && VR::g_openxr &&
-      !g_ActiveConfig.vr_dont_clear_screen && g_framebuffer_manager)
-  {
-    g_framebuffer_manager->ClearEFBForOpenXR();
-  }
+  // The VR full-EFB clear no longer happens here: with ImmediateXFB off, Present()
+  // runs mid-way through the next frame's draw stream, and clearing here wiped
+  // half-drawn frames (flicker unless "Don't Clear Screen" was on). It is now
+  // requested at the XFB-copy boundary (BPStructs) and deferred to the next frame's
+  // first draw (FramebufferManager::FlushPendingVRClearEFB).
 }
 
 void Presenter::BlitCurrentSourceToOpenXREyes(const AbstractTexture* source_texture,
@@ -1249,6 +1260,15 @@ void Presenter::Present(PresentInfo* present_info)
       }
     }
   }
+
+  // VI duplicate presents re-show an XFB the pacing thread is already heartbeating
+  // with its stamped pose; re-blitting and re-publishing the identical content only
+  // adds GPU work and reopens pose/content pairing races. The legacy (inline) flow
+  // cannot skip — its pre-begun XR frame must still be ended below.
+  const bool vr_skip_duplicate_publish =
+      vr_frame_started && present_info != nullptr &&
+      present_info->reason == PresentInfo::PresentReason::VideoInterfaceDuplicate &&
+      VR::g_openxr && VR::g_openxr->IsFrameThreadActive();
 #endif
 #ifndef ENABLE_VR
   constexpr bool openxr_direct_to_hmd = false;
@@ -1269,7 +1289,8 @@ void Presenter::Present(PresentInfo* present_info)
     RenderXFBToScreen(render_target_rc, m_xfb_entry->texture.get(), render_source_rc);
   }
 #ifdef ENABLE_VR
-  else if (openxr_direct_to_hmd && vr_frame_started && m_xfb_entry && !IsOpenXRFlat())
+  else if (openxr_direct_to_hmd && vr_frame_started && m_xfb_entry && !IsOpenXRFlat() &&
+           !vr_skip_duplicate_publish)
   {
     // Stereo direct-to-HMD path. Flat mode blits at submit time
     // (SubmitOpenXRFrameFromCurrentSource) instead, so it is skipped here.
@@ -1310,14 +1331,17 @@ void Presenter::Present(PresentInfo* present_info)
 #ifdef ENABLE_VR
   if (vr_frame_started)
   {
-    // Pacing thread active: the eye blit was deferred from RenderXFBToScreen to here so
-    // its swapchain release sits right next to the pose publish (both inside the handoff
-    // bracket in SubmitOpenXRFrameFromCurrentSource). Legacy flow already blit inline, so
-    // it only publishes/ends here. Flat and direct-to-HMD manage their own blit.
-    const bool blit_at_submit = VR::g_openxr && VR::g_openxr->IsFrameThreadActive() &&
-                                !openxr_direct_to_hmd && !IsOpenXRFlat();
-    SubmitOpenXRFrameFromCurrentSource(m_xfb_entry ? m_xfb_entry->texture.get() : nullptr,
-                                       m_xfb_rect, blit_at_submit);
+    if (!vr_skip_duplicate_publish)
+    {
+      // Pacing thread active: the eye blit was deferred from RenderXFBToScreen to here so
+      // its swapchain release sits right next to the pose publish (both inside the handoff
+      // bracket in SubmitOpenXRFrameFromCurrentSource). Legacy flow already blit inline, so
+      // it only publishes/ends here. Flat and direct-to-HMD manage their own blit.
+      const bool blit_at_submit = VR::g_openxr && VR::g_openxr->IsFrameThreadActive() &&
+                                  !openxr_direct_to_hmd && !IsOpenXRFlat();
+      SubmitOpenXRFrameFromCurrentSource(m_xfb_entry ? m_xfb_entry->texture.get() : nullptr,
+                                         m_xfb_rect, blit_at_submit);
+    }
     m_openxr_frame_prepared = false;
   }
 #endif

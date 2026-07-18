@@ -361,6 +361,26 @@ static void BPWritten(PixelShaderManager& pixel_shader_manager, XFStateManager& 
       //       Might also clean up some issues with games doing XFB copies they don't intend to
       //       display.
 
+#ifdef ENABLE_VR
+      // The just-copied XFB is a completed frame. Two things must happen HERE, in FIFO
+      // order, and not at present time — with ImmediateXFB off, presents run from
+      // AsyncRequests at arbitrary points inside the NEXT frame's draw stream:
+      //  1. Stamp the XFB with the pose its draws used, so a deferred present submits
+      //     matching pose+content and the compositor's ATW reprojects correctly.
+      //     (Must precede the Lock Head Pose LocateViews below, and the ImmediateSwap
+      //     which consumes the stamp.)
+      //  2. Queue the VR full-EFB clear. It is deferred to the next frame's first draw
+      //     (FramebufferManager) so neither a mid-frame present nor a multi-copy burst
+      //     can wipe content that is still being composed or copied out.
+      if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR && VR::g_openxr &&
+          VR::g_openxr->IsSessionRunning())
+      {
+        VR::g_openxr->StampXFBPose(destAddr);
+        if (g_framebuffer_manager)
+          g_framebuffer_manager->RequestVRClearEFB();
+      }
+#endif
+
       if (g_ActiveConfig.bImmediateXFB)
       {
         // below div two to convert from bytes to pixels - it expects width, not stride
@@ -383,8 +403,10 @@ static void BPWritten(PixelShaderManager& pixel_shader_manager, XFStateManager& 
       // Must run for BOTH the ImmediateXFB and non-ImmediateXFB paths (games
       // like Zack & Wiki use ImmediateXFB; without this firing the GS pose
       // cache never gets invalidated and head tracking locks).
+      // VRLockHeadPoseEffective: the lock is implied whenever ImmediateXFB is off,
+      // since per-draw refresh would land mid-frame at VI presents (see VideoConfig.h).
       if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
-          g_ActiveConfig.vr_lock_head_pose && VR::g_openxr &&
+          g_ActiveConfig.VRLockHeadPoseEffective() && VR::g_openxr &&
           VR::g_openxr->IsSessionRunning() && VR::g_openxr->ShouldRender())
       {
         // Debounce: some games emit multiple XFB copies per visual frame within

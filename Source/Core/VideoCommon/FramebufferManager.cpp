@@ -86,8 +86,23 @@ bool FramebufferManager::Initialize(int efb_scale)
 
   m_end_of_frame_event =
       GetVideoEvents().after_frame_event.Register([this](Core::System&) { EndOfFrame(); });
+  // Fires from VertexManagerBase::Flush at the first draw batch after an XFB copy —
+  // the earliest point where the finished frame's EFB contents are provably dead.
+  m_before_frame_event =
+      GetVideoEvents().before_frame_event.Register([this] { FlushPendingVRClearEFB(); });
 
   return true;
+}
+
+void FramebufferManager::FlushPendingVRClearEFB()
+{
+  if (!m_vr_efb_clear_pending)
+    return;
+  m_vr_efb_clear_pending = false;
+  // Same policy gates as the old per-present call site in Presenter.
+  if (g_ActiveConfig.stereo_mode != StereoMode::OpenXR || g_ActiveConfig.vr_dont_clear_screen)
+    return;
+  ClearEFBForOpenXR();
 }
 
 void FramebufferManager::RecreateEFBFramebuffer(int efb_scale)

@@ -262,14 +262,16 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
         if (VR::g_openxr && VR::g_openxr->IsSessionRunning())
         {
 
-          // When vr_lock_head_pose is ON, only re-fetch the head pose from OpenXR when
+          // When the head-pose lock is ON, only re-fetch the head pose from OpenXR when
           // we've been explicitly invalidated (at the XFB-copy frame boundary).  This
           // prevents mid-frame LocateViews() updates from desynchronising different draw
           // calls within the same game frame.  When OFF, refetch every call (legacy
-          // behavior — kept as an escape hatch).
+          // behavior — kept as an escape hatch).  The lock is implied whenever
+          // ImmediateXFB is off (VRLockHeadPoseEffective): presents then interleave with
+          // the next frame's draw stream, so per-draw refresh WILL land mid-frame.
           const bool upm_changed = std::abs(upm - m_cached_units_per_meter) > 0.0001f;
           const bool need_refresh =
-              upm_changed || !g_ActiveConfig.vr_lock_head_pose || m_vr_pose_needs_refresh;
+              upm_changed || !g_ActiveConfig.VRLockHeadPoseEffective() || m_vr_pose_needs_refresh;
           if (need_refresh)
           {
             std::array<std::array<float, 4>, 4> eye_projection_rows{};

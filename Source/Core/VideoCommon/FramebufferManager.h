@@ -107,6 +107,11 @@ public:
   void BindEFBFramebufferWithCoverage();
   void BindEFBCoverageFramebuffer();
   void ClearEFBForOpenXR();
+  // Queue a ClearEFBForOpenXR for the next game frame's first draw (before_frame_event).
+  // Called at the XFB-copy frame boundary (video thread). Deferring means a mid-frame
+  // VI present can never wipe a half-drawn frame, and multi-copy bursts keep the EFB
+  // intact until every copy of the finished frame has been read out.
+  void RequestVRClearEFB() { m_vr_efb_clear_pending = true; }
 
   // Resolve color/depth textures to a non-msaa texture, and return it.
   AbstractTexture* ResolveEFBColorTexture(const MathUtil::Rectangle<int>& region);
@@ -261,7 +266,11 @@ protected:
   std::vector<EFBPokeVertex> m_color_poke_vertices;
   std::vector<EFBPokeVertex> m_depth_poke_vertices;
 
+  void FlushPendingVRClearEFB();
+  bool m_vr_efb_clear_pending = false;
+
   Common::EventHook m_end_of_frame_event;
+  Common::EventHook m_before_frame_event;
 };
 
 extern std::unique_ptr<FramebufferManager> g_framebuffer_manager;

@@ -305,10 +305,11 @@ bool D3DOpenXR::SubmitFrame()
 {
   ASSERT(VR::g_openxr != nullptr);
 
-  // Use the submit snapshot captured when the GS pose cache was last refreshed. Using
-  // live m_eye_views here would pick up LocateViews that ran between the last draw and
-  // xrEndFrame, causing ATW to reproject against the wrong pose.
-  const auto& eye_views = VR::g_openxr->GetSubmittedEyeViews();
+  // Use the pose the presented XFB was rendered with (stamped at its XFB copy and
+  // selected in FetchXFB). Live m_eye_views — or even the live submit snapshot — can
+  // already belong to the NEXT frame when presentation is deferred to VI time, and a
+  // pose/content mismatch makes ATW reproject the frame to the wrong place.
+  const auto& eye_views = VR::g_openxr->GetPresentEyeViews();
 
   for (uint32_t eye = 0; eye < 2; ++eye)
   {

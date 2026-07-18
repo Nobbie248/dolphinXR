@@ -296,6 +296,21 @@ public:
   // fixed rendered view stays locked to the headset instead of the play space.
   const std::array<XREyeView, 2>& GetSubmittedEyeViews() const { return m_submitted_eye_views; }
   void RecordRenderedEyeViews();
+  // XFB pose stamping. With deferred (VI-time) presentation the XFB being presented
+  // finished rendering earlier — by present time the next game frame's first draw may
+  // already have overwritten m_submitted_eye_views with ITS pose, so submitting the
+  // live snapshot pairs old content with a newer pose and the compositor's ATW warps
+  // it to the wrong place (world jumps between "old" and "new" positions per publish).
+  // StampXFBPose() runs at the XFB copy (video thread, FIFO-ordered — the completed
+  // frame's pose is still current there); SelectPresentPoseForXFB() runs when the
+  // presenter fetches an XFB for display; GetPresentEyeViews() is what SubmitFrame
+  // must publish. All three are video-thread-only, like m_submitted_eye_views.
+  void StampXFBPose(uint32_t xfb_addr);
+  void SelectPresentPoseForXFB(uint32_t xfb_addr);
+  const std::array<XREyeView, 2>& GetPresentEyeViews() const
+  {
+    return m_present_eye_views_valid ? m_present_eye_views : m_submitted_eye_views;
+  }
   const std::array<XrViewConfigurationView, 2>& GetViewConfigViews() const
   {
     return m_view_config_views;
@@ -510,6 +525,21 @@ private:
   std::array<XREyeView, 2> m_eye_views{};
   std::array<XREyeView, 2> m_rendered_eye_views{};
   std::array<XREyeView, 2> m_submitted_eye_views{};
+
+  // XFB pose stamps (see StampXFBPose). Small ring keyed by XFB address: games cycle
+  // 2-3 XFB buffers, and VI duplicate presents must find the pose of an OLDER XFB
+  // even after a newer copy landed. serial == 0 marks an empty slot.
+  struct XFBPoseStamp
+  {
+    uint32_t xfb_addr = 0;
+    uint64_t serial = 0;
+    std::array<XREyeView, 2> views{};
+  };
+  std::array<XFBPoseStamp, 8> m_xfb_pose_stamps{};
+  size_t m_xfb_pose_stamp_next = 0;
+  uint64_t m_xfb_pose_stamp_serial = 0;
+  std::array<XREyeView, 2> m_present_eye_views{};
+  bool m_present_eye_views_valid = false;
   XrTime m_last_predicted_display_time = 0;
   std::atomic<double> m_estimated_display_period_ms{0.0};
   float m_startup_display_refresh_rate_hz = 0.0f;
