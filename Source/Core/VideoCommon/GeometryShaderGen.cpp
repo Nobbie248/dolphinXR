@@ -48,7 +48,7 @@ GeometryShaderUid GetGeometryShaderUid(PrimitiveType primitive_type)
   GeometryShaderUid out;
 
   geometry_shader_uid_data* const uid_data = out.GetUidData();
-  uid_data->code_version = 35;
+  uid_data->code_version = 36;
   uid_data->primitive_type = static_cast<u32>(primitive_type);
   uid_data->numTexGens = xfmem.numTexGen.numTexGens;
 
@@ -125,13 +125,13 @@ ShaderCode GenerateGeometryShaderCode(APIType api_type, const ShaderHostConfig& 
     out.Write("VARYING_LOCATION(0) in VertexData {{\n");
     GenerateVSOutputMembers(out, api_type, uid_data->numTexGens, host_config,
                             GetInterpolationQualifier(msaa, ssaa, true, true),
-                            ShaderStage::Geometry);
+                            ShaderStage::Geometry, true);
     out.Write("}} vs[{}];\n", vertex_in);
 
     out.Write("VARYING_LOCATION(0) out VertexData {{\n");
     GenerateVSOutputMembers(out, api_type, uid_data->numTexGens, host_config,
                             GetInterpolationQualifier(msaa, ssaa, true, false),
-                            ShaderStage::Geometry);
+                            ShaderStage::Geometry, true);
 
     out.Write("}} ps;\n");
     if (stereo && !host_config.backend_gl_layer_in_fs)

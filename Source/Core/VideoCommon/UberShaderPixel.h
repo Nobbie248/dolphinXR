@@ -20,6 +20,10 @@ struct pixel_ubershader_uid_data
   u32 uint_output : 1;
   u32 no_dual_src : 1;
   VRPassthroughCoverageShaderMode vr_coverage_mode : 2;
+  // Exact virtual-screen depth: export the game's flat-screen depth from the flat-interpolated
+  // vr_depth varying (see PixelShaderGen). Set per draw by VertexManagerBase, never by
+  // GetPixelShaderUid.
+  u32 vr_screen_exact_depth : 1;
   // Bump when PS code generation logic changes to invalidate stale shader cache entries.
   u32 code_version : 4;
 

@@ -164,7 +164,7 @@ constexpr Common::EnumMap<char, ColorChannel::Alpha> rgba_swizzle{'r', 'g', 'b',
 
 // Bumped to 5: force shader regeneration to validate that family-mode overrides survive a
 // code_version change (exact hashes change, semantic family signatures do not).
-static constexpr u32 PIXEL_SHADER_CODE_VERSION = 5;
+static constexpr u32 PIXEL_SHADER_CODE_VERSION = 6;
 
 PixelShaderUid GetPixelShaderUid()
 {
@@ -323,6 +323,23 @@ void ClearUnusedPixelShaderUidBits(APIType api_type, const ShaderHostConfig& hos
   // If bounding box is enabled when a UID cache is created, then later disabled, we shouldn't
   // emit the bounding box portion of the shader.
   uid_data->bounding_box &= host_config.bounding_box && host_config.backend_bbox;
+
+  // The exact virtual-screen depth export reads the vr_depth varying, which only exists in
+  // VR host configs. Cached uids from a VR session must not generate it elsewhere.
+  if (!host_config.vr_stereo)
+    uid_data->vr_screen_exact_depth = 0;
+  if (uid_data->vr_screen_exact_depth)
+  {
+    // The export writes the `depth` output, which is only declared under per_pixel_depth,
+    // and exported depth is ignored under the early depth-test variants.
+    uid_data->per_pixel_depth = 1;
+    if (uid_data->ztest == EmulatedZ::Early || uid_data->ztest == EmulatedZ::ForcedEarly ||
+        uid_data->ztest == EmulatedZ::EarlyWithFBFetch ||
+        uid_data->ztest == EmulatedZ::EarlyWithZComplocHack)
+    {
+      uid_data->ztest = EmulatedZ::Late;
+    }
+  }
 }
 
 void WritePixelShaderCommonHeader(ShaderCode& out, APIType api_type,
@@ -389,6 +406,8 @@ void WritePixelShaderCommonHeader(ShaderCode& out, APIType api_type,
             "\tuint  logic_op_mode;\n"
             "\tuint  time_ms;\n"
             "\tfloat " I_VR_PASSTHROUGH_ALPHA ";\n"
+            "\tfloat " I_VR_SCREEN_DEPTH_NEAR ";\n"
+            "\tfloat " I_VR_SCREEN_DEPTH_RANGE ";\n"
             "}};\n\n");
   out.Write("#define bpmem_combiners(i) (bpmem_pack1[(i)].xy)\n"
             "#define bpmem_tevind(i) (bpmem_pack1[(i)].z)\n"
@@ -888,7 +907,8 @@ ShaderCode GeneratePixelShaderCode(APIType api_type, const ShaderHostConfig& hos
   {
     out.Write("VARYING_LOCATION(0) in VertexData {{\n");
     GenerateVSOutputMembers(out, api_type, uid_data->genMode_numtexgens, host_config,
-                            GetInterpolationQualifier(msaa, ssaa, true, true), ShaderStage::Pixel);
+                            GetInterpolationQualifier(msaa, ssaa, true, true), ShaderStage::Pixel,
+                            true);
 
     out.Write("}};\n");
     if (stereo && !host_config.backend_gl_layer_in_fs)
@@ -918,6 +938,11 @@ ShaderCode GeneratePixelShaderCode(APIType api_type, const ShaderHostConfig& hos
                 GetInterpolationQualifier(msaa, ssaa));
       out.Write("VARYING_LOCATION({}) {} in float3 WorldPos;\n", counter++,
                 GetInterpolationQualifier(msaa, ssaa));
+    }
+    if (host_config.vr_stereo)
+    {
+      // Game's backend-convention NDC depth for exact virtual-screen depth export.
+      out.Write("VARYING_LOCATION({}) flat in float vr_depth;\n", counter++);
     }
   }
 
@@ -1120,6 +1145,18 @@ ShaderCode GeneratePixelShaderCode(APIType api_type, const ShaderHostConfig& hos
       out.Write("\tdepth = 1.0 - float(zCoord) / 16777216.0;\n");
     else
       out.Write("\tdepth = float(zCoord) / 16777216.0;\n");
+  }
+
+  // Exact virtual-screen depth: reproduce the game's flat-screen depth from the bit-exact
+  // flat-interpolated VS capture plus the fixed-function viewport transform (mirrored into
+  // cvr_screen_depth_* by BPFunctions). The VR screen reprojection makes the rasterized depth
+  // go through a per-vertex (C*w)/w round-trip whose ulp noise breaks GX's deterministic
+  // equal-depth (LEQUAL last-wins) semantics — this export bypasses that entirely. The clamp
+  // mirrors the hardware clipping of oversized vertex depth ranges to 0..1.
+  if (uid_data->vr_screen_exact_depth)
+  {
+    out.Write("\tdepth = " I_VR_SCREEN_DEPTH_NEAR " + clamp(vr_depth, 0.0, 1.0) * "
+              I_VR_SCREEN_DEPTH_RANGE ";\n");
   }
 
   // No dithering for RGB8 mode

@@ -175,6 +175,7 @@ static void ClearAppliedVRSettings()
   ClearAppliedVRSetting("ForcedVBIFrequency", Config::GFX_VR_FORCED_VBI_FREQUENCY);
   ClearAppliedVRSetting("AutoVBIFromHMD", Config::GFX_VR_AUTO_VBI_FROM_HMD);
   ClearAppliedVRSetting("AutoLayerSpread", Config::GFX_VR_AUTO_LAYER_SPREAD);
+  ClearAppliedVRSetting("ExactScreenDepth", Config::GFX_VR_EXACT_SCREEN_DEPTH);
   ClearAppliedVRSetting("LayerOffset", Config::GFX_VR_LAYER_OFFSET);
   ClearAppliedVRSetting("ElementDepth", Config::GFX_VR_ELEMENT_DEPTH);
   ClearAppliedVRSetting("OrthoScissorFix", Config::GFX_VR_ORTHO_SCISSOR_FIX);
@@ -237,6 +238,7 @@ static void ApplyGameVRConfigOverrides(std::string_view game_id, std::optional<u
   if (!has_forced_vbi_frequency)
     ApplyVRSetting(values, "AutoVBIFromHMD", Config::GFX_VR_AUTO_VBI_FROM_HMD);
   ApplyVRSetting(values, "AutoLayerSpread", Config::GFX_VR_AUTO_LAYER_SPREAD);
+  ApplyVRSetting(values, "ExactScreenDepth", Config::GFX_VR_EXACT_SCREEN_DEPTH);
   ApplyVRSetting(values, "LayerOffset", Config::GFX_VR_LAYER_OFFSET);
   ApplyVRSetting(values, "ElementDepth", Config::GFX_VR_ELEMENT_DEPTH);
   ApplyVRSetting(values, "OrthoScissorFix", Config::GFX_VR_ORTHO_SCISSOR_FIX);

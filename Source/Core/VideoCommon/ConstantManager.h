@@ -63,6 +63,11 @@ struct alignas(16) PixelShaderConstants
   // Dedicated VR passthrough coverage written by game draws. 1.0 marks pixels as covered;
   // Passthrough element overrides replace it with their configured opacity.
   float vr_passthrough_alpha;
+  // Exact virtual-screen depth export: the host viewport depth range exactly as programmed by
+  // BPFunctions::SetScissorAndViewport (near, far - near) in backend window-z convention. The
+  // PS reproduces the fixed-function viewport transform: depth = near + vr_depth * range.
+  float vr_screen_depth_near;
+  float vr_screen_depth_range;
 };
 
 struct alignas(16) VertexShaderConstants

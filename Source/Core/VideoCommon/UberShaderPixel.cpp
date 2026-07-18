@@ -18,7 +18,7 @@ namespace UberShader
 {
 // Bumped to 3: dedicated VR passthrough coverage output modes.
 // Bumped to 4: coverage output carries the fragment blend alpha for blended draws.
-static constexpr u32 UBER_PIXEL_SHADER_CODE_VERSION = 4;
+static constexpr u32 UBER_PIXEL_SHADER_CODE_VERSION = 5;
 
 PixelShaderUid GetPixelShaderUid()
 {
@@ -67,6 +67,17 @@ void ClearUnusedPixelShaderUidBits(APIType api_type, const ShaderHostConfig& hos
   if (api_type != APIType::D3D || !host_config.backend_logic_op)
     uid_data->uint_output = 0;
 
+  // The exact virtual-screen depth export reads the vr_depth varying, which only exists in
+  // VR host configs. Cached uids from a VR session must not generate it elsewhere.
+  if (!host_config.vr_stereo)
+    uid_data->vr_screen_exact_depth = 0;
+  // The export writes the `depth` output, which is only declared under per_pixel_depth, and
+  // exported depth is ignored under forced early depth.
+  if (uid_data->vr_screen_exact_depth)
+  {
+    uid_data->per_pixel_depth = 1;
+    uid_data->early_depth = 0;
+  }
 }
 
 ShaderCode GenPixelShader(APIType api_type, const ShaderHostConfig& host_config,
@@ -155,7 +166,8 @@ ShaderCode GenPixelShader(APIType api_type, const ShaderHostConfig& host_config,
   {
     out.Write("VARYING_LOCATION(0) in VertexData {{\n");
     GenerateVSOutputMembers(out, api_type, numTexgen, host_config,
-                            GetInterpolationQualifier(msaa, ssaa, true, true), ShaderStage::Pixel);
+                            GetInterpolationQualifier(msaa, ssaa, true, true), ShaderStage::Pixel,
+                            true);
 
     out.Write("}};\n\n");
     if (stereo && !host_config.backend_gl_layer_in_fs)
@@ -185,6 +197,11 @@ ShaderCode GenPixelShader(APIType api_type, const ShaderHostConfig& host_config,
                 GetInterpolationQualifier(msaa, ssaa));
       out.Write("VARYING_LOCATION({}) {} in float3 WorldPos;\n", counter++,
                 GetInterpolationQualifier(msaa, ssaa));
+    }
+    if (host_config.vr_stereo)
+    {
+      // Game's backend-convention NDC depth for exact virtual-screen depth export.
+      out.Write("VARYING_LOCATION({}) flat in float vr_depth;\n", counter++);
     }
   }
 
@@ -1034,6 +1051,15 @@ ShaderCode GenPixelShader(APIType api_type, const ShaderHostConfig& host_config,
       out.Write("  depth = 1.0 - float(zbuffer_zCoord) / 16777216.0;\n");
     else
       out.Write("  depth = float(zbuffer_zCoord) / 16777216.0;\n");
+  }
+
+  // Exact virtual-screen depth: reproduce the game's flat-screen depth from the bit-exact
+  // flat-interpolated VS capture plus the fixed-function viewport transform (mirrored into
+  // cvr_screen_depth_* by BPFunctions). See PixelShaderGen for the full rationale.
+  if (uid_data->vr_screen_exact_depth)
+  {
+    out.Write("  depth = " I_VR_SCREEN_DEPTH_NEAR " + clamp(vr_depth, 0.0, 1.0) * "
+              I_VR_SCREEN_DEPTH_RANGE ";\n");
   }
 
   out.Write("  // Alpha Test\n");

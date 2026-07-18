@@ -14,7 +14,7 @@
 
 namespace UberShader
 {
-static constexpr u32 UBER_VERTEX_SHADER_CODE_VERSION = 2;
+static constexpr u32 UBER_VERTEX_SHADER_CODE_VERSION = 3;
 
 VertexShaderUid GetVertexShaderUid()
 {
@@ -176,7 +176,7 @@ float3 load_input_float3_rawtex(uint vtx_offset, uint attr_offset) {{
     out.Write("VARYING_LOCATION(0) out VertexData {{\n");
     GenerateVSOutputMembers(out, api_type, num_texgen, host_config,
                             GetInterpolationQualifier(msaa, ssaa, true, false),
-                            ShaderStage::Vertex);
+                            ShaderStage::Vertex, true);
     out.Write("}} vs;\n");
   }
   else
@@ -203,6 +203,11 @@ float3 load_input_float3_rawtex(uint vtx_offset, uint attr_offset) {{
                 GetInterpolationQualifier(msaa, ssaa));
       out.Write("VARYING_LOCATION({}) {} out float3 WorldPos;\n", counter++,
                 GetInterpolationQualifier(msaa, ssaa));
+    }
+    if (host_config.vr_stereo)
+    {
+      // Game's backend-convention NDC depth for exact virtual-screen depth export.
+      out.Write("VARYING_LOCATION({}) flat out float vr_depth;\n", counter++);
     }
   }
 
@@ -493,6 +498,15 @@ float3 load_input_float3_rawtex(uint vtx_offset, uint attr_offset) {{
   out.Write("o.pos.z = o.pos.w * " I_PIXELCENTERCORRECTION ".w - "
             "o.pos.z * " I_PIXELCENTERCORRECTION ".z;\n");
 
+  if (host_config.vr_stereo)
+  {
+    // Capture the game's exact backend-convention NDC depth (0..1) before the optional -1..1
+    // clip-control expansion below. For ortho draws o.pos.w == 1, so the divide is bit-exact —
+    // this is the basis of deterministic virtual-screen depth export (vr_screen_exact_depth).
+    // Under multiview this sits in the !vr_pos_replaced guard; the VR branches assign their own.
+    out.Write("o.vr_depth = (abs(o.pos.w) > 1e-6) ? o.pos.z / o.pos.w : 0.0;\n");
+  }
+
   if (!host_config.backend_clip_control)
   {
     // If the graphics API doesn't support a depth range of 0..1, then we need to map z to
@@ -555,6 +569,8 @@ float3 load_input_float3_rawtex(uint vtx_offset, uint attr_offset) {{
     }
     out.Write("colors_0 = o.colors_0;\n"
               "colors_1 = o.colors_1;\n");
+    if (host_config.vr_stereo)
+      out.Write("vr_depth = o.vr_depth;\n");
   }
 
   if (host_config.backend_depth_clamp)

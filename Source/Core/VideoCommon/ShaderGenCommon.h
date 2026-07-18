@@ -205,7 +205,7 @@ void WriteBitfieldExtractHeader(ShaderCode& out, APIType api_type,
 
 void GenerateVSOutputMembers(ShaderCode& object, APIType api_type, u32 texgens,
                              const ShaderHostConfig& host_config, std::string_view qualifier,
-                             ShaderStage stage);
+                             ShaderStage stage, bool in_interface_block = false);
 
 void AssignVSOutputMembers(ShaderCode& object, std::string_view a, std::string_view b, u32 texgens,
                            const ShaderHostConfig& host_config);
@@ -285,6 +285,8 @@ void WriteSwitch(ShaderCode& out, APIType ApiType, std::string_view variable,
 #define I_ZSLOPE "czslope"
 #define I_EFBSCALE "cefbscale"
 #define I_VR_PASSTHROUGH_ALPHA "cvr_passthrough_alpha"
+#define I_VR_SCREEN_DEPTH_NEAR "cvr_screen_depth_near"
+#define I_VR_SCREEN_DEPTH_RANGE "cvr_screen_depth_range"
 
 #define I_POSNORMALMATRIX "cpnmtx"
 #define I_PROJECTION "cproj"

@@ -14,7 +14,7 @@
 #include "VideoCommon/VideoConfig.h"
 #include "VideoCommon/XFMemory.h"
 
-static constexpr u32 VERTEX_SHADER_CODE_VERSION = 19;
+static constexpr u32 VERTEX_SHADER_CODE_VERSION = 20;
 
 VertexShaderUid GetVertexShaderUid()
 {
@@ -387,6 +387,9 @@ void GenerateVRMultiviewVSProjection(ShaderCode& out, APIType api_type,
   out.Write("\t\tfloat clip_z = " I_VR_DEPTH ".x * z_eye + " I_VR_DEPTH ".y;\n");
   out.Write("\t\to.pos = float4(clip_x, clip_y, clip_z, clip_w);\n");
   out.Write("\t\to.pos.z = o.pos.w * " I_VR_DEPTH ".w - o.pos.z * " I_VR_DEPTH ".z;\n");
+  // The trailing vr_depth capture is skipped for VR-replaced positions, so keep the
+  // varying defined here (perspective draws never use the exact-depth PS export).
+  out.Write("\t\to.vr_depth = (abs(o.pos.w) > 1e-6) ? o.pos.z / o.pos.w : 0.0;\n");
   if (!host_config.backend_clip_control)
     out.Write("\t\to.pos.z = o.pos.z * 2.0 - o.pos.w;\n");
   out.Write("\t\to.pos.xy *= sign(" I_VR_PIXELCENTER ".xy * float2(1.0, -1.0));\n");
@@ -423,6 +426,7 @@ void GenerateVRMultiviewVSProjection(ShaderCode& out, APIType api_type,
   out.Write("\t\to.pos.w = max(-hudPos.z, 0.001);\n");
   // Game NDC depth re-attached (hud_game_ndc_z is already remapped to the backend convention).
   out.Write("\t\to.pos.z = hud_game_ndc_z * o.pos.w;\n");
+  out.Write("\t\to.vr_depth = clamp(hud_game_ndc_z, 0.0, 1.0);\n");
   if (!host_config.backend_clip_control)
     out.Write("\t\to.pos.z = o.pos.z * 2.0 - o.pos.w;\n");
   out.Write("\t\to.pos.xy *= sign(" I_VR_PIXELCENTER ".xy * float2(1.0, -1.0));\n");
@@ -469,6 +473,10 @@ void GenerateVRMultiviewVSProjection(ShaderCode& out, APIType api_type,
   out.Write("\t\tfloat max_safe_step = 0.49 / max(layer_idx + 1.0, 1.0);\n");
   out.Write("\t\tlayer_step = min(layer_step, max_safe_step);\n");
   out.Write("\t\to.pos.z = o.pos.w * (0.5 - layer_idx * layer_step + ndc_z_clamped * 0.0001);\n");
+  // Exact game depth for the PS depth export: remap the console-convention NDC (-1..0) to the
+  // backend 0..1 convention, mirroring the trailing capture this branch suppresses.
+  out.Write("\t\to.vr_depth = clamp(" I_PIXELCENTERCORRECTION ".w - ndc_z_clamped * "
+            I_PIXELCENTERCORRECTION ".z, 0.0, 1.0);\n");
   if (!host_config.backend_clip_control)
     out.Write("\t\to.pos.z = o.pos.z * 2.0 - o.pos.w;\n");
   out.Write("\t\to.pos.xy *= sign(" I_VR_PIXELCENTER ".xy * float2(1.0, -1.0));\n");
@@ -514,6 +522,10 @@ void GenerateVRMultiviewVSProjection(ShaderCode& out, APIType api_type,
   out.Write("\t\tlayer_step = min(layer_step, max_safe_step);\n");
   out.Write("\t\to.pos.z = o.pos.w * (0.5 - layer_idx * layer_step + ndc_z_clamped * " I_VR_DEPTH
             ".y);\n");
+  // Exact game depth for the PS depth export: remap the console-convention NDC (-1..0) to the
+  // backend 0..1 convention, mirroring the trailing capture this branch suppresses.
+  out.Write("\t\to.vr_depth = clamp(" I_PIXELCENTERCORRECTION ".w - ndc_z_clamped * "
+            I_PIXELCENTERCORRECTION ".z, 0.0, 1.0);\n");
   if (!host_config.backend_clip_control)
     out.Write("\t\to.pos.z = o.pos.z * 2.0 - o.pos.w;\n");
   out.Write("\t\to.pos.xy *= sign(" I_VR_PIXELCENTER ".xy * float2(1.0, -1.0));\n");
@@ -700,7 +712,7 @@ ShaderCode GenerateVertexShaderCode(APIType api_type, const ShaderHostConfig& ho
     out.Write("VARYING_LOCATION(0) out VertexData {{\n");
     GenerateVSOutputMembers(out, api_type, uid_data->numTexGens, host_config,
                             GetInterpolationQualifier(msaa, ssaa, true, false),
-                            ShaderStage::Vertex);
+                            ShaderStage::Vertex, true);
     out.Write("}} vs;\n");
   }
   else
@@ -727,6 +739,11 @@ ShaderCode GenerateVertexShaderCode(APIType api_type, const ShaderHostConfig& ho
                 GetInterpolationQualifier(msaa, ssaa));
       out.Write("VARYING_LOCATION({}) {} out float3 WorldPos;\n", counter++,
                 GetInterpolationQualifier(msaa, ssaa));
+    }
+    if (host_config.vr_stereo)
+    {
+      // Game's backend-convention NDC depth for exact virtual-screen depth export.
+      out.Write("VARYING_LOCATION({}) flat out float vr_depth;\n", counter++);
     }
   }
 
@@ -1028,6 +1045,15 @@ ShaderCode GenerateVertexShaderCode(APIType api_type, const ShaderHostConfig& ho
   out.Write("o.pos.z = o.pos.w * " I_PIXELCENTERCORRECTION ".w - "
             "o.pos.z * " I_PIXELCENTERCORRECTION ".z;\n");
 
+  if (host_config.vr_stereo)
+  {
+    // Capture the game's exact backend-convention NDC depth (0..1) before the optional -1..1
+    // clip-control expansion below. For ortho draws o.pos.w == 1, so the divide is bit-exact —
+    // this is the basis of deterministic virtual-screen depth export (vr_screen_exact_depth).
+    // Under multiview this sits in the !vr_pos_replaced guard; the VR branches assign their own.
+    out.Write("o.vr_depth = (abs(o.pos.w) > 1e-6) ? o.pos.z / o.pos.w : 0.0;\n");
+  }
+
   if (!host_config.backend_clip_control)
   {
     // If the graphics API doesn't support a depth range of 0..1, then we need to map z to
@@ -1093,6 +1119,8 @@ ShaderCode GenerateVertexShaderCode(APIType api_type, const ShaderHostConfig& ho
     }
     out.Write("colors_0 = o.colors_0;\n"
               "colors_1 = o.colors_1;\n");
+    if (host_config.vr_stereo)
+      out.Write("vr_depth = o.vr_depth;\n");
   }
 
   if (host_config.backend_depth_clamp)

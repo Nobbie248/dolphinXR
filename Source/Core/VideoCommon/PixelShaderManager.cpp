@@ -20,6 +20,9 @@ void PixelShaderManager::Init()
   m_fog_range_adjusted_changed = true;
   m_viewport_changed = false;
   constants.vr_passthrough_alpha = 1.0f;
+  // Identity depth range until BPFunctions pushes the real host viewport values.
+  constants.vr_screen_depth_near = 0.0f;
+  constants.vr_screen_depth_range = 1.0f;
 
   SetIndMatrixChanged(0);
   SetIndMatrixChanged(1);
@@ -533,6 +536,17 @@ void PixelShaderManager::SetVRPassthroughAlpha(float alpha)
     return;
 
   constants.vr_passthrough_alpha = alpha;
+  dirty = true;
+}
+
+void PixelShaderManager::SetVRScreenDepthRange(float near_depth, float far_depth)
+{
+  const float range = far_depth - near_depth;
+  if (constants.vr_screen_depth_near == near_depth && constants.vr_screen_depth_range == range)
+    return;
+
+  constants.vr_screen_depth_near = near_depth;
+  constants.vr_screen_depth_range = range;
   dirty = true;
 }
 

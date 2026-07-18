@@ -1480,6 +1480,35 @@ void VertexManagerBase::Flush()
           }
         }
 
+        // Exact virtual-screen depth: swap in the depth-exporting PS variant for draws that land
+        // on the VR virtual screen (Screen/HeadLocked overrides and natural ortho draws). The PS
+        // then writes the game's flat-screen depth from the flat-interpolated VS capture,
+        // restoring GX's deterministic equal-depth semantics (fixes menu z-fighting). This runs
+        // AFTER the hunter hashes were computed, so signature hashes stay stable regardless of
+        // the toggle. The -3.0 Metroid perspective-HUD path keeps its own depth handling.
+        if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
+            g_ActiveConfig.vr_exact_screen_depth)
+        {
+          const float stereo_ovr = geometry_shader_manager.vr_stereo_override;
+          const bool forced_screen =
+              !std::isnan(stereo_ovr) && (stereo_ovr == -1.0f || stereo_ovr == -2.0f);
+          const bool natural_ortho = std::isnan(stereo_ovr) &&
+                                     xfmem.projection.type != ProjectionType::Perspective &&
+                                     g_ActiveConfig.vr_virtual_screen;
+          if (forced_screen || natural_ortho)
+          {
+            auto* const ps_uid_data = m_current_pipeline_config.ps_uid.GetUidData();
+            auto* const uber_ps_uid_data = m_current_uber_pipeline_config.ps_uid.GetUidData();
+            if (!ps_uid_data->vr_screen_exact_depth || !uber_ps_uid_data->vr_screen_exact_depth)
+            {
+              ps_uid_data->vr_screen_exact_depth = 1;
+              uber_ps_uid_data->vr_screen_exact_depth = 1;
+              m_pipeline_config_changed = true;
+              UpdatePipelineObject();
+            }
+          }
+        }
+
         if (!hunter_skip && !elements_skip && !texmgr_skip)
         {
           if (shader_hunter_force_pink && !m_pink_pixel_shader)

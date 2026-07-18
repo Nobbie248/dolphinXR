@@ -53,6 +53,9 @@ public:
   // VR passthrough coverage for the next draw: 1.0 = opaque coverage,
   // a Passthrough element override's opacity otherwise.
   void SetVRPassthroughAlpha(float alpha);
+  // Exact virtual-screen depth export: mirrors the host viewport depth range programmed by
+  // BPFunctions::SetScissorAndViewport so the PS can reproduce the fixed-function transform.
+  void SetVRScreenDepthRange(float near_depth, float far_depth);
 
   PixelShaderConstants constants{};
   bool dirty = false;

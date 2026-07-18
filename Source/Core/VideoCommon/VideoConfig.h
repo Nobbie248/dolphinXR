@@ -361,6 +361,10 @@ struct VideoConfig final
   bool vr_enable_camera_height = true;
   float vr_camera_height = 0.0f;
   bool vr_virtual_screen = true;
+  // Exact virtual-screen depth: screen/head-locked draws export the game's flat-screen depth
+  // per pixel (flat-interpolated, bit-exact) instead of the synthesized layer/element depth.
+  // Restores GX's deterministic depth semantics — eliminates menu z-fighting by construction.
+  bool vr_exact_screen_depth = true;
   // Render the whole game as a flat mono panel in the VR scene (StereoMode::Off), while the
   // OpenXR session still runs. Used by the "Launch games in VR = off" cinema path on Quest.
   bool vr_flat_screen = false;

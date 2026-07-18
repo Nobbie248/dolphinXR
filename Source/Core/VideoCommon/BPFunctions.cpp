@@ -17,6 +17,7 @@
 #include "VideoCommon/BPMemory.h"
 #include "VideoCommon/EFBInterface.h"
 #include "VideoCommon/FramebufferManager.h"
+#include "VideoCommon/PixelShaderManager.h"
 #include "VideoCommon/VertexManagerBase.h"
 #include "VideoCommon/VertexShaderManager.h"
 #include "VideoCommon/VideoCommon.h"
@@ -351,6 +352,16 @@ void SetScissorAndViewport(FramebufferManager* frame_buffer_manager, ScissorPos 
   // Lower-left flip.
   if (g_backend_info.bUsesLowerLeftOrigin)
     y = static_cast<float>(g_gfx->GetCurrentFramebuffer()->GetHeight()) - y - height;
+
+#ifdef ENABLE_VR
+  // Exact virtual-screen depth export: mirror the host depth range into the PS constants so
+  // screen-handled draws can reproduce the fixed-function viewport transform bit-for-bit.
+  if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR)
+  {
+    Core::System::GetInstance().GetPixelShaderManager().SetVRScreenDepthRange(near_depth,
+                                                                              far_depth);
+  }
+#endif
 
   g_gfx->SetViewport(x, y, width, height, near_depth, far_depth);
 

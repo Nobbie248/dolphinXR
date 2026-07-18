@@ -63,6 +63,10 @@ struct pixel_shader_uid_data
   u32 logic_op_enable : 1;                    // Only used with shader_framebuffer_fetch logic ops
   u32 logic_op_mode : 4;  // Only used with shader_framebuffer_fetch logic ops and blend emulation
   VRPassthroughCoverageShaderMode vr_coverage_mode : 2;
+  // Exact virtual-screen depth: export the game's flat-screen depth from the flat-interpolated
+  // vr_depth varying instead of the rasterized (VR-reprojected, ulp-noisy) depth. Set per draw
+  // by VertexManagerBase for screen/head-locked VR draws; never set by GetPixelShaderUid.
+  u32 vr_screen_exact_depth : 1;
 
   u32 texMtxInfo_n_projection : 8;  // 8x1 bit
   u32 tevindref_bi0 : 3;

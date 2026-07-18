@@ -217,6 +217,7 @@ extern const Info<bool> GFX_VR_PIN_EMULATION_CORES;
 extern const Info<bool> GFX_VR_EAGER_HEARTBEAT;
 extern const Info<bool> GFX_VR_AUTO_VBI_FROM_HMD;
 extern const Info<bool> GFX_VR_AUTO_LAYER_SPREAD;
+extern const Info<bool> GFX_VR_EXACT_SCREEN_DEPTH;
 extern const Info<float> GFX_VR_LAYER_OFFSET;
 extern const Info<float> GFX_VR_ELEMENT_DEPTH;
 extern const Info<float> GFX_VR_HUD_THICKNESS;

@@ -198,7 +198,7 @@ static void DefineOutputMember(ShaderCode& object, APIType api_type, std::string
 
 void GenerateVSOutputMembers(ShaderCode& object, APIType api_type, u32 texgens,
                              const ShaderHostConfig& host_config, std::string_view qualifier,
-                             ShaderStage stage)
+                             ShaderStage stage, bool in_interface_block)
 {
   // SPIRV-Cross names all semantics as "TEXCOORD"
   // Unfortunately Geometry shaders (which also uses this function)
@@ -252,6 +252,14 @@ void GenerateVSOutputMembers(ShaderCode& object, APIType api_type, u32 texgens,
       DefineOutputMember(object, api_type, qualifier, "float4", "viewPos", -1, stage, "TEXCOORD",
                          index_base + index_offset);
       index_offset++;
+      // Game's backend-convention NDC depth (0..1), captured in the VS before any VR position
+      // replacement. Flat-interpolated (provoking vertex, bit-exact) so the PS can export the
+      // console's exact depth for virtual-screen draws — perspective reprojection introduces
+      // per-vertex (z*w)/w rounding noise that destroys GX's equal-depth determinism otherwise.
+      // This is a native-HLSL GS struct, so the interpolation modifier is legal here.
+      DefineOutputMember(object, api_type, "nointerpolation", "float", "vr_depth", -1, stage,
+                         "TEXCOORD", index_base + index_offset);
+      index_offset++;
     }
   }
   else
@@ -289,6 +297,11 @@ void GenerateVSOutputMembers(ShaderCode& object, APIType api_type, u32 texgens,
       // Placed after clipPos (texgens+0), Normal (texgens+1), WorldPos (texgens+2).
       DefineOutputMember(object, api_type, qualifier, "float4", "viewPos", -1, stage, "TEXCOORD",
                          texgens + 3);
+      // Game's backend-convention NDC depth (0..1) for exact virtual-screen depth export (see
+      // the D3D geometry branch above). GLSL only allows interpolation qualifiers on interface
+      // block members, not on plain struct members (VS_OUTPUT), so gate the "flat" qualifier.
+      DefineOutputMember(object, api_type, in_interface_block ? "flat" : "", "float", "vr_depth",
+                         -1, stage, "TEXCOORD", texgens + 4);
     }
   }
 }
@@ -313,7 +326,10 @@ void AssignVSOutputMembers(ShaderCode& object, std::string_view a, std::string_v
   }
 
   if (host_config.vr_stereo)
+  {
     object.Write("\t{}.viewPos = {}.viewPos;\n", a, b);
+    object.Write("\t{}.vr_depth = {}.vr_depth;\n", a, b);
+  }
 
   if (host_config.backend_geometry_shaders && !host_config.vk_multiview)
   {
