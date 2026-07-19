@@ -205,6 +205,7 @@ void VideoConfig::Refresh()
   vr_camera_anchor_smoothing = std::clamp(Config::Get(Config::GFX_VR_CAMERA_ANCHOR_SMOOTHING),
                                           Config::GFX_VR_CAMERA_ANCHOR_SMOOTHING_MIN,
                                           Config::GFX_VR_CAMERA_ANCHOR_SMOOTHING_MAX);
+  vr_enable_controller_anchor = Config::Get(Config::GFX_VR_ENABLE_CONTROLLER_ANCHOR);
   vr_virtual_screen = Config::Get(Config::GFX_VR_VIRTUAL_SCREEN);
   vr_screen_distance = std::clamp(Config::Get(Config::GFX_VR_SCREEN_DISTANCE),
                                   Config::GFX_VR_SCREEN_DISTANCE_MIN,

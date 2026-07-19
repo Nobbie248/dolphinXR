@@ -176,6 +176,7 @@ extern const Info<bool> GFX_VR_ENABLE_CAMERA_HEIGHT;
 extern const Info<float> GFX_VR_CAMERA_HEIGHT;
 extern const Info<bool> GFX_VR_ENABLE_CAMERA_ANCHOR;
 extern const Info<float> GFX_VR_CAMERA_ANCHOR_SMOOTHING;
+extern const Info<bool> GFX_VR_ENABLE_CONTROLLER_ANCHOR;
 
 static constexpr float GFX_VR_UNITS_PER_METER_MIN = 0.1f;
 static constexpr float GFX_VR_UNITS_PER_METER_MAX = 2000.0f;

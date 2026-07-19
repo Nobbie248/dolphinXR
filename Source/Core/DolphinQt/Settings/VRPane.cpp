@@ -122,6 +122,13 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
          "0.00 follows the element rigidly (transmits every animation bob);\n"
          "higher values smooth the motion for comfort."));
   m_camera_anchor_smoothing_value = new QLabel();
+  m_enable_controller_anchor =
+      new ConfigBool(tr("Controller Anchor"), Config::GFX_VR_ENABLE_CONTROLLER_ANCHOR);
+  m_enable_controller_anchor->setToolTip(
+      tr("Let \"Controller Anchor\" Elements Group Overrides reposition game elements to a\n"
+         "VR controller (e.g. a sword on the right hand). Position only; the element keeps\n"
+         "its game orientation. When no override matches, or this is disabled, elements\n"
+         "render where the game put them."));
 
   openxr_layout->addWidget(m_enable_openxr, 0, 0, 1, 3);
 
@@ -175,6 +182,7 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   camera_layout->addWidget(m_enable_camera_anchor, 3, 0);
   camera_layout->addWidget(m_camera_anchor_smoothing, 3, 1);
   camera_layout->addWidget(m_camera_anchor_smoothing_value, 3, 2);
+  camera_layout->addWidget(m_enable_controller_anchor, 4, 0);
 
   // With the exponential scale, small values need more decimals to read meaningfully while large
   // values don't; adapt the precision to the magnitude.
@@ -949,6 +957,8 @@ void VRPane::ResetGeneralSettings()
                            Config::GFX_VR_ENABLE_CAMERA_ANCHOR.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_CAMERA_ANCHOR_SMOOTHING,
                            Config::GFX_VR_CAMERA_ANCHOR_SMOOTHING.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_ENABLE_CONTROLLER_ANCHOR,
+                           Config::GFX_VR_ENABLE_CONTROLLER_ANCHOR.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_VIRTUAL_SCREEN,
                            Config::GFX_VR_VIRTUAL_SCREEN.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_SCREEN_DISTANCE,

@@ -29,6 +29,10 @@ public:
 
   bool DidPosNormalChange() const { return m_pos_normal_matrix_changed; }
   void ResetPosNormalChange();
+  // Force the next SetConstants to reload posnormalmatrix from XF memory. Used by the VR
+  // ControllerAnchor override, which writes a single draw's position into the constants
+  // directly — without this, draws sharing the matrix would inherit the override.
+  void SetPosNormalChanged() { m_pos_normal_matrix_changed = true; }
 
   void SetProjectionChanged();
   bool DidProjectionChange() const { return m_projection_changed; }

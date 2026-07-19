@@ -409,6 +409,35 @@ MetroidLayerBehavior GetMetroidLayerBehavior(MetroidElementLayer layer)
     return {};
   }
 }
+
+// Row-major 3x3 helpers for the ControllerAnchor rotation path.
+std::array<float, 9> Mul3x3(const std::array<float, 9>& a, const std::array<float, 9>& b)
+{
+  std::array<float, 9> m{};
+  for (int r = 0; r < 3; ++r)
+  {
+    for (int c = 0; c < 3; ++c)
+      m[r * 3 + c] = a[r * 3 + 0] * b[0 + c] + a[r * 3 + 1] * b[3 + c] + a[r * 3 + 2] * b[6 + c];
+  }
+  return m;
+}
+
+// Model-axis correction from the per-override Euler angles, applied in the controller's
+// local frame: yaw about +Y, then pitch about +X, then roll about +Z. Models differ in
+// which way they natively point (a blade along +Y, a barrel along -Z, ...); these dial
+// the element onto the controller's aim direction.
+std::array<float, 9> ControllerAnchorAxisCorrection(float yaw_deg, float pitch_deg,
+                                                    float roll_deg)
+{
+  constexpr float DEG_TO_RAD = 0.01745329252f;
+  const float cy = std::cos(yaw_deg * DEG_TO_RAD), sy = std::sin(yaw_deg * DEG_TO_RAD);
+  const float cx = std::cos(pitch_deg * DEG_TO_RAD), sx = std::sin(pitch_deg * DEG_TO_RAD);
+  const float cz = std::cos(roll_deg * DEG_TO_RAD), sz = std::sin(roll_deg * DEG_TO_RAD);
+  const std::array<float, 9> rot_y = {cy, 0.0f, sy, 0.0f, 1.0f, 0.0f, -sy, 0.0f, cy};
+  const std::array<float, 9> rot_x = {1.0f, 0.0f, 0.0f, 0.0f, cx, -sx, 0.0f, sx, cx};
+  const std::array<float, 9> rot_z = {cz, -sz, 0.0f, sz, cz, 0.0f, 0.0f, 0.0f, 1.0f};
+  return Mul3x3(Mul3x3(rot_y, rot_x), rot_z);
+}
 }  // namespace
 
 // GX primitive -> RenderState primitive, no primitive restart
@@ -1249,6 +1278,7 @@ void VertexManagerBase::Flush()
             float units_per_meter = -1.0f;
             float passthrough_opacity = 0.0f;
             ElementsGroupManager::CameraAnchorParams anchor_params;
+            ElementsGroupManager::ControllerAnchorParams controller_anchor_params;
             const MetroidHydraHudSettings metroid_hydra_hud =
                 metroid_profile_active ?
                     GetMetroidHydraHudSettings(metroid_profile, metroid_layer, m_metroid_game_id) :
@@ -1275,6 +1305,10 @@ void VertexManagerBase::Flush()
               else if (handling == ShaderHunter::HandlingType::CameraAnchor)
               {
                 elements.GetOverrideCameraAnchor(*element_draw, &anchor_params);
+              }
+              else if (handling == ShaderHunter::HandlingType::ControllerAnchor)
+              {
+                elements.GetOverrideControllerAnchor(*element_draw, &controller_anchor_params);
               }
             }
             else if (hunter_has_overrides)
@@ -1458,6 +1492,93 @@ void VertexManagerBase::Flush()
                 }
                 if (anchor_params.hide)
                   elements_skip = true;
+              }
+            }
+            else if (handling == ShaderHunter::HandlingType::ControllerAnchor)
+            {
+              // The element is repositioned to a VR controller: the position matrix
+              // translation is replaced with the controller's aim pose mapped into game
+              // view space (same space/units as the projection's eye offsets), plus the
+              // override's meter offsets. With rotation follow the 3x3 (and normal rows)
+              // are rebuilt from the controller orientation too; otherwise orientation
+              // stays game-driven. Scale is always preserved. SetPosNormalChanged makes
+              // the next flush reload the real matrix from XF memory so the write lives
+              // for exactly one draw. Draws with per-vertex position-matrix indices
+              // (posmtx) ignore posnormalmatrix entirely — the log flags those so a
+              // non-moving element is diagnosable immediately.
+              if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR && !vr_flat_mode &&
+                  g_ActiveConfig.vr_enable_controller_anchor && VR::g_openxr &&
+                  VR::g_openxr->IsSessionRunning())
+              {
+                const float upm = g_ActiveConfig.vr_units_per_meter;
+                std::array<float, 3> hand_pos{};
+                std::array<float, 9> hand_rot{};
+                if (VR::g_openxr->GetControllerAnchorViewPose(controller_anchor_params.hand, upm,
+                                                              &hand_pos, &hand_rot))
+                {
+                  auto& pnm = vertex_shader_manager.constants.posnormalmatrix;
+                  const float old_x = pnm[0][3], old_y = pnm[1][3], old_z = pnm[2][3];
+                  const float off_x = controller_anchor_params.offset[0] * upm;
+                  const float off_y = controller_anchor_params.offset[1] * upm;
+                  const float off_z = -controller_anchor_params.offset[2] * upm;
+                  float dx = off_x, dy = off_y, dz = off_z;
+                  if (controller_anchor_params.rotation)
+                  {
+                    // Offsets ride the controller frame so the element stays rigidly
+                    // attached (a view-space offset would drift around the grip as the
+                    // hand turns).
+                    dx = hand_rot[0] * off_x + hand_rot[1] * off_y + hand_rot[2] * off_z;
+                    dy = hand_rot[3] * off_x + hand_rot[4] * off_y + hand_rot[5] * off_z;
+                    dz = hand_rot[6] * off_x + hand_rot[7] * off_y + hand_rot[8] * off_z;
+                  }
+                  pnm[0][3] = hand_pos[0] + dx;
+                  pnm[1][3] = hand_pos[1] + dy;
+                  pnm[2][3] = hand_pos[2] + dz;
+                  if (controller_anchor_params.rotation)
+                  {
+                    // 3x3 = (A*C)*X: controller orientation in view space times the
+                    // model-axis correction. The game matrix's per-axis scale (column
+                    // norms) is preserved so the model keeps its size; the normal rows
+                    // get the pure rotation (the correct inverse-transpose for a rigid
+                    // transform, and stale game normals would light the element wrong
+                    // as it turns).
+                    const std::array<float, 9> m = Mul3x3(
+                        hand_rot, ControllerAnchorAxisCorrection(controller_anchor_params.yaw_deg,
+                                                                 controller_anchor_params.pitch_deg,
+                                                                 controller_anchor_params.roll_deg));
+                    for (int c = 0; c < 3; ++c)
+                    {
+                      const float len =
+                          std::sqrt(pnm[0][c] * pnm[0][c] + pnm[1][c] * pnm[1][c] +
+                                    pnm[2][c] * pnm[2][c]);
+                      const float s = len > 1e-6f ? len : 1.0f;
+                      pnm[0][c] = m[0 + c] * s;
+                      pnm[1][c] = m[3 + c] * s;
+                      pnm[2][c] = m[6 + c] * s;
+                      pnm[3][c] = m[0 + c];
+                      pnm[4][c] = m[3 + c];
+                      pnm[5][c] = m[6 + c];
+                    }
+                  }
+                  vertex_shader_manager.dirty = true;
+                  xf_state_manager.SetPosNormalChanged();
+                  if (hunter_debug_logging)
+                  {
+                    const NativeVertexFormat* fmt = VertexLoaderManager::GetCurrentVertexFormat();
+                    const bool posmtx = fmt && fmt->GetVertexDeclaration().posmtx.enable;
+                    INFO_LOG_FMT(VIDEO,
+                                 "VR_HANDANCHOR: draw#{} hand={} posmtx={} rot={} "
+                                 "old=({:.2f},{:.2f},{:.2f}) new=({:.2f},{:.2f},{:.2f})",
+                                 m_draw_counter, controller_anchor_params.hand == 0 ? "L" : "R",
+                                 posmtx ? 1 : 0, controller_anchor_params.rotation ? 1 : 0, old_x,
+                                 old_y, old_z, pnm[0][3], pnm[1][3], pnm[2][3]);
+                  }
+                }
+                else if (hunter_debug_logging)
+                {
+                  INFO_LOG_FMT(VIDEO, "VR_HANDANCHOR: draw#{} hand={} pose unavailable",
+                               m_draw_counter, controller_anchor_params.hand == 0 ? "L" : "R");
+                }
               }
             }
             else

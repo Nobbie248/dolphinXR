@@ -421,6 +421,10 @@ static void BPWritten(PixelShaderManager& pixel_shader_manager, XFStateManager& 
         {
           VR::g_openxr->LocateViews();
           system.GetGeometryShaderManager().InvalidateVRHeadPose();
+          // Controller Anchor rides the same boundary: hand positions latch with the
+          // head pose so anchored elements never move mid-frame. (When the lock is off
+          // the controller cache is bypassed entirely, so this is the only site.)
+          VR::g_openxr->InvalidateControllerAnchorCache();
           s_last_locate_time = now;
           s_first_locate = false;
         }

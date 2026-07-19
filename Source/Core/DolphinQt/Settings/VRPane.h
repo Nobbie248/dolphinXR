@@ -52,6 +52,7 @@ private:
   ConfigBool* m_enable_camera_anchor = nullptr;
   ConfigFloatSlider* m_camera_anchor_smoothing = nullptr;
   QLabel* m_camera_anchor_smoothing_value = nullptr;
+  ConfigBool* m_enable_controller_anchor = nullptr;
   ConfigBool* m_virtual_screen = nullptr;
   ConfigFloatSlider* m_screen_distance = nullptr;
   QLabel* m_screen_distance_value = nullptr;

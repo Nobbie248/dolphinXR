@@ -113,6 +113,13 @@ public:
     // facing backward).
     ShaderHunter::AnchorRotationMode anchor_rotation = ShaderHunter::AnchorRotationMode::Off;
     float anchor_yaw_deg = 0.0f;
+    // ControllerAnchor handling: which VR controller the element follows (0 = left, 1 = right).
+    // Reuses anchor_right/up/forward as meter offsets from the controller's aim pose and
+    // anchor_rotation (Off/Full) for orientation follow; yaw/pitch/roll are the model-axis
+    // correction in the controller's frame (models differ in which way they natively point).
+    int anchor_hand = 1;
+    float anchor_pitch_deg = 0.0f;
+    float anchor_roll_deg = 0.0f;
     std::vector<u64> texture_hashes;
     bool texture_hashes_excluded = false;
     std::vector<SelectedSubgroupSignature> selected_match_filter;
@@ -227,6 +234,20 @@ public:
   // Fills the parameters of the first matching CameraAnchor override.
   // Returns false when none matches the draw.
   bool GetOverrideCameraAnchor(const DrawRecord& draw, CameraAnchorParams* out_params) const;
+  // ControllerAnchor: per-override parameters resolved for a matching draw.
+  struct ControllerAnchorParams
+  {
+    int hand = 1;                   // 0 = left, 1 = right
+    std::array<float, 3> offset{};  // meters: right, up, forward
+    bool rotation = false;          // follow the controller's orientation
+    // Model-axis correction applied in the controller frame (degrees).
+    float yaw_deg = 0.0f;
+    float pitch_deg = 0.0f;
+    float roll_deg = 0.0f;
+  };
+  // Fills the parameters of the first matching ControllerAnchor override.
+  // Returns false when none matches the draw.
+  bool GetOverrideControllerAnchor(const DrawRecord& draw, ControllerAnchorParams* out_params) const;
   // Clear EFB: arm a pending clear when a draw matches a clear_efb override; ShouldClearEFBCopy is
   // consumed by the next EFB-to-texture copy (see TextureCacheBase).
   void CheckClearEFBForDraw(const DrawRecord& draw);

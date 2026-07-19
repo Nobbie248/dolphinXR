@@ -346,6 +346,23 @@ public:
   void SetPendingCameraAnchor(float x, float y, float z, const std::array<float, 9>& rotation);
   void CommitCameraAnchorFrame();
 
+  // ---- Controller Anchor (Elements Group Override "ControllerAnchor" handling) ----
+  // Maps a VR controller's aim pose into game view space (game units) by replaying the
+  // eye-position chain of GetEyeProjectionRows with the controller substituted for the
+  // eye, so an element repositioned to the result appears at the physical controller.
+  // out_rotation (optional) receives the controller's orientation in view space as a
+  // row-major 3x3 (camera-anchor rig rotation included): directions map identically
+  // between reference space and game view space — the same identification the position
+  // path relies on. Video-thread only. While the head-pose lock is effective the result
+  // is latched per game frame (same cadence as the GS eye-projection cache) so an
+  // anchored element never moves mid-frame; InvalidateControllerAnchorCache() must be
+  // called wherever GeometryShaderManager::InvalidateVRHeadPose() is. Returns false
+  // when the controller pose is unavailable (the element then renders untouched).
+  bool GetControllerAnchorViewPose(int hand, float units_per_meter,
+                                   std::array<float, 3>* out_position,
+                                   std::array<float, 9>* out_rotation);
+  void InvalidateControllerAnchorCache();
+
   // Compute per-eye projection rows WITHOUT head rotation (for head-locked content).
   // Same layout as GetEyeProjectionRows but only includes the raw asymmetric frustum
   // projection and per-eye IPD offset. Content rendered with these rows follows
@@ -469,6 +486,14 @@ private:
   std::array<float, 9> m_camera_anchor_rotation{1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
                                                 0.0f, 0.0f, 0.0f, 1.0f};
   bool m_camera_anchor_rotation_active = false;
+
+  // Controller Anchor per-frame cache (video-thread only). Under the head-pose lock a
+  // valid entry is reused until InvalidateControllerAnchorCache() so all draws of a game
+  // frame see one hand pose; the upm is stored because it scales the position.
+  std::array<bool, 2> m_controller_anchor_cache_valid{false, false};
+  std::array<std::array<float, 3>, 2> m_controller_anchor_cache{};
+  std::array<std::array<float, 9>, 2> m_controller_anchor_cache_rot{};
+  std::array<float, 2> m_controller_anchor_cache_upm{};
 
   // XR_FB_passthrough state. The composition layer member gives the struct stable
   // storage across the xrEndFrame call that references it.

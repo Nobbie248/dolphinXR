@@ -365,6 +365,9 @@ struct VideoConfig final
   // camera position kept each frame (0 = hard lock to the element).
   bool vr_enable_camera_anchor = true;
   float vr_camera_anchor_smoothing = 0.85f;
+  // Controller Anchor: reposition elements flagged by a ControllerAnchor override to a VR
+  // controller (e.g. a sword on the right hand). Translation only; no smoothing (hands 1:1).
+  bool vr_enable_controller_anchor = true;
   bool vr_virtual_screen = true;
   // Exact virtual-screen depth: screen/head-locked draws export the game's flat-screen depth
   // per pixel (flat-interpolated, bit-exact) instead of the synthesized layer/element depth.

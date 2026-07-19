@@ -82,6 +82,15 @@ private:
   QLabel* m_anchor_yaw_label = nullptr;
   QDoubleSpinBox* m_anchor_yaw_spin = nullptr;
   QCheckBox* m_anchor_hide_check = nullptr;
+  QLabel* m_anchor_hand_label = nullptr;
+  QComboBox* m_anchor_hand_combo = nullptr;
+  QCheckBox* m_anchor_follow_rotation_check = nullptr;
+  QLabel* m_anchor_ctrl_yaw_label = nullptr;
+  QDoubleSpinBox* m_anchor_ctrl_yaw_spin = nullptr;
+  QLabel* m_anchor_ctrl_pitch_label = nullptr;
+  QDoubleSpinBox* m_anchor_ctrl_pitch_spin = nullptr;
+  QLabel* m_anchor_ctrl_roll_label = nullptr;
+  QDoubleSpinBox* m_anchor_ctrl_roll_spin = nullptr;
   QLineEdit* m_flag_edit = nullptr;
   QLabel* m_flag_label = nullptr;
   QComboBox* m_condition_combo = nullptr;

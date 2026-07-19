@@ -356,6 +356,7 @@ const char* GetHandlingName(ElementsGroupManager::HandlingType handling)
          handling == ElementsGroupManager::HandlingType::UnitsPerMeter  ? "units_per_meter" :
          handling == ElementsGroupManager::HandlingType::Passthrough    ? "passthrough" :
          handling == ElementsGroupManager::HandlingType::CameraAnchor   ? "camera_anchor" :
+         handling == ElementsGroupManager::HandlingType::ControllerAnchor ? "controller_anchor" :
                                                                           "skip";
 }
 
@@ -752,6 +753,7 @@ LoadElementGroupOverridesFromINIFile(const std::string& path)
                          value == "flag"            ? HandlingType::Flag :
                          value == "passthrough"     ? HandlingType::Passthrough :
                          value == "camera_anchor"   ? HandlingType::CameraAnchor :
+                         value == "controller_anchor" ? HandlingType::ControllerAnchor :
                          value == "units_per_meter" || value == "upm" ?
                              HandlingType::UnitsPerMeter :
                              HandlingType::Skip;
@@ -777,6 +779,12 @@ LoadElementGroupOverridesFromINIFile(const std::string& path)
                                                   ShaderHunter::AnchorRotationMode::Off;
     else if (key == "anchor_yaw")
       current.anchor_yaw_deg = std::stof(value);
+    else if (key == "anchor_hand")
+      current.anchor_hand = (value == "left" || value == "0") ? 0 : 1;
+    else if (key == "anchor_pitch")
+      current.anchor_pitch_deg = std::stof(value);
+    else if (key == "anchor_roll")
+      current.anchor_roll_deg = std::stof(value);
     else if (key == "flag")
       current.flag_group = value;
     else if (key == "condition")
@@ -959,6 +967,24 @@ void ElementsGroupManager::SaveOverridesToINI(const std::string& game_id,
       }
       if (entry.anchor_yaw_deg != 0.0f)
         out << "anchor_yaw=" << entry.anchor_yaw_deg << "\n";
+    }
+    if (entry.handling == HandlingType::ControllerAnchor)
+    {
+      out << "anchor_hand=" << (entry.anchor_hand == 0 ? "left" : "right") << "\n";
+      if (entry.anchor_right != 0.0f)
+        out << "anchor_right=" << entry.anchor_right << "\n";
+      if (entry.anchor_up != 0.0f)
+        out << "anchor_up=" << entry.anchor_up << "\n";
+      if (entry.anchor_forward != 0.0f)
+        out << "anchor_forward=" << entry.anchor_forward << "\n";
+      if (entry.anchor_rotation != ShaderHunter::AnchorRotationMode::Off)
+        out << "anchor_rotation=full\n";
+      if (entry.anchor_yaw_deg != 0.0f)
+        out << "anchor_yaw=" << entry.anchor_yaw_deg << "\n";
+      if (entry.anchor_pitch_deg != 0.0f)
+        out << "anchor_pitch=" << entry.anchor_pitch_deg << "\n";
+      if (entry.anchor_roll_deg != 0.0f)
+        out << "anchor_roll=" << entry.anchor_roll_deg << "\n";
     }
     if (!entry.flag_group.empty())
       out << "flag=" << entry.flag_group << "\n";
@@ -1982,6 +2008,29 @@ bool ElementsGroupManager::GetOverrideCameraAnchor(const DrawRecord& draw,
       out_params->hide = entry.anchor_hide;
       out_params->rotation = entry.anchor_rotation;
       out_params->yaw_offset_deg = entry.anchor_yaw_deg;
+      return true;
+    }
+  }
+  return false;
+}
+
+bool ElementsGroupManager::GetOverrideControllerAnchor(const DrawRecord& draw,
+                                                       ControllerAnchorParams* out_params) const
+{
+  std::lock_guard lock(m_mutex);
+  GetStableSubMatchSignatureLocked(draw);
+  for (const auto& entry : m_overrides)
+  {
+    if (entry.handling != HandlingType::ControllerAnchor)
+      continue;
+    if (DoesEntryMatch(entry, draw, true))
+    {
+      out_params->hand = entry.anchor_hand == 0 ? 0 : 1;
+      out_params->offset = {entry.anchor_right, entry.anchor_up, entry.anchor_forward};
+      out_params->rotation = entry.anchor_rotation != ShaderHunter::AnchorRotationMode::Off;
+      out_params->yaw_deg = entry.anchor_yaw_deg;
+      out_params->pitch_deg = entry.anchor_pitch_deg;
+      out_params->roll_deg = entry.anchor_roll_deg;
       return true;
     }
   }

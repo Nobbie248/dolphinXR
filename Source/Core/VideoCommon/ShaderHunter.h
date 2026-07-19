@@ -44,7 +44,10 @@ public:
     Passthrough = 7,
     // VR camera anchor: the element's view-space origin becomes the VR camera position
     // (e.g. a character's head for first-person view). Optionally hides the element itself.
-    CameraAnchor = 8
+    CameraAnchor = 8,
+    // VR controller anchor: the element is repositioned to a VR controller's location
+    // (e.g. a sword on the right hand). Translation only; orientation stays game-driven.
+    ControllerAnchor = 9
   };
 
   // CameraAnchor handling: how much of the anchor element's orientation the camera follows.

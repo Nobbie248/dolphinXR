@@ -2871,6 +2871,114 @@ void OpenXRManager::CommitCameraAnchorFrame()
   }
 }
 
+bool OpenXRManager::GetControllerAnchorViewPose(int hand, float units_per_meter,
+                                                std::array<float, 3>* out_position,
+                                                std::array<float, 9>* out_rotation)
+{
+  if (hand < 0 || hand > 1 || !out_position)
+    return false;
+
+  // Under the head-pose lock the eye projection is frozen for the whole game frame, so
+  // the hand pose must be too — a fresher hand than head would jitter against the
+  // world. Without the lock the GS refetches per draw and so do we.
+  const bool lock = g_ActiveConfig.VRLockHeadPoseEffective();
+  if (lock && m_controller_anchor_cache_valid[hand] &&
+      std::abs(m_controller_anchor_cache_upm[hand] - units_per_meter) <= 0.0001f)
+  {
+    *out_position = m_controller_anchor_cache[hand];
+    if (out_rotation)
+      *out_rotation = m_controller_anchor_cache_rot[hand];
+    return true;
+  }
+
+  const Common::VR::OpenXRInputSnapshot snapshot = Common::VR::OpenXRInputState::GetSnapshot();
+  const Common::VR::OpenXRPoseState& aim = snapshot.controllers[hand].aim_pose;
+  if (!aim.valid)
+    return false;
+
+  // Tracking-mode adjustment via the eye-center delta: adjusted_center + (raw − raw_center)
+  // reproduces GetTrackingAdjustedEyeViews() for every tracking mode without duplicating
+  // its switch (exact identity in Full6DoF) and keeps the hand attached to a pinned head
+  // in the 3DoF/no-tracking modes.
+  const std::array<XREyeView, 2> adjusted = GetTrackingAdjustedEyeViews();
+  const float raw_cx = 0.5f * (m_eye_views[0].pose.position.x + m_eye_views[1].pose.position.x);
+  const float raw_cy = 0.5f * (m_eye_views[0].pose.position.y + m_eye_views[1].pose.position.y);
+  const float raw_cz = 0.5f * (m_eye_views[0].pose.position.z + m_eye_views[1].pose.position.z);
+  const float adj_cx = 0.5f * (adjusted[0].pose.position.x + adjusted[1].pose.position.x);
+  const float adj_cy = 0.5f * (adjusted[0].pose.position.y + adjusted[1].pose.position.y);
+  const float adj_cz = 0.5f * (adjusted[0].pose.position.z + adjusted[1].pose.position.z);
+  const float cx = adj_cx + (aim.position[0] - raw_cx);
+  const float cy = adj_cy + (aim.position[1] - raw_cy);
+  const float cz = adj_cz + (aim.position[2] - raw_cz);
+
+  // Replay of the GetEyeProjectionRows eye-position chain (home offset, camera
+  // height/forward, anchor rotation, anchor position) with the controller substituted
+  // for the eye. Any divergence between the two shows up as the element swimming
+  // against the hand under head motion — keep them in lockstep.
+  const float s = std::max(units_per_meter, 0.0001f);
+  float px = (cx - m_home_position.x) * s;
+  float py = (cy - m_home_position.y) * s;
+  float pz = (cz - m_home_position.z) * s;
+  if (g_ActiveConfig.vr_enable_camera_height)
+    py += g_ActiveConfig.vr_camera_height * s;
+  if (g_ActiveConfig.vr_enable_camera_forward)
+    pz += -g_ActiveConfig.vr_camera_forward * s;
+  if (m_camera_anchor_rotation_active)
+  {
+    const std::array<float, 9>& A = m_camera_anchor_rotation;
+    const float rx = px, ry = py, rz = pz;
+    px = A[0] * rx + A[1] * ry + A[2] * rz;
+    py = A[3] * rx + A[4] * ry + A[5] * rz;
+    pz = A[6] * rx + A[7] * ry + A[8] * rz;
+  }
+  px += m_camera_anchor_position[0];
+  py += m_camera_anchor_position[1];
+  pz += m_camera_anchor_position[2];
+
+  // Controller orientation in view space. Standard quaternion-to-matrix, columns =
+  // controller-local axes in reference space (X right, Y up, -Z the aim direction);
+  // directions carry over to view space unchanged — validated by the position path —
+  // and the camera-anchor rig rotation applies exactly as it does to the eye offsets.
+  const float qx = aim.orientation[0], qy = aim.orientation[1];
+  const float qz = aim.orientation[2], qw = aim.orientation[3];
+  const float x2 = 2.0f * qx * qx, y2 = 2.0f * qy * qy, z2 = 2.0f * qz * qz;
+  const float xy = 2.0f * qx * qy, xz = 2.0f * qx * qz, yz = 2.0f * qy * qz;
+  const float wx = 2.0f * qw * qx, wy = 2.0f * qw * qy, wz = 2.0f * qw * qz;
+  std::array<float, 9> rot = {1.0f - y2 - z2, xy - wz,        xz + wy,
+                              xy + wz,        1.0f - x2 - z2, yz - wx,
+                              xz - wy,        yz + wx,        1.0f - x2 - y2};
+  if (m_camera_anchor_rotation_active)
+  {
+    const std::array<float, 9>& A = m_camera_anchor_rotation;
+    const std::array<float, 9> c = rot;
+    for (int r = 0; r < 3; ++r)
+    {
+      for (int col = 0; col < 3; ++col)
+      {
+        rot[r * 3 + col] =
+            A[r * 3 + 0] * c[0 + col] + A[r * 3 + 1] * c[3 + col] + A[r * 3 + 2] * c[6 + col];
+      }
+    }
+  }
+
+  *out_position = {px, py, pz};
+  if (out_rotation)
+    *out_rotation = rot;
+  if (lock)
+  {
+    m_controller_anchor_cache_valid[hand] = true;
+    m_controller_anchor_cache[hand] = *out_position;
+    m_controller_anchor_cache_rot[hand] = rot;
+    m_controller_anchor_cache_upm[hand] = units_per_meter;
+  }
+  return true;
+}
+
+void OpenXRManager::InvalidateControllerAnchorCache()
+{
+  m_controller_anchor_cache_valid = {false, false};
+}
+
 void OpenXRManager::GetEyeProjectionRows(
     float units_per_meter,
     std::array<std::array<float, 4>, 4>& out_proj_rows,

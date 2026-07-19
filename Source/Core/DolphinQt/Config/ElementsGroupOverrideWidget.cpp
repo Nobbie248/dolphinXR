@@ -118,6 +118,7 @@ void ElementsGroupOverrideWidget::UpdateList()
                                                  entry.handling == ShaderHunter::HandlingType::UnitsPerMeter ? "units_per_meter" :
                                                  entry.handling == ShaderHunter::HandlingType::Passthrough ? "passthrough" :
                                                  entry.handling == ShaderHunter::HandlingType::CameraAnchor ? "camera_anchor" :
+                                                 entry.handling == ShaderHunter::HandlingType::ControllerAnchor ? "controller_anchor" :
                                                                                                              "skip"));
     if (entry.match_kind == ElementsGroupManager::MatchKind::ProfileLayer)
     {
