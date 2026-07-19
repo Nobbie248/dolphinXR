@@ -107,6 +107,21 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
                                           Config::GFX_VR_CAMERA_HEIGHT,
                                           Config::GFX_VR_CAMERA_HEIGHT_STEP);
   m_camera_height_value = new QLabel();
+  m_enable_camera_anchor = new ConfigBool(tr("Camera Anchor"), Config::GFX_VR_ENABLE_CAMERA_ANCHOR);
+  m_enable_camera_anchor->setToolTip(
+      tr("Let a \"Camera Anchor\" Elements Group Override move the VR camera to a game\n"
+         "element's position (e.g. a character's head for first-person view). When no\n"
+         "anchor override matches, or this is disabled, the camera stays at the default\n"
+         "position."));
+  m_camera_anchor_smoothing = new ConfigFloatSlider(Config::GFX_VR_CAMERA_ANCHOR_SMOOTHING_MIN,
+                                                    Config::GFX_VR_CAMERA_ANCHOR_SMOOTHING_MAX,
+                                                    Config::GFX_VR_CAMERA_ANCHOR_SMOOTHING,
+                                                    Config::GFX_VR_CAMERA_ANCHOR_SMOOTHING_STEP);
+  m_camera_anchor_smoothing->setToolTip(
+      tr("How much the anchored camera resists the element's movement each frame.\n"
+         "0.00 follows the element rigidly (transmits every animation bob);\n"
+         "higher values smooth the motion for comfort."));
+  m_camera_anchor_smoothing_value = new QLabel();
 
   openxr_layout->addWidget(m_enable_openxr, 0, 0, 1, 3);
 
@@ -157,6 +172,9 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   camera_layout->addWidget(new ConfigFloatLabel(tr("Camera Height (m):"), m_camera_height), 2, 0);
   camera_layout->addWidget(m_camera_height, 2, 1);
   camera_layout->addWidget(m_camera_height_value, 2, 2);
+  camera_layout->addWidget(m_enable_camera_anchor, 3, 0);
+  camera_layout->addWidget(m_camera_anchor_smoothing, 3, 1);
+  camera_layout->addWidget(m_camera_anchor_smoothing_value, 3, 2);
 
   // With the exponential scale, small values need more decimals to read meaningfully while large
   // values don't; adapt the precision to the magnitude.
@@ -185,6 +203,12 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   });
   connect(m_camera_height, &QAbstractSlider::actionTriggered, this, [](int) {
     Config::SetBaseOrCurrent(Config::GFX_VR_ENABLE_CAMERA_HEIGHT, true);
+  });
+  m_camera_anchor_smoothing_value->setText(
+      QString::asprintf("%.2f", m_camera_anchor_smoothing->GetValue()));
+  connect(m_camera_anchor_smoothing, &ConfigFloatSlider::valueChanged, this, [this] {
+    m_camera_anchor_smoothing_value->setText(
+        QString::asprintf("%.2f", m_camera_anchor_smoothing->GetValue()));
   });
 
   // Virtual screen settings
@@ -921,6 +945,10 @@ void VRPane::ResetGeneralSettings()
                            Config::GFX_VR_ENABLE_CAMERA_HEIGHT.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_CAMERA_HEIGHT,
                            Config::GFX_VR_CAMERA_HEIGHT.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_ENABLE_CAMERA_ANCHOR,
+                           Config::GFX_VR_ENABLE_CAMERA_ANCHOR.GetDefaultValue());
+  Config::SetBaseOrCurrent(Config::GFX_VR_CAMERA_ANCHOR_SMOOTHING,
+                           Config::GFX_VR_CAMERA_ANCHOR_SMOOTHING.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_VIRTUAL_SCREEN,
                            Config::GFX_VR_VIRTUAL_SCREEN.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_SCREEN_DISTANCE,

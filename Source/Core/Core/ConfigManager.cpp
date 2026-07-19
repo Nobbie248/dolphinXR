@@ -161,6 +161,7 @@ static void ClearAppliedVRSettings()
   ClearAppliedVRSetting("LeanBackAngle", Config::GFX_VR_LEAN_BACK_ANGLE);
   ClearAppliedVRSetting("CameraForward", Config::GFX_VR_CAMERA_FORWARD);
   ClearAppliedVRSetting("CameraHeight", Config::GFX_VR_CAMERA_HEIGHT);
+  ClearAppliedVRSetting("CameraAnchorSmoothing", Config::GFX_VR_CAMERA_ANCHOR_SMOOTHING);
   ClearAppliedVRSetting("VirtualScreen", Config::GFX_VR_VIRTUAL_SCREEN);
   ClearAppliedVRSetting("ScreenDistance", Config::GFX_VR_SCREEN_DISTANCE);
   ClearAppliedVRSetting("ScreenSize", Config::GFX_VR_SCREEN_SIZE);
@@ -223,6 +224,7 @@ static void ApplyGameVRConfigOverrides(std::string_view game_id, std::optional<u
   ApplyVRSetting(values, "LeanBackAngle", Config::GFX_VR_LEAN_BACK_ANGLE);
   ApplyVRSetting(values, "CameraForward", Config::GFX_VR_CAMERA_FORWARD);
   ApplyVRSetting(values, "CameraHeight", Config::GFX_VR_CAMERA_HEIGHT);
+  ApplyVRSetting(values, "CameraAnchorSmoothing", Config::GFX_VR_CAMERA_ANCHOR_SMOOTHING);
   ApplyVRSetting(values, "VirtualScreen", Config::GFX_VR_VIRTUAL_SCREEN);
   ApplyVRSetting(values, "ScreenDistance", Config::GFX_VR_SCREEN_DISTANCE);
   ApplyVRSetting(values, "ScreenSize", Config::GFX_VR_SCREEN_SIZE);

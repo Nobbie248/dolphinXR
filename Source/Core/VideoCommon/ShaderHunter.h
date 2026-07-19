@@ -41,7 +41,19 @@ public:
     UnitsPerMeter = 6,
     // VR passthrough window: the element still draws, but its pixels write the given
     // opacity into the dedicated coverage target.
-    Passthrough = 7
+    Passthrough = 7,
+    // VR camera anchor: the element's view-space origin becomes the VR camera position
+    // (e.g. a character's head for first-person view). Optionally hides the element itself.
+    CameraAnchor = 8
+  };
+
+  // CameraAnchor handling: how much of the anchor element's orientation the camera follows.
+  // YawOnly keeps the horizon level (comfort); Full includes pitch/roll (slopes, tricks).
+  enum class AnchorRotationMode
+  {
+    Off = 0,
+    YawOnly = 1,
+    Full = 2
   };
 
   enum class HuntingOption

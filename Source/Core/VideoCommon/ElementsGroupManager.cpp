@@ -355,6 +355,7 @@ const char* GetHandlingName(ElementsGroupManager::HandlingType handling)
          handling == ElementsGroupManager::HandlingType::Flag           ? "flag" :
          handling == ElementsGroupManager::HandlingType::UnitsPerMeter  ? "units_per_meter" :
          handling == ElementsGroupManager::HandlingType::Passthrough    ? "passthrough" :
+         handling == ElementsGroupManager::HandlingType::CameraAnchor   ? "camera_anchor" :
                                                                           "skip";
 }
 
@@ -750,6 +751,7 @@ LoadElementGroupOverridesFromINIFile(const std::string& path)
                          value == "headlocked"      ? HandlingType::HeadLocked :
                          value == "flag"            ? HandlingType::Flag :
                          value == "passthrough"     ? HandlingType::Passthrough :
+                         value == "camera_anchor"   ? HandlingType::CameraAnchor :
                          value == "units_per_meter" || value == "upm" ?
                              HandlingType::UnitsPerMeter :
                              HandlingType::Skip;
@@ -761,6 +763,20 @@ LoadElementGroupOverridesFromINIFile(const std::string& path)
       current.units_per_meter = std::stof(value);
     else if (key == "passthrough_opacity")
       current.passthrough_opacity = std::clamp(std::stof(value), 0.0f, 1.0f);
+    else if (key == "anchor_right")
+      current.anchor_right = std::stof(value);
+    else if (key == "anchor_up")
+      current.anchor_up = std::stof(value);
+    else if (key == "anchor_forward")
+      current.anchor_forward = std::stof(value);
+    else if (key == "anchor_hide")
+      current.anchor_hide = (value == "1" || value == "true");
+    else if (key == "anchor_rotation")
+      current.anchor_rotation = value == "full" ? ShaderHunter::AnchorRotationMode::Full :
+                                value == "yaw"  ? ShaderHunter::AnchorRotationMode::YawOnly :
+                                                  ShaderHunter::AnchorRotationMode::Off;
+    else if (key == "anchor_yaw")
+      current.anchor_yaw_deg = std::stof(value);
     else if (key == "flag")
       current.flag_group = value;
     else if (key == "condition")
@@ -926,6 +942,24 @@ void ElementsGroupManager::SaveOverridesToINI(const std::string& game_id,
       out << "units_per_meter=" << entry.units_per_meter << "\n";
     if (entry.handling == HandlingType::Passthrough)
       out << "passthrough_opacity=" << entry.passthrough_opacity << "\n";
+    if (entry.handling == HandlingType::CameraAnchor)
+    {
+      if (entry.anchor_right != 0.0f)
+        out << "anchor_right=" << entry.anchor_right << "\n";
+      if (entry.anchor_up != 0.0f)
+        out << "anchor_up=" << entry.anchor_up << "\n";
+      if (entry.anchor_forward != 0.0f)
+        out << "anchor_forward=" << entry.anchor_forward << "\n";
+      out << "anchor_hide=" << (entry.anchor_hide ? 1 : 0) << "\n";
+      if (entry.anchor_rotation != ShaderHunter::AnchorRotationMode::Off)
+      {
+        out << "anchor_rotation="
+            << (entry.anchor_rotation == ShaderHunter::AnchorRotationMode::Full ? "full" : "yaw")
+            << "\n";
+      }
+      if (entry.anchor_yaw_deg != 0.0f)
+        out << "anchor_yaw=" << entry.anchor_yaw_deg << "\n";
+    }
     if (!entry.flag_group.empty())
       out << "flag=" << entry.flag_group << "\n";
     if (!entry.condition_flag.empty())
@@ -1931,6 +1965,27 @@ float ElementsGroupManager::GetOverridePassthroughOpacity(const DrawRecord& draw
       return std::clamp(entry.passthrough_opacity, 0.0f, 1.0f);
   }
   return 0.0f;  // fully see-through
+}
+
+bool ElementsGroupManager::GetOverrideCameraAnchor(const DrawRecord& draw,
+                                                   CameraAnchorParams* out_params) const
+{
+  std::lock_guard lock(m_mutex);
+  GetStableSubMatchSignatureLocked(draw);
+  for (const auto& entry : m_overrides)
+  {
+    if (entry.handling != HandlingType::CameraAnchor)
+      continue;
+    if (DoesEntryMatch(entry, draw, true))
+    {
+      out_params->offset = {entry.anchor_right, entry.anchor_up, entry.anchor_forward};
+      out_params->hide = entry.anchor_hide;
+      out_params->rotation = entry.anchor_rotation;
+      out_params->yaw_offset_deg = entry.anchor_yaw_deg;
+      return true;
+    }
+  }
+  return false;
 }
 
 void ElementsGroupManager::CheckClearEFBForDraw(const DrawRecord& draw)

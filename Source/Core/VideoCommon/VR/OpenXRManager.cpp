@@ -2755,6 +2755,122 @@ std::array<XREyeView, 2> OpenXRManager::GetTrackingAdjustedEyeViews() const
   return eye_views;
 }
 
+namespace
+{
+constexpr std::array<float, 9> CAMERA_ANCHOR_IDENTITY{1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+                                                      0.0f, 0.0f, 0.0f, 1.0f};
+
+// Rebuild a right-handed orthonormal basis from the columns of a row-major 3x3
+// (Gram-Schmidt via cross products, X column authoritative). Removes the element
+// matrix's scale and repairs drift from per-entry smoothing. Returns false and
+// leaves the matrix untouched when a column is degenerate.
+bool OrthonormalizeAnchorRotation(std::array<float, 9>& m)
+{
+  float xx = m[0], xy = m[3], xz = m[6];
+  const float yx = m[1], yy = m[4], yz = m[7];
+  const float x_len = std::sqrt(xx * xx + xy * xy + xz * xz);
+  if (x_len < 1e-5f)
+    return false;
+  xx /= x_len;
+  xy /= x_len;
+  xz /= x_len;
+  // z = x cross y, then y = z cross x.
+  float zx = xy * yz - xz * yy;
+  float zy = xz * yx - xx * yz;
+  float zz = xx * yy - xy * yx;
+  const float z_len = std::sqrt(zx * zx + zy * zy + zz * zz);
+  if (z_len < 1e-5f)
+    return false;
+  zx /= z_len;
+  zy /= z_len;
+  zz /= z_len;
+  const float nyx = zy * xz - zz * xy;
+  const float nyy = zz * xx - zx * xz;
+  const float nyz = zx * xy - zy * xx;
+  m = {xx, nyx, zx, xy, nyy, zy, xz, nyz, zz};
+  return true;
+}
+}  // namespace
+
+void OpenXRManager::SetPendingCameraAnchor(float x, float y, float z,
+                                           const std::array<float, 9>& rotation)
+{
+  // First anchor draw of the frame wins; later matches (e.g. a second character
+  // sharing the element signature) are ignored for determinism.
+  if (m_camera_anchor_pending_valid)
+    return;
+  m_camera_anchor_pending_valid = true;
+  m_camera_anchor_pending = {x, y, z};
+  m_camera_anchor_pending_rotation = rotation;
+}
+
+void OpenXRManager::CommitCameraAnchorFrame()
+{
+  // Frames the last target survives without a matching draw before the camera
+  // glides back to the default position (rides out transient culling).
+  constexpr int HOLD_FRAMES = 15;
+
+  if (m_camera_anchor_pending_valid)
+  {
+    m_camera_anchor_target = m_camera_anchor_pending;
+    m_camera_anchor_target_rotation = m_camera_anchor_pending_rotation;
+    if (!OrthonormalizeAnchorRotation(m_camera_anchor_target_rotation))
+      m_camera_anchor_target_rotation = CAMERA_ANCHOR_IDENTITY;
+    m_camera_anchor_has_target = true;
+    m_camera_anchor_missing_frames = 0;
+  }
+  else if (m_camera_anchor_has_target && ++m_camera_anchor_missing_frames > HOLD_FRAMES)
+  {
+    m_camera_anchor_has_target = false;
+    m_camera_anchor_target = {};
+    m_camera_anchor_target_rotation = CAMERA_ANCHOR_IDENTITY;
+  }
+  m_camera_anchor_pending_valid = false;
+
+  // Exponential smoothing: fraction of the previous position kept each frame
+  // (0 = hard lock to the element, which transmits every animation bob to the head).
+  const float k = std::clamp(g_ActiveConfig.vr_camera_anchor_smoothing, 0.0f, 0.95f);
+  for (size_t i = 0; i < 3; ++i)
+  {
+    m_camera_anchor_position[i] =
+        k * m_camera_anchor_position[i] + (1.0f - k) * m_camera_anchor_target[i];
+  }
+
+  // Rotation: per-entry blend toward the target, then re-orthonormalize. For the small
+  // per-frame deltas smoothing produces this behaves like a quaternion nlerp; if the
+  // blend passes through a degenerate configuration (target ~180 degrees away), snap.
+  for (size_t i = 0; i < 9; ++i)
+  {
+    m_camera_anchor_rotation[i] =
+        k * m_camera_anchor_rotation[i] + (1.0f - k) * m_camera_anchor_target_rotation[i];
+  }
+  if (!OrthonormalizeAnchorRotation(m_camera_anchor_rotation))
+    m_camera_anchor_rotation = m_camera_anchor_target_rotation;
+
+  bool rotation_active = false;
+  for (size_t i = 0; i < 9; ++i)
+  {
+    if (std::abs(m_camera_anchor_rotation[i] - CAMERA_ANCHOR_IDENTITY[i]) > 1e-4f)
+    {
+      rotation_active = true;
+      break;
+    }
+  }
+  m_camera_anchor_rotation_active = rotation_active;
+
+  if (!m_camera_anchor_has_target)
+  {
+    // Snap the tail of the return glide so a released anchor leaves exactly zero offset.
+    const float d2 = m_camera_anchor_position[0] * m_camera_anchor_position[0] +
+                     m_camera_anchor_position[1] * m_camera_anchor_position[1] +
+                     m_camera_anchor_position[2] * m_camera_anchor_position[2];
+    if (d2 < 1e-6f)
+      m_camera_anchor_position = {};
+    if (!rotation_active)
+      m_camera_anchor_rotation = CAMERA_ANCHOR_IDENTITY;
+  }
+}
+
 void OpenXRManager::GetEyeProjectionRows(
     float units_per_meter,
     std::array<std::array<float, 4>, 4>& out_proj_rows,
@@ -2814,6 +2930,27 @@ void OpenXRManager::GetEyeProjectionRows(
     const float r10 = xy - wz, r11 = 1.0f - x2 - z2, r12 = yz + wx;
     const float r20 = xz + wy, r21 = yz - wx, r22 = 1.0f - x2 - y2;
 
+    // Camera anchor rotation: attach the camera rig to the anchor element's frame.
+    // A's columns are the rig axes in view space, so the full eye-local -> view
+    // rotation is A*R (HMD rotation composes inside the rig frame, and the user can
+    // still look around freely from the element-oriented base).
+    float m00 = r00, m01 = r01, m02 = r02;
+    float m10 = r10, m11 = r11, m12 = r12;
+    float m20 = r20, m21 = r21, m22 = r22;
+    if (m_camera_anchor_rotation_active)
+    {
+      const std::array<float, 9>& A = m_camera_anchor_rotation;
+      m00 = A[0] * r00 + A[1] * r10 + A[2] * r20;
+      m01 = A[0] * r01 + A[1] * r11 + A[2] * r21;
+      m02 = A[0] * r02 + A[1] * r12 + A[2] * r22;
+      m10 = A[3] * r00 + A[4] * r10 + A[5] * r20;
+      m11 = A[3] * r01 + A[4] * r11 + A[5] * r21;
+      m12 = A[3] * r02 + A[4] * r12 + A[5] * r22;
+      m20 = A[6] * r00 + A[7] * r10 + A[8] * r20;
+      m21 = A[6] * r01 + A[7] * r11 + A[8] * r21;
+      m22 = A[6] * r02 + A[7] * r12 + A[8] * r22;
+    }
+
     // --- Asymmetric projection from FOV tangent angles ---
     const float tanL = tanf(fov.angleLeft);   // negative
     const float tanR_val = tanf(fov.angleRight);  // positive
@@ -2831,16 +2968,16 @@ void OpenXRManager::GetEyeProjectionRows(
     const float p1y = 2.0f * inv_h;
     const float p1z = (tanU + tanD) * inv_h;
 
-    // --- Bake rotation: combined = R * proj_row ---
-    // combined_row0 = R * {p0x, 0, p0z}
-    const float c0x = r00 * p0x + r02 * p0z;
-    const float c0y = r10 * p0x + r12 * p0z;
-    const float c0z = r20 * p0x + r22 * p0z;
+    // --- Bake rotation: combined = (A*R) * proj_row ---
+    // combined_row0 = (A*R) * {p0x, 0, p0z}
+    const float c0x = m00 * p0x + m02 * p0z;
+    const float c0y = m10 * p0x + m12 * p0z;
+    const float c0z = m20 * p0x + m22 * p0z;
 
-    // combined_row1 = R * {0, p1y, p1z}
-    const float c1x = r01 * p1y + r02 * p1z;
-    const float c1y = r11 * p1y + r12 * p1z;
-    const float c1z = r21 * p1y + r22 * p1z;
+    // combined_row1 = (A*R) * {0, p1y, p1z}
+    const float c1x = m01 * p1y + m02 * p1z;
+    const float c1y = m11 * p1y + m12 * p1z;
+    const float c1z = m21 * p1y + m22 * p1z;
 
     // Eye position relative to home, in game units.
     // Includes both IPD offset (per-eye) and head positional tracking (shared).
@@ -2855,6 +2992,22 @@ void OpenXRManager::GetEyeProjectionRows(
       // head orientation. This keeps head tracking anchored like freelook offsets.
       ez += camera_forward_units;
     }
+    if (m_camera_anchor_rotation_active)
+    {
+      // The offsets above are rig-space; rotate them into view space so IPD, room
+      // tracking and the fixed camera offsets stay aligned with the turned rig.
+      const std::array<float, 9>& A = m_camera_anchor_rotation;
+      const float rx = ex, ry = ey, rz = ez;
+      ex = A[0] * rx + A[1] * ry + A[2] * rz;
+      ey = A[3] * rx + A[4] * ry + A[5] * rz;
+      ez = A[6] * rx + A[7] * ry + A[8] * rz;
+    }
+    // Camera anchor: committed element position, already in game units and game view
+    // space (see CommitCameraAnchorFrame). Zero when no anchor override is active;
+    // capture is gated on the enable toggle, so disabling glides the camera home.
+    ex += m_camera_anchor_position[0];
+    ey += m_camera_anchor_position[1];
+    ez += m_camera_anchor_position[2];
 
     // W component: -dot(combined_xyz, eye_pos) using the ROTATED projection rows.
     // This gives the correct full view transform: P · R^T · (viewPos - eye_pos).
@@ -2865,10 +3018,10 @@ void OpenXRManager::GetEyeProjectionRows(
     out_proj_rows[eye * 2 + 1] = {c1x, c1y, c1z, c1w};
 
     // --- Z-axis row for depth/w computation ---
-    // z_eye = (R^T * (viewPos - eye_pos)).z = dot(R_col2, viewPos - eye_pos)
-    // R_col2 = {r02, r12, r22}
-    const float zw = -(r02 * ex + r12 * ey + r22 * ez);
-    out_z_rows[eye] = {r02, r12, r22, zw};
+    // z_eye = ((A*R)^T * (viewPos - eye_pos)).z = dot((A*R)_col2, viewPos - eye_pos)
+    // (A*R)_col2 = {m02, m12, m22}
+    const float zw = -(m02 * ex + m12 * ey + m22 * ez);
+    out_z_rows[eye] = {m02, m12, m22, zw};
 
   }
 }

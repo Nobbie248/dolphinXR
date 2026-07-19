@@ -44,6 +44,7 @@
 #include "VideoCommon/VertexShaderManager.h"
 #include "VideoCommon/VideoBackendBase.h"
 #include "VideoCommon/VideoCommon.h"
+#include "VideoCommon/VR/OpenXRManager.h"
 #include "VideoCommon/VideoConfig.h"
 #include "VideoCommon/XFMemory.h"
 #include "VideoCommon/CullingCodeFinder.h"
@@ -1247,6 +1248,7 @@ void VertexManagerBase::Flush()
             float element_depth = -1.0f;
             float units_per_meter = -1.0f;
             float passthrough_opacity = 0.0f;
+            ElementsGroupManager::CameraAnchorParams anchor_params;
             const MetroidHydraHudSettings metroid_hydra_hud =
                 metroid_profile_active ?
                     GetMetroidHydraHudSettings(metroid_profile, metroid_layer, m_metroid_game_id) :
@@ -1269,6 +1271,10 @@ void VertexManagerBase::Flush()
               else if (handling == ShaderHunter::HandlingType::Passthrough)
               {
                 passthrough_opacity = elements.GetOverridePassthroughOpacity(*element_draw);
+              }
+              else if (handling == ShaderHunter::HandlingType::CameraAnchor)
+              {
+                elements.GetOverrideCameraAnchor(*element_draw, &anchor_params);
               }
             }
             else if (hunter_has_overrides)
@@ -1385,6 +1391,74 @@ void VertexManagerBase::Flush()
               // override's opacity into the coverage target, becoming a camera window.
               pixel_shader_manager.SetVRPassthroughAlpha(
                   std::clamp(passthrough_opacity, 0.0f, 1.0f));
+            }
+            else if (handling == ShaderHunter::HandlingType::CameraAnchor)
+            {
+              // The element's object-space origin in game view space (game units): the
+              // translation column of the current position matrix. Captured as this frame's
+              // pending anchor; OpenXRManager latches it at frame end so all draws of the
+              // NEXT frame render from it (never mid-frame). The draw itself renders
+              // normally unless the override hides it. Gating capture (not application) on
+              // the toggle means disabling glides the camera back to the default position.
+              if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR && !vr_flat_mode &&
+                  g_ActiveConfig.vr_enable_camera_anchor && VR::g_openxr &&
+                  VR::g_openxr->IsSessionRunning())
+              {
+                const auto& pnm = vertex_shader_manager.constants.posnormalmatrix;
+                const float upm = g_ActiveConfig.vr_units_per_meter;
+                // Offset is {right, up, forward} in meters; view space is +X right, +Y up,
+                // -Z forward (same convention as the Camera Forward/Height settings).
+                const float ax = pnm[0][3] + anchor_params.offset[0] * upm;
+                const float ay = pnm[1][3] + anchor_params.offset[1] * upm;
+                const float az = pnm[2][3] - anchor_params.offset[2] * upm;
+                // Rig rotation (columns = rig axes in view space). The element's object axes
+                // in view space are the columns of the matrix's 3x3 block; the yaw offset
+                // corrects models whose forward axis is not object +Z. Scale is removed by
+                // the orthonormalization in CommitCameraAnchorFrame.
+                constexpr float DEG_TO_RAD = 0.01745329252f;
+                std::array<float, 9> anchor_rot = {1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+                                                   0.0f, 0.0f, 0.0f, 1.0f};
+                if (anchor_params.rotation == ShaderHunter::AnchorRotationMode::Full)
+                {
+                  const float yaw = anchor_params.yaw_offset_deg * DEG_TO_RAD;
+                  const float cy = std::cos(yaw);
+                  const float sy = std::sin(yaw);
+                  // A = M_element * RotY(yaw): the correction spins the rig about the
+                  // element's own up axis before mapping into view space.
+                  for (int r = 0; r < 3; ++r)
+                  {
+                    anchor_rot[r * 3 + 0] = pnm[r][0] * cy - pnm[r][2] * sy;
+                    anchor_rot[r * 3 + 1] = pnm[r][1];
+                    anchor_rot[r * 3 + 2] = pnm[r][0] * sy + pnm[r][2] * cy;
+                  }
+                }
+                else if (anchor_params.rotation == ShaderHunter::AnchorRotationMode::YawOnly)
+                {
+                  // Heading of the element's object +Z axis in the view's horizontal plane;
+                  // pitch/roll are dropped so the horizon stays level (comfort).
+                  const float vx = pnm[0][2];
+                  const float vz = pnm[2][2];
+                  float yaw = (vx * vx + vz * vz > 1e-8f) ? std::atan2(vx, vz) : 0.0f;
+                  yaw += anchor_params.yaw_offset_deg * DEG_TO_RAD;
+                  const float cy = std::cos(yaw);
+                  const float sy = std::sin(yaw);
+                  anchor_rot = {cy, 0.0f, sy, 0.0f, 1.0f, 0.0f, -sy, 0.0f, cy};
+                }
+                VR::g_openxr->SetPendingCameraAnchor(ax, ay, az, anchor_rot);
+                if (hunter_debug_logging)
+                {
+                  INFO_LOG_FMT(VIDEO,
+                               "VR_ANCHOR: draw#{} pos=({:.2f},{:.2f},{:.2f}) offset_m=({:.2f},"
+                               "{:.2f},{:.2f}) rot={} yaw_off={:.0f} hide={}",
+                               m_draw_counter, pnm[0][3], pnm[1][3], pnm[2][3],
+                               anchor_params.offset[0], anchor_params.offset[1],
+                               anchor_params.offset[2],
+                               static_cast<int>(anchor_params.rotation),
+                               anchor_params.yaw_offset_deg, anchor_params.hide);
+                }
+                if (anchor_params.hide)
+                  elements_skip = true;
+              }
             }
             else
             {
@@ -1942,6 +2016,8 @@ void VertexManagerBase::OnEndFrame()
   hunter.OnFrameEnd();
   CullingCodeFinder::GetInstance().OnFrameEnd();
   ElementsGroupManager::GetInstance().OnFrameEnd();
+  if (VR::g_openxr)
+    VR::g_openxr->CommitCameraAnchorFrame();
   TextureElementManager::GetInstance().OnFrameEnd();
   HideObjectEngine::Engine::GetInstance().OnFrameEnd();
   GetMetroidElementClassifier().ResetFrame();

@@ -330,6 +330,22 @@ public:
       std::array<std::array<float, 4>, 4>& out_proj_rows,
       std::array<std::array<float, 4>, 2>& out_z_rows) const;
 
+  // ---- Camera Anchor (Elements Group Override "CameraAnchor" handling) ----
+  // Anchors the VR camera to a game element's view-space origin (e.g. a character's
+  // head for first-person view). Video-thread only, like m_submitted_eye_views.
+  // SetPendingCameraAnchor is called at flush time when an anchor element draws
+  // (first call per frame wins); CommitCameraAnchorFrame runs once per frame at
+  // VertexManagerBase::OnEndFrame and latches + smooths the position, so the offset
+  // GetEyeProjectionRows applies never changes mid-frame (all draws of a frame must
+  // share one camera). Position is in game units, game view space — the same space
+  // and units as the ex/ey/ez eye offsets in GetEyeProjectionRows.
+  //
+  // rotation is a row-major 3x3 whose columns are the camera rig's axes expressed in
+  // view space (identity = camera stays aligned with the game camera). It may carry
+  // the raw scale of the element's matrix — it is orthonormalized at commit time.
+  void SetPendingCameraAnchor(float x, float y, float z, const std::array<float, 9>& rotation);
+  void CommitCameraAnchorFrame();
+
   // Compute per-eye projection rows WITHOUT head rotation (for head-locked content).
   // Same layout as GetEyeProjectionRows but only includes the raw asymmetric frustum
   // projection and per-eye IPD offset. Content rendered with these rows follows
@@ -431,6 +447,28 @@ private:
   PFN_xrDestroyPassthroughLayerFB m_xrDestroyPassthroughLayerFB = nullptr;
   PFN_xrPassthroughLayerPauseFB m_xrPassthroughLayerPauseFB = nullptr;
   PFN_xrPassthroughLayerResumeFB m_xrPassthroughLayerResumeFB = nullptr;
+
+  // Camera anchor state (video thread only; game units, game view space).
+  // pending: raw capture from this frame's anchor draw. target: latched value the
+  // smoothed position converges to — held for a few frames when the anchor element
+  // temporarily disappears (culling), then released so the camera glides back to
+  // the default position ({0,0,0} = no offset).
+  bool m_camera_anchor_pending_valid = false;
+  std::array<float, 3> m_camera_anchor_pending{};
+  bool m_camera_anchor_has_target = false;
+  std::array<float, 3> m_camera_anchor_target{};
+  int m_camera_anchor_missing_frames = 0;
+  std::array<float, 3> m_camera_anchor_position{};
+  // Anchor rotation (row-major 3x3, columns = rig axes in view space). The smoothed
+  // matrix is re-orthonormalized every commit; m_camera_anchor_rotation_active caches
+  // whether it differs from identity so GetEyeProjectionRows can skip the multiplies.
+  std::array<float, 9> m_camera_anchor_pending_rotation{1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+                                                        0.0f, 0.0f, 0.0f, 1.0f};
+  std::array<float, 9> m_camera_anchor_target_rotation{1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+                                                       0.0f, 0.0f, 0.0f, 1.0f};
+  std::array<float, 9> m_camera_anchor_rotation{1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+                                                0.0f, 0.0f, 0.0f, 1.0f};
+  bool m_camera_anchor_rotation_active = false;
 
   // XR_FB_passthrough state. The composition layer member gives the struct stable
   // storage across the xrEndFrame call that references it.

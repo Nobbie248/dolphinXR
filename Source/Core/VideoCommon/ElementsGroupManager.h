@@ -101,6 +101,18 @@ public:
     float element_depth = -1.0f;
     float units_per_meter = -1.0f;
     float passthrough_opacity = 0.0f;  // Passthrough handling: element opacity (0 = fully camera)
+    // CameraAnchor handling: camera-space offset from the anchor element's origin (meters,
+    // right/up/forward, converted with units-per-meter and mapped to view-space axes at capture
+    // time) and whether to hide the anchor element itself (e.g. the head mesh in first person).
+    float anchor_right = 0.0f;
+    float anchor_up = 0.0f;
+    float anchor_forward = 0.0f;
+    bool anchor_hide = true;
+    // How much of the element's orientation the camera follows, and a fixed yaw correction in
+    // degrees for models whose forward axis is not the assumed object +Z (e.g. 180 = view was
+    // facing backward).
+    ShaderHunter::AnchorRotationMode anchor_rotation = ShaderHunter::AnchorRotationMode::Off;
+    float anchor_yaw_deg = 0.0f;
     std::vector<u64> texture_hashes;
     bool texture_hashes_excluded = false;
     std::vector<SelectedSubgroupSignature> selected_match_filter;
@@ -204,6 +216,17 @@ public:
   float GetOverrideUnitsPerMeter(const DrawRecord& draw) const;
   // Returns the opacity for a Passthrough override (0 = fully see-through to the camera).
   float GetOverridePassthroughOpacity(const DrawRecord& draw) const;
+  // CameraAnchor: per-override parameters resolved for a matching draw.
+  struct CameraAnchorParams
+  {
+    std::array<float, 3> offset{};  // meters: right, up, forward
+    bool hide = true;
+    ShaderHunter::AnchorRotationMode rotation = ShaderHunter::AnchorRotationMode::Off;
+    float yaw_offset_deg = 0.0f;
+  };
+  // Fills the parameters of the first matching CameraAnchor override.
+  // Returns false when none matches the draw.
+  bool GetOverrideCameraAnchor(const DrawRecord& draw, CameraAnchorParams* out_params) const;
   // Clear EFB: arm a pending clear when a draw matches a clear_efb override; ShouldClearEFBCopy is
   // consumed by the next EFB-to-texture copy (see TextureCacheBase).
   void CheckClearEFBForDraw(const DrawRecord& draw);

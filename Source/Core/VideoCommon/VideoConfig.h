@@ -360,6 +360,11 @@ struct VideoConfig final
   float vr_camera_forward = 0.0f;
   bool vr_enable_camera_height = true;
   float vr_camera_height = 0.0f;
+  // Camera Anchor: anchor the VR camera to an element flagged by a CameraAnchor override
+  // (e.g. a character's head for first-person view). Smoothing = fraction of the previous
+  // camera position kept each frame (0 = hard lock to the element).
+  bool vr_enable_camera_anchor = true;
+  float vr_camera_anchor_smoothing = 0.85f;
   bool vr_virtual_screen = true;
   // Exact virtual-screen depth: screen/head-locked draws export the game's flat-screen depth
   // per pixel (flat-interpolated, bit-exact) instead of the synthesized layer/element depth.

@@ -71,6 +71,17 @@ private:
   QLabel* m_units_per_meter_label = nullptr;
   QDoubleSpinBox* m_passthrough_opacity_spin = nullptr;
   QLabel* m_passthrough_opacity_label = nullptr;
+  QLabel* m_anchor_right_label = nullptr;
+  QDoubleSpinBox* m_anchor_right_spin = nullptr;
+  QLabel* m_anchor_up_label = nullptr;
+  QDoubleSpinBox* m_anchor_up_spin = nullptr;
+  QLabel* m_anchor_forward_label = nullptr;
+  QDoubleSpinBox* m_anchor_forward_spin = nullptr;
+  QLabel* m_anchor_rotation_label = nullptr;
+  QComboBox* m_anchor_rotation_combo = nullptr;
+  QLabel* m_anchor_yaw_label = nullptr;
+  QDoubleSpinBox* m_anchor_yaw_spin = nullptr;
+  QCheckBox* m_anchor_hide_check = nullptr;
   QLineEdit* m_flag_edit = nullptr;
   QLabel* m_flag_label = nullptr;
   QComboBox* m_condition_combo = nullptr;
