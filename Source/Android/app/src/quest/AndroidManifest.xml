@@ -57,6 +57,16 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".activities.OpenXRControllerMapperActivity"
+            android:theme="@style/Theme.Dolphin.EmulationVR"
+            android:resizeableActivity="false"
+            android:exported="false">
+            <property
+                android:name="android.window.PROPERTY_XR_ACTIVITY_START_MODE"
+                android:value="XR_ACTIVITY_START_MODE_FULL_SPACE_UNMANAGED" />
+        </activity>
     </application>
 
 </manifest>

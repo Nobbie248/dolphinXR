@@ -8,6 +8,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 
+#include "Core/Config/WiimoteSettings.h"
 #include "Core/HW/Wiimote.h"
 #include "Core/HW/WiimoteEmu/Extension/Classic.h"
 #include "Core/HW/WiimoteEmu/Extension/DrawsomeTablet.h"
@@ -102,14 +103,27 @@ void WiimoteEmuExtension::CreateNunchukLayout()
 {
   auto* layout = new QGridLayout();
   m_nunchuk_box = new QGroupBox(tr("Nunchuk"), this);
+  const bool is_openxr_wiimote =
+      Config::Get(Config::GetInfoForWiimoteSource(GetPort())) == WiimoteSource::OpenXR;
 
   layout->addWidget(CreateGroupBox(tr("Stick"), Wiimote::GetNunchukGroup(
                                                     GetPort(), WiimoteEmu::NunchukGroup::Stick)),
-                    0, 0);
+                    0, 0, is_openxr_wiimote ? 2 : 1, 1);
   layout->addWidget(
       CreateGroupBox(tr("Buttons"),
                      Wiimote::GetNunchukGroup(GetPort(), WiimoteEmu::NunchukGroup::Buttons)),
       0, 1);
+
+  // OpenXR provides Nunchuk motion directly. Keep its live visualizer with the extension controls,
+  // but leave editable motion bindings out of this streamlined OpenXR layout.
+  if (is_openxr_wiimote)
+  {
+    layout->addWidget(CreateGroupBox(
+                          tr("Accelerometer"), Wiimote::GetNunchukGroup(
+                                                   GetPort(),
+                                                   WiimoteEmu::NunchukGroup::IMUAccelerometer)),
+                      1, 1);
+  }
 
   m_nunchuk_box->setLayout(layout);
 }

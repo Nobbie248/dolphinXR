@@ -6,16 +6,53 @@
 #ifdef ENABLE_VR
 
 #include <atomic>
-#include <condition_variable>
 #include <cstdint>
+#include <memory>
 #include <mutex>
-#include <thread>
+#include <string>
 #include <vector>
 
-#include "Common/CommonTypes.h"
+class ControlReference;
 
 namespace VR
 {
+enum class OpenXRUtilitySessionState : uint8_t
+{
+  Idle,
+  Starting,
+  Running,
+  ApplyPending,
+  Applied,
+  Cancelled,
+  Failed,
+};
+
+enum class OpenXRUtilitySessionFailure : uint8_t
+{
+  None,
+  RuntimeUnavailable,
+  VulkanUnavailable,
+  SessionBusy,
+  InitializationFailed,
+  SessionLost,
+};
+
+struct OpenXRPendingBinding
+{
+  ControlReference* reference = nullptr;
+  std::string expression;
+};
+
+struct OpenXRPendingBindings
+{
+  int wiimote_port = -1;
+  std::string default_device;
+  std::vector<OpenXRPendingBinding> bindings;
+};
+
+// Owns a small Vulkan-backed OpenXR session used only while emulation is stopped. The session
+// displays an interactive controller-binding quad and feeds the regular OpenXR ControllerInterface
+// device. Configuration changes are staged on the XR thread and handed to the UI thread atomically.
 class OpenXRUtilitySession final
 {
 public:
@@ -25,28 +62,26 @@ public:
   OpenXRUtilitySession(const OpenXRUtilitySession&) = delete;
   OpenXRUtilitySession& operator=(const OpenXRUtilitySession&) = delete;
 
-  bool Start();
+  bool Start(int wiimote_port);
+  void RequestStop();
   void Stop();
-  bool IsRunning() const;
 
-  void SetOverlayImage(std::vector<u8> pixels, uint32_t width, uint32_t height);
+  OpenXRUtilitySessionState GetState() const;
+  OpenXRUtilitySessionFailure GetFailureReason() const;
+  std::string GetFailureMessage() const;
+
+  OpenXRPendingBindings TakePendingBindings();
+  void MarkApplied();
 
 private:
-  void ThreadMain();
+  struct Impl;
+  std::unique_ptr<Impl> m_impl;
 
-  mutable std::mutex m_state_mutex;
-  std::condition_variable m_start_cv;
-  std::thread m_thread;
-  std::atomic<bool> m_stop_requested{false};
-  bool m_running = false;
-  bool m_start_completed = false;
-  bool m_start_succeeded = false;
-
-  std::mutex m_overlay_mutex;
-  std::vector<u8> m_overlay_pixels;
-  uint32_t m_overlay_width = 1024;
-  uint32_t m_overlay_height = 704;
-  bool m_overlay_dirty = false;
+  std::atomic<OpenXRUtilitySessionState> m_state{OpenXRUtilitySessionState::Idle};
+  std::atomic<OpenXRUtilitySessionFailure> m_failure{OpenXRUtilitySessionFailure::None};
+  mutable std::mutex m_result_mutex;
+  std::string m_failure_message;
+  OpenXRPendingBindings m_pending_bindings;
 };
 }  // namespace VR
 

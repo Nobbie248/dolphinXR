@@ -200,7 +200,6 @@ extern const Info<float> GFX_VR_SCREEN_SIZE;
 extern const Info<float> GFX_VR_HEAD_LOCKED_CURVATURE;
 extern const Info<bool> GFX_VR_DONT_CLEAR_SCREEN;
 extern const Info<bool> GFX_VR_LOAD_CUSTOM_SHADERS;
-extern const Info<bool> GFX_VR_ENABLE_OPENXR_CONFIG_SCENE;
 extern const Info<bool> GFX_VR_DISABLE_CPU_CULL;
 extern const Info<OpenXRMirrorView> GFX_VR_MIRROR_VIEW;
 extern const Info<OpenXRReferenceSpaceMode> GFX_VR_REFERENCE_SPACE_MODE;

@@ -65,9 +65,15 @@ if(ENABLE_VR)
   target_sources(videovulkan PRIVATE
     VulkanOpenXR.cpp
     VulkanOpenXR.h
+    ${CMAKE_SOURCE_DIR}/Source/Core/VideoCommon/VR/OpenXRUtilitySession.cpp
+    ${CMAKE_SOURCE_DIR}/Externals/imgui/imgui/backends/imgui_impl_vulkan.cpp
   )
-  target_link_libraries(videovulkan PRIVATE openxr_loader)
-  target_include_directories(videovulkan PRIVATE "${CMAKE_SOURCE_DIR}/Externals/OpenXR/include")
+  target_compile_definitions(videovulkan PRIVATE IMGUI_IMPL_VULKAN_NO_PROTOTYPES)
+  target_link_libraries(videovulkan PRIVATE imgui openxr_loader)
+  target_include_directories(videovulkan PRIVATE
+    "${CMAKE_SOURCE_DIR}/Externals/OpenXR/include"
+    "${CMAKE_SOURCE_DIR}/Externals/imgui/imgui/backends"
+  )
 endif()
 
 if(MSVC)

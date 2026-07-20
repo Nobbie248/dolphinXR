@@ -321,7 +321,12 @@ if(ENABLE_VR AND WIN32)
   target_sources(videocommon PRIVATE
     VR/OpenXRD3D11Common.cpp
     VR/OpenXRD3D11Common.h
-    VR/OpenXRUtilitySession.cpp
+  )
+endif()
+
+if(ENABLE_VR)
+  target_sources(videocommon PRIVATE
+    VR/OpenXRBindingWizardModel.h
     VR/OpenXRUtilitySession.h
   )
 endif()

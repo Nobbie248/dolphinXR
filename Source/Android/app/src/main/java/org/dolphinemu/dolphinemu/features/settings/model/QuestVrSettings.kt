@@ -114,7 +114,6 @@ object QuestVrSettings {
 
     fun loadCustomShadersSetting() = vrBooleanSetting("LoadCustomShaders", false)
 
-    fun openXrConfigSceneSetting() = vrBooleanSetting("EnableOpenXRConfigScene", true)
 
     private fun openXrRuntimeSetting() = vrBooleanSetting("EnableOpenXR", false)
 

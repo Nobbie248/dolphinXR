@@ -623,15 +623,10 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
       new ConfigBool(tr("Load Custom Shaders"), Config::GFX_VR_LOAD_CUSTOM_SHADERS);
   tools_layout->addWidget(m_load_custom_shaders, 3, 0);
 
-  m_enable_openxr_config_scene = new ConfigBool(
-      tr("Enable OpenXR Config Scene For Controller Binding"),
-      Config::GFX_VR_ENABLE_OPENXR_CONFIG_SCENE);
-  tools_layout->addWidget(m_enable_openxr_config_scene, 4, 0);
-
-  tools_layout->addWidget(new QLabel(tr("Default VR Position:")), 5, 0);
-  tools_layout->addWidget(m_reference_space_mode, 5, 1);
-  tools_layout->addWidget(new QLabel(tr("Tracking Mode:")), 6, 0);
-  tools_layout->addWidget(m_tracking_mode, 6, 1);
+  tools_layout->addWidget(new QLabel(tr("Default VR Position:")), 4, 0);
+  tools_layout->addWidget(m_reference_space_mode, 4, 1);
+  tools_layout->addWidget(new QLabel(tr("Tracking Mode:")), 5, 0);
+  tools_layout->addWidget(m_tracking_mode, 5, 1);
 
   general_layout->addStretch();
   hack_layout->addStretch();
@@ -831,16 +826,6 @@ void VRPane::AddDescriptions()
       "<br><br>Place edited shader files (dumped via Shader Hunter) in this folder to override "
       "the game's original shaders. Files must be named &lt;hash&gt;-&lt;vs|ps|gs&gt;.txt."
       "<br><br><dolphin_emphasis>If unsure, leave this unchecked.</dolphin_emphasis>");
-  static constexpr char TR_ENABLE_OPENXR_CONFIG_SCENE_DESCRIPTION[] = QT_TR_NOOP(
-      "Starts a temporary OpenXR scene while configuring an <b>OpenXR Wii Remote</b> with no "
-      "game running."
-      "<br><br>This keeps OpenXR controller input active so the mapping window can detect button "
-      "presses and motion input outside emulation."
-      "<br><br>If the temporary session cannot start, Dolphin falls back to the desktop-only "
-      "mapping window."
-      "<br><br>Disable this if your runtime or headset has trouble with the temporary binding "
-      "scene."
-      "<br><br><dolphin_emphasis>If unsure, leave this checked.</dolphin_emphasis>");
   static constexpr char TR_PASSTHROUGH_DESCRIPTION[] = QT_TR_NOOP(
       "Shows the headset camera feed through the dedicated coverage mask. This is supported "
       "only by Windows Vulkan OpenXR."
@@ -910,7 +895,6 @@ void VRPane::AddDescriptions()
   m_element_depth->SetDescription(tr(TR_ELEMENT_DEPTH_DESCRIPTION));
   m_hud_thickness->SetDescription(tr(TR_HUD_THICKNESS_DESCRIPTION));
   m_load_custom_shaders->SetDescription(tr(TR_LOAD_CUSTOM_SHADERS_DESCRIPTION));
-  m_enable_openxr_config_scene->SetDescription(tr(TR_ENABLE_OPENXR_CONFIG_SCENE_DESCRIPTION));
   m_passthrough->SetDescription(tr(TR_PASSTHROUGH_DESCRIPTION));
   m_passthrough_remove_black_bg->SetDescription(tr(TR_PASSTHROUGH_REMOVE_BLACK_BG_DESCRIPTION));
   m_passthrough_remove_black_clears->SetDescription(

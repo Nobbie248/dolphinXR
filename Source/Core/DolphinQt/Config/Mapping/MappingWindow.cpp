@@ -3,6 +3,8 @@
 
 #include "DolphinQt/Config/Mapping/MappingWindow.h"
 
+#include <algorithm>
+
 #include <QAction>
 #include <QCheckBox>
 #include <QComboBox>
@@ -27,9 +29,9 @@
 #include "Common/IniFile.h"
 #include "Common/StringUtil.h"
 
+#include "Core/Config/WiimoteSettings.h"
 #include "Core/HW/SI/SI.h"
 #include "Core/HW/SI/SI_DeviceAMBaseboard.h"
-#include "Core/Config/WiimoteSettings.h"
 #include "Core/HW/Wiimote.h"
 
 #include "DolphinQt/Config/Mapping/FreeLookGeneral.h"
@@ -111,13 +113,21 @@ MappingWindow::MappingWindow(QWidget* parent, Type type, int port_num)
   const auto lock = GetController()->GetStateLock();
   emit ConfigChanged();
 
+#if defined(ENABLE_VR) && defined(HAS_VULKAN)
   if (m_mapping_type == Type::MAPPING_WIIMOTE_EMU && m_is_openxr_wiimote)
+  {
     m_openxr_config_session_controller = new OpenXRWiimoteConfigSessionController(this, m_port);
+    if (auto* outer = qobject_cast<QVBoxLayout*>(m_devices_box->layout()))
+      outer->addWidget(m_openxr_config_session_controller->GetButton(), 0);
+  }
+#endif
 
 #ifdef ENABLE_VR
   if (m_is_openxr_wiimote)
   {
-    m_openxr_profile_label = new QLabel(tr("OpenXR: not connected"));
+    m_openxr_profile_label = new QLabel(
+        tr("OpenXR: not connected\n"
+           "Launch a game or use \"Configure in VR\" to bind VR controller inputs."));
     m_openxr_profile_label->setWordWrap(true);
     auto* outer = qobject_cast<QVBoxLayout*>(m_devices_box->layout());
     if (outer)
@@ -125,6 +135,8 @@ MappingWindow::MappingWindow(QWidget* parent, Type type, int port_num)
     UpdateOpenXRProfileLabel();
   }
 #endif
+
+  EqualizeOpenXRTopColumns();
 
   auto* filter = new WindowActivationEventFilter(this);
   installEventFilter(filter);
@@ -236,15 +248,46 @@ void MappingWindow::CreateMainLayout()
 
   m_tab_widget->setTabBarAutoHide(true);
 
-  m_config_layout->addWidget(m_devices_box);
-  m_config_layout->addWidget(m_reset_box);
-  m_config_layout->addWidget(m_profiles_box);
-
   m_main_layout->addLayout(m_config_layout);
   m_main_layout->addWidget(m_tab_widget);
   m_main_layout->addWidget(m_button_box);
 
   setLayout(m_main_layout);
+}
+
+void MappingWindow::ConfigureTopLayout()
+{
+  if (m_mapping_type == Type::MAPPING_WIIMOTE_EMU && m_is_openxr_wiimote)
+  {
+    m_profile_and_reset_container = new QWidget(this);
+    auto* profile_and_reset_layout = new QVBoxLayout(m_profile_and_reset_container);
+    profile_and_reset_layout->setContentsMargins(0, 0, 0, 0);
+    profile_and_reset_layout->addWidget(m_profiles_box);
+    profile_and_reset_layout->addWidget(m_reset_box);
+    profile_and_reset_layout->addStretch();
+
+    m_devices_box->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_profile_and_reset_container->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_config_layout->addWidget(m_devices_box, 1);
+    m_config_layout->addWidget(m_profile_and_reset_container, 1);
+    return;
+  }
+
+  // Keep the established compact layout for non-OpenXR mapping windows.
+  m_config_layout->addWidget(m_devices_box);
+  m_config_layout->addWidget(m_reset_box);
+  m_config_layout->addWidget(m_profiles_box);
+}
+
+void MappingWindow::EqualizeOpenXRTopColumns()
+{
+  if (!m_profile_and_reset_container)
+    return;
+
+  const int column_width =
+      std::max(m_devices_box->sizeHint().width(), m_profile_and_reset_container->sizeHint().width());
+  m_devices_box->setMinimumWidth(column_width);
+  m_profile_and_reset_container->setMinimumWidth(column_width);
 }
 
 void MappingWindow::ConnectWidgets()
@@ -519,7 +562,6 @@ void MappingWindow::SetMappingType(MappingWindow::Type type)
     m_is_openxr_wiimote =
         Config::Get(Config::GetInfoForWiimoteSource(GetPort())) == WiimoteSource::OpenXR;
     auto* extension = new WiimoteEmuExtension(this);
-    auto* extension_motion_input = new WiimoteEmuExtensionMotionInput(this);
     auto* extension_motion_simulation = new WiimoteEmuExtensionMotionSimulation(this);
     widget = new WiimoteEmuGeneral(this, extension);
     setWindowTitle(tr("Wii Remote %1").arg(GetPort() + 1));
@@ -528,10 +570,13 @@ void MappingWindow::SetMappingType(MappingWindow::Type type)
       AddWidget(tr("Motion Simulation"), new WiimoteEmuMotionControl(this));
     AddWidget(tr("Motion Input"), new WiimoteEmuMotionControlIMU(this));
     m_extension_tab = AddWidget(tr("Extension"), extension);
-    m_extension_motion_simulation_tab = AddWidget(EXTENSION_MOTION_SIMULATION_TAB_NAME,
-                                                  extension_motion_simulation);
-    m_extension_motion_input_tab =
-        AddWidget(EXTENSION_MOTION_INPUT_TAB_NAME, extension_motion_input);
+    m_extension_motion_simulation_tab =
+        AddWidget(EXTENSION_MOTION_SIMULATION_TAB_NAME, extension_motion_simulation);
+    if (!m_is_openxr_wiimote)
+    {
+      m_extension_motion_input_tab =
+          AddWidget(EXTENSION_MOTION_INPUT_TAB_NAME, new WiimoteEmuExtensionMotionInput(this));
+    }
     // Hide tabs by default. "Nunchuk" selection triggers an event to show them.
     ShowExtensionMotionTabs(false);
     break;
@@ -583,6 +628,7 @@ void MappingWindow::SetMappingType(MappingWindow::Type type)
   m_controller = m_config->GetController(GetPort());
 
   PopulateProfileSelection();
+  ConfigureTopLayout();
 }
 
 void MappingWindow::PopulateProfileSelection()
@@ -681,15 +727,17 @@ void MappingWindow::OnClearFieldsPressed()
 
 void MappingWindow::ShowExtensionMotionTabs(bool show)
 {
-  const int motion_sim_tab_index =
-      m_extension_motion_simulation_tab ? m_tab_widget->indexOf(m_extension_motion_simulation_tab) :
-                                          -1;
-  const int motion_input_tab_index = m_tab_widget->indexOf(m_extension_motion_input_tab);
+  const int motion_sim_tab_index = m_extension_motion_simulation_tab ?
+                                       m_tab_widget->indexOf(m_extension_motion_simulation_tab) :
+                                       -1;
+  const int motion_input_tab_index = m_extension_motion_input_tab ?
+                                         m_tab_widget->indexOf(m_extension_motion_input_tab) :
+                                         -1;
   if (show)
   {
     if (!m_is_openxr_wiimote && m_extension_motion_simulation_tab && motion_sim_tab_index == -1)
       m_tab_widget->addTab(m_extension_motion_simulation_tab, EXTENSION_MOTION_SIMULATION_TAB_NAME);
-    if (motion_input_tab_index == -1)
+    if (m_extension_motion_input_tab && motion_input_tab_index == -1)
       m_tab_widget->addTab(m_extension_motion_input_tab, EXTENSION_MOTION_INPUT_TAB_NAME);
   }
   else
@@ -716,7 +764,9 @@ void MappingWindow::UpdateOpenXRProfileLabel()
   const auto snapshot = Common::VR::OpenXRInputState::GetSnapshot();
   if (!snapshot.runtime_active)
   {
-    m_openxr_profile_label->setText(tr("OpenXR: not connected"));
+    m_openxr_profile_label->setText(
+        tr("OpenXR: not connected\n"
+           "Launch a game or use \"Configure in VR\" to bind VR controller inputs."));
     return;
   }
 

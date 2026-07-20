@@ -2,8 +2,8 @@
 
 package org.dolphinemu.dolphinemu.features.settings.ui
 
-import org.dolphinemu.dolphinemu.BuildConfig
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -15,8 +15,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.dolphinemu.dolphinemu.BuildConfig
 import org.dolphinemu.dolphinemu.NativeLibrary
 import org.dolphinemu.dolphinemu.R
+import org.dolphinemu.dolphinemu.activities.OpenXRControllerMapperActivity
 import org.dolphinemu.dolphinemu.activities.UserDataActivity
 import org.dolphinemu.dolphinemu.features.input.model.ControlGroupEnabledSetting
 import org.dolphinemu.dolphinemu.features.input.model.InputMappingBooleanSetting
@@ -3164,14 +3166,6 @@ class SettingsFragmentPresenter(
             )
         )
         sl.add(
-            SwitchSetting(
-                context,
-                QuestVrSettings.openXrConfigSceneSetting(),
-                R.string.quest_enable_openxr_config_scene,
-                R.string.quest_enable_openxr_config_scene_description
-            )
-        )
-        sl.add(
             RunRunnable(
                 context,
                 R.string.quest_recenter_now,
@@ -3244,6 +3238,32 @@ class SettingsFragmentPresenter(
             addControllerPerGameSettings(sl, wiimote, wiimoteNumber)
         } else {
             addControllerMetaSettings(sl, wiimote)
+
+            val sourceSetting = when (wiimoteNumber) {
+                0 -> IntSetting.WIIMOTE_1_SOURCE
+                1 -> IntSetting.WIIMOTE_2_SOURCE
+                2 -> IntSetting.WIIMOTE_3_SOURCE
+                else -> IntSetting.WIIMOTE_4_SOURCE
+            }
+            if (BuildConfig.IS_QUEST && sourceSetting.int == 3) {
+                sl.add(
+                    RunRunnable(
+                        context,
+                        R.string.openxr_controller_mapper,
+                        R.string.openxr_controller_mapper_description,
+                        0,
+                        0,
+                        true
+                    ) {
+                        context.startActivity(
+                            Intent(context, OpenXRControllerMapperActivity::class.java).putExtra(
+                                OpenXRControllerMapperActivity.EXTRA_WIIMOTE_PORT,
+                                wiimoteNumber
+                            )
+                        )
+                    }
+                )
+            }
 
             sl.add(HeaderSetting(context, R.string.wiimote, 0))
             sl.add(

@@ -75,6 +75,9 @@ QGroupBox* MappingWidget::CreateGroupBox(const QString& name, ControllerEmu::Con
   const bool is_openxr_wiimote_imu_gyro_group =
       is_openxr_wiimote_source &&
       group == Wiimote::GetWiimoteGroup(GetPort(), WiimoteEmu::WiimoteGroup::IMUGyroscope);
+  const bool is_openxr_nunchuk_imu_accel_group =
+      is_openxr_wiimote_source &&
+      group == Wiimote::GetNunchukGroup(GetPort(), WiimoteEmu::NunchukGroup::IMUAccelerometer);
 
   switch (group->type)
   {
@@ -218,7 +221,8 @@ QGroupBox* MappingWidget::CreateGroupBox(const QString& name, ControllerEmu::Con
   {
     if (is_openxr_wiimote_point_group && i < 4)
       continue;
-    if (is_openxr_wiimote_imu_accel_group || is_openxr_wiimote_imu_gyro_group)
+    if (is_openxr_wiimote_imu_accel_group || is_openxr_wiimote_imu_gyro_group ||
+        is_openxr_nunchuk_imu_accel_group)
       continue;
 
     auto& control = group->controls[i];

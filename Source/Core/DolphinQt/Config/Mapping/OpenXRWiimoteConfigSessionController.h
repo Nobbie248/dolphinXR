@@ -6,15 +6,17 @@
 #include <memory>
 
 #include <QObject>
+#include <QPointer>
 
 namespace VR
 {
-#if defined(ENABLE_VR) && defined(_WIN32)
+#if defined(ENABLE_VR) && defined(HAS_VULKAN)
 class OpenXRUtilitySession;
 #endif
-}
+}  // namespace VR
 
 class MappingWindow;
+class QPushButton;
 class QTimer;
 
 class OpenXRWiimoteConfigSessionController final : public QObject
@@ -25,15 +27,20 @@ public:
   OpenXRWiimoteConfigSessionController(MappingWindow* window, int port);
   ~OpenXRWiimoteConfigSessionController() override;
 
-private:
-  void TryStart();
-  void Stop();
-  void UpdateOverlay();
+  QPushButton* GetButton() const;
 
-  MappingWindow* const m_window;
+private:
+  void Start();
+  void Stop();
+  void ShutdownSession();
+  void PollState();
+  void FinishSession();
+
+  QPointer<MappingWindow> m_window;
   const int m_port;
-  QTimer* const m_overlay_timer;
-#if defined(ENABLE_VR) && defined(_WIN32)
+  QPointer<QPushButton> m_button;
+  QTimer* const m_status_timer;
+#if defined(ENABLE_VR) && defined(HAS_VULKAN)
   std::unique_ptr<VR::OpenXRUtilitySession> m_session;
 #endif
 };

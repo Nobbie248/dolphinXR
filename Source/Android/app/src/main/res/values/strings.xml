@@ -879,8 +879,6 @@ It can efficiently compress both junk data and encrypted Wii data.
     <string name="quest_disable_cpu_culling_description">Disables Dolphin\'s CPU-side primitive culling while OpenXR is active.</string>
     <string name="quest_load_custom_shaders">Load Custom Shaders</string>
     <string name="quest_load_custom_shaders_description">Loads custom shader replacements from the game\'s shader override directory.</string>
-    <string name="quest_enable_openxr_config_scene">Enable OpenXR Config Scene</string>
-    <string name="quest_enable_openxr_config_scene_description">Starts a temporary OpenXR scene while configuring controller bindings outside emulation.</string>
     <string name="quest_recenter_now">Recenter VR view now</string>
     <string name="quest_recenter_now_description">Requests an OpenXR recenter while emulation is running.</string>
     <string name="quest_vr_config">VR Config</string>
@@ -932,6 +930,9 @@ It can efficiently compress both junk data and encrypted Wii data.
     <string name="wiimote_disabled">None</string>
     <string name="wiimote_emulated">Emulated Wii Remote</string>
     <string name="wiimote_openxr">OpenXR Wii Remote</string>
+    <string name="openxr_controller_mapper">Configure in VR</string>
+    <string name="openxr_controller_mapper_description">Open an immersive controller binding wizard. Emulation must be stopped.</string>
+    <string name="openxr_controller_mapper_applied">OpenXR controller bindings applied.</string>
     <string name="wiimote_real">Real Wii Remote (DolphinBar required)</string>
 
     <!-- Hotkeys -->

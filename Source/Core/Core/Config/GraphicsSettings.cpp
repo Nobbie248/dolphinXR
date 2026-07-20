@@ -207,8 +207,6 @@ const Info<float> GFX_VR_SCREEN_SIZE{{System::GFX, "VR", "ScreenSize"}, 1.5f};
 const Info<float> GFX_VR_HEAD_LOCKED_CURVATURE{{System::GFX, "VR", "HeadLockedCurvature"}, 0.0f};
 const Info<bool> GFX_VR_DONT_CLEAR_SCREEN{{System::GFX, "VR", "DontClearScreen"}, false};
 const Info<bool> GFX_VR_LOAD_CUSTOM_SHADERS{{System::GFX, "VR", "LoadCustomShaders"}, false};
-const Info<bool> GFX_VR_ENABLE_OPENXR_CONFIG_SCENE{{System::GFX, "VR", "EnableOpenXRConfigScene"},
-                                                   true};
 const Info<bool> GFX_VR_DISABLE_CPU_CULL{{System::GFX, "VR", "DisableCPUCull"}, false};
 const Info<OpenXRMirrorView> GFX_VR_MIRROR_VIEW{{System::GFX, "VR", "MirrorView"},
                                                 OpenXRMirrorView::BothEyes};

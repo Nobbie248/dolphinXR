@@ -79,6 +79,8 @@ private:
   void CreateProfilesLayout();
   void CreateResetLayout();
   void CreateMainLayout();
+  void ConfigureTopLayout();
+  void EqualizeOpenXRTopColumns();
   void ConnectWidgets();
 
   QWidget* AddWidget(const QString& name, QWidget* widget);
@@ -113,6 +115,7 @@ private:
 
   // Devices
   QGroupBox* m_devices_box;
+  QWidget* m_profile_and_reset_container = nullptr;
   QHBoxLayout* m_devices_layout;
   QComboBox* m_devices_combo;
   QLabel* m_openxr_profile_label = nullptr;
@@ -138,7 +141,7 @@ private:
 
   QTabWidget* m_tab_widget;
   QWidget* m_extension_tab = nullptr;
-  QWidget* m_extension_motion_input_tab;
+  QWidget* m_extension_motion_input_tab = nullptr;
   QWidget* m_extension_motion_simulation_tab = nullptr;
   const QString EXTENSION_MOTION_INPUT_TAB_NAME = tr("Extension Motion Input");
   const QString EXTENSION_MOTION_SIMULATION_TAB_NAME = tr("Extension Motion Simulation");

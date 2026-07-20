@@ -97,7 +97,6 @@ private:
   QLabel* m_hud_thickness_value = nullptr;
   QPushButton* m_reset_general_settings = nullptr;
   ConfigBool* m_load_custom_shaders = nullptr;
-  ConfigBool* m_enable_openxr_config_scene = nullptr;
   QPointer<CullingCodeFinderWidget> m_culling_finder_widget;
   QPointer<ShaderHunterWidget> m_shader_hunter_widget;
 };

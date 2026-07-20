@@ -20,9 +20,9 @@
 
 #include "Common/Assert.h"
 #include "Common/CPUDetect.h"
-#include "Common/Config/Config.h"
 #include "Common/CommonPaths.h"
 #include "Common/CommonTypes.h"
+#include "Common/Config/Config.h"
 #include "Common/Event.h"
 #include "Common/FileUtil.h"
 #include "Common/Flag.h"
@@ -57,7 +57,11 @@
 #include "DiscIO/ScrubbedBlob.h"
 #include "DiscIO/Volume.h"
 
+#include "InputCommon/ControlReference/ControlReference.h"
+#include "InputCommon/ControllerEmu/ControllerEmu.h"
+#include "InputCommon/ControllerInterface/ControllerInterface.h"
 #include "InputCommon/GCAdapter.h"
+#include "InputCommon/InputConfig.h"
 
 #include "UICommon/GameFile.h"
 #include "UICommon/UICommon.h"
@@ -67,6 +71,9 @@
 #include "VideoCommon/VideoBackendBase.h"
 #ifdef ENABLE_VR
 #include "VideoCommon/VR/OpenXRManager.h"
+#if defined(HAS_VULKAN)
+#include "VideoCommon/VR/OpenXRUtilitySession.h"
+#endif
 #endif
 
 #include "jni/AndroidCommon/AndroidCommon.h"
@@ -97,6 +104,12 @@ bool s_need_nonblocking_alert_msg;
 
 Common::Flag s_is_booting;
 bool s_game_metadata_is_valid = false;
+
+#if defined(ENABLE_VR) && defined(HAS_VULKAN)
+std::mutex s_openxr_mapper_mutex;
+std::unique_ptr<VR::OpenXRUtilitySession> s_openxr_mapper;
+bool s_openxr_mapper_owns_android_app_info = false;
+#endif
 }  // Anonymous namespace
 
 void UpdatePointer()
@@ -273,13 +286,116 @@ JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_StopEmulatio
   s_update_main_frame_event.Set();
 }
 
-JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_RequestOpenXRRecenter(
-    JNIEnv*, jclass)
+JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_RequestOpenXRRecenter(JNIEnv*,
+                                                                                          jclass)
 {
 #ifdef ENABLE_VR
   HostThreadLock guard;
   if (VR::g_openxr)
     VR::g_openxr->RequestRecenter();
+#endif
+}
+
+JNIEXPORT jboolean JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_StartOpenXRControllerMapper(
+    JNIEnv* env, jclass, jobject activity, jint wiimote_port)
+{
+#if defined(ENABLE_VR) && defined(HAS_VULKAN)
+  std::lock_guard lock(s_openxr_mapper_mutex);
+  if (s_openxr_mapper)
+    return JNI_FALSE;
+
+  s_openxr_mapper = std::make_unique<VR::OpenXRUtilitySession>();
+  if (wiimote_port < 0 || wiimote_port >= 4 ||
+      Core::GetState(Core::System::GetInstance()) != Core::State::Uninitialized || VR::g_openxr)
+  {
+    return static_cast<jboolean>(s_openxr_mapper->Start(wiimote_port));
+  }
+
+  JavaVM* vm = nullptr;
+  env->GetJavaVM(&vm);
+  VR::OpenXRManager::SetAndroidAppInfo(vm, env, activity);
+  s_openxr_mapper_owns_android_app_info = true;
+  return static_cast<jboolean>(s_openxr_mapper->Start(wiimote_port));
+#else
+  return JNI_FALSE;
+#endif
+}
+
+JNIEXPORT jint JNICALL
+Java_org_dolphinemu_dolphinemu_NativeLibrary_GetOpenXRControllerMapperState(JNIEnv*, jclass)
+{
+#if defined(ENABLE_VR) && defined(HAS_VULKAN)
+  std::lock_guard lock(s_openxr_mapper_mutex);
+  return s_openxr_mapper ? static_cast<jint>(s_openxr_mapper->GetState()) : 0;
+#else
+  return 7;
+#endif
+}
+
+JNIEXPORT jstring JNICALL
+Java_org_dolphinemu_dolphinemu_NativeLibrary_GetOpenXRControllerMapperFailure(JNIEnv* env, jclass)
+{
+#if defined(ENABLE_VR) && defined(HAS_VULKAN)
+  std::lock_guard lock(s_openxr_mapper_mutex);
+  return ToJString(env, s_openxr_mapper ? s_openxr_mapper->GetFailureMessage() :
+                                          "The OpenXR controller mapper is not running.");
+#else
+  return ToJString(env, "This build does not include OpenXR support.");
+#endif
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_dolphinemu_dolphinemu_NativeLibrary_ApplyOpenXRControllerMapper(JNIEnv*, jclass)
+{
+#if defined(ENABLE_VR) && defined(HAS_VULKAN)
+  std::lock_guard lock(s_openxr_mapper_mutex);
+  if (!s_openxr_mapper ||
+      s_openxr_mapper->GetState() != VR::OpenXRUtilitySessionState::ApplyPending)
+  {
+    return JNI_FALSE;
+  }
+
+  VR::OpenXRPendingBindings pending = s_openxr_mapper->TakePendingBindings();
+  InputConfig* config = Wiimote::GetConfig();
+  auto* controller = config ? config->GetController(pending.wiimote_port) : nullptr;
+  if (!controller)
+    return JNI_FALSE;
+
+  {
+    const auto controller_lock = controller->GetStateLock();
+    ciface::Core::DeviceQualifier device;
+    device.FromString(pending.default_device);
+    controller->SetDefaultDevice(device);
+    for (auto& binding : pending.bindings)
+    {
+      if (binding.reference)
+        binding.reference->SetExpression(std::move(binding.expression));
+    }
+    controller->UpdateReferences(g_controller_interface);
+    config->SaveConfig();
+  }
+  s_openxr_mapper->MarkApplied();
+  return JNI_TRUE;
+#else
+  return JNI_FALSE;
+#endif
+}
+
+JNIEXPORT void JNICALL
+Java_org_dolphinemu_dolphinemu_NativeLibrary_StopOpenXRControllerMapper(JNIEnv* env, jclass)
+{
+#if defined(ENABLE_VR) && defined(HAS_VULKAN)
+  std::lock_guard lock(s_openxr_mapper_mutex);
+  if (s_openxr_mapper)
+  {
+    s_openxr_mapper->Stop();
+    s_openxr_mapper.reset();
+  }
+  if (s_openxr_mapper_owns_android_app_info)
+  {
+    VR::OpenXRManager::ClearAndroidAppInfo(env);
+    s_openxr_mapper_owns_android_app_info = false;
+  }
 #endif
 }
 
@@ -609,9 +725,8 @@ static float GetRenderSurfaceScale(JNIEnv* env)
 static jobject GetEmulationActivity(JNIEnv* env)
 {
   jclass native_library_class = env->FindClass(NATIVE_LIBRARY_CLASS);
-  jmethodID get_emulation_activity =
-      env->GetStaticMethodID(native_library_class, GET_EMULATION_ACTIVITY_METHOD,
-                             GET_EMULATION_ACTIVITY_SIG);
+  jmethodID get_emulation_activity = env->GetStaticMethodID(
+      native_library_class, GET_EMULATION_ACTIVITY_METHOD, GET_EMULATION_ACTIVITY_SIG);
   jobject activity = env->CallStaticObjectMethod(native_library_class, get_emulation_activity);
   env->DeleteLocalRef(native_library_class);
   return activity;
@@ -671,7 +786,8 @@ static void Run(JNIEnv* env, std::unique_ptr<BootParameters>&& boot, bool riivol
 
     // Start the hotkey dispatcher once boot has settled. Reads HotkeyManagerEmu and dispatches
     // bound actions (pause, save state, VR adjustments, etc.) on a low-priority background
-    // thread. Stopped below before Core::Shutdown so it never reads a torn-down ControllerInterface.
+    // thread. Stopped below before Core::Shutdown so it never reads a torn-down
+    // ControllerInterface.
     s_hotkey_dispatcher.Start([] { s_update_main_frame_event.Set(); });
   }
 

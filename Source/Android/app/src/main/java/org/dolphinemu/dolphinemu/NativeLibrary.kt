@@ -5,6 +5,7 @@
 
 package org.dolphinemu.dolphinemu
 
+import android.app.Activity
 import android.content.Intent
 import android.content.res.Resources
 import android.view.Surface
@@ -370,6 +371,11 @@ object NativeLibrary {
 
     @JvmStatic
     external fun RequestOpenXRRecenter()
+    external fun StartOpenXRControllerMapper(activity: Activity, wiimotePort: Int): Boolean
+    external fun GetOpenXRControllerMapperState(): Int
+    external fun GetOpenXRControllerMapperFailure(): String
+    external fun ApplyOpenXRControllerMapper(): Boolean
+    external fun StopOpenXRControllerMapper()
 
   /**
    * Ensures that IsRunning will return true from now on until emulation exits.
