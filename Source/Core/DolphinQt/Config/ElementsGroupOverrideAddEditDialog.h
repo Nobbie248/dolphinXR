@@ -81,6 +81,8 @@ private:
   QComboBox* m_anchor_rotation_combo = nullptr;
   QLabel* m_anchor_yaw_label = nullptr;
   QDoubleSpinBox* m_anchor_yaw_spin = nullptr;
+  QLabel* m_anchor_upm_label = nullptr;
+  QDoubleSpinBox* m_anchor_upm_spin = nullptr;
   QCheckBox* m_anchor_hide_check = nullptr;
   QLabel* m_anchor_hand_label = nullptr;
   QComboBox* m_anchor_hand_combo = nullptr;

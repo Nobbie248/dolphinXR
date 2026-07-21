@@ -1439,7 +1439,10 @@ void VertexManagerBase::Flush()
                   VR::g_openxr->IsSessionRunning())
               {
                 const auto& pnm = vertex_shader_manager.constants.posnormalmatrix;
-                const float upm = g_ActiveConfig.vr_units_per_meter;
+                // Convert the meter offsets with the scale actually in effect (which the
+                // anchor itself may be driving), so they stay the requested real-world size
+                // while an anchor scale glides in.
+                const float upm = VR::g_openxr->GetEffectiveUnitsPerMeter();
                 // Offset is {right, up, forward} in meters; view space is +X right, +Y up,
                 // -Z forward (same convention as the Camera Forward/Height settings).
                 const float ax = pnm[0][3] + anchor_params.offset[0] * upm;
@@ -1478,17 +1481,20 @@ void VertexManagerBase::Flush()
                   const float sy = std::sin(yaw);
                   anchor_rot = {cy, 0.0f, sy, 0.0f, 1.0f, 0.0f, -sy, 0.0f, cy};
                 }
-                VR::g_openxr->SetPendingCameraAnchor(ax, ay, az, anchor_rot);
+                VR::g_openxr->SetPendingCameraAnchor(ax, ay, az, anchor_rot,
+                                                     anchor_params.units_per_meter);
                 if (hunter_debug_logging)
                 {
                   INFO_LOG_FMT(VIDEO,
                                "VR_ANCHOR: draw#{} pos=({:.2f},{:.2f},{:.2f}) offset_m=({:.2f},"
-                               "{:.2f},{:.2f}) rot={} yaw_off={:.0f} hide={}",
+                               "{:.2f},{:.2f}) rot={} yaw_off={:.0f} upm={:.2f}(eff {:.2f}) "
+                               "hide={}",
                                m_draw_counter, pnm[0][3], pnm[1][3], pnm[2][3],
                                anchor_params.offset[0], anchor_params.offset[1],
                                anchor_params.offset[2],
                                static_cast<int>(anchor_params.rotation),
-                               anchor_params.yaw_offset_deg, anchor_params.hide);
+                               anchor_params.yaw_offset_deg, anchor_params.units_per_meter, upm,
+                               anchor_params.hide);
                 }
                 if (anchor_params.hide)
                   elements_skip = true;
@@ -1510,7 +1516,9 @@ void VertexManagerBase::Flush()
                   g_ActiveConfig.vr_enable_controller_anchor && VR::g_openxr &&
                   VR::g_openxr->IsSessionRunning())
               {
-                const float upm = g_ActiveConfig.vr_units_per_meter;
+                // Same scale the camera is using this frame (a Camera Anchor may be driving
+                // it), or the hands would land at the wrong distance in the anchored view.
+                const float upm = VR::g_openxr->GetEffectiveUnitsPerMeter();
                 std::array<float, 3> hand_pos{};
                 std::array<float, 9> hand_rot{};
                 if (VR::g_openxr->GetControllerAnchorViewPose(controller_anchor_params.hand, upm,

@@ -343,8 +343,16 @@ public:
   // rotation is a row-major 3x3 whose columns are the camera rig's axes expressed in
   // view space (identity = camera stays aligned with the game camera). It may carry
   // the raw scale of the element's matrix — it is orthonormalized at commit time.
-  void SetPendingCameraAnchor(float x, float y, float z, const std::array<float, 9>& rotation);
+  //
+  // units_per_meter is the anchor's own world scale (<= 0 = keep the global setting), so a
+  // first-person anchor can have a different scale than the game's configured value.
+  void SetPendingCameraAnchor(float x, float y, float z, const std::array<float, 9>& rotation,
+                              float units_per_meter);
   void CommitCameraAnchorFrame();
+
+  // World scale everything VR-side must use this frame: the active camera anchor's scale while
+  // one is engaged (smoothed, so engaging/releasing glides), else the live global setting.
+  float GetEffectiveUnitsPerMeter() const;
 
   // ---- Controller Anchor (Elements Group Override "ControllerAnchor" handling) ----
   // Maps a VR controller's aim pose into game view space (game units) by replaying the
@@ -486,6 +494,12 @@ private:
   std::array<float, 9> m_camera_anchor_rotation{1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
                                                 0.0f, 0.0f, 0.0f, 1.0f};
   bool m_camera_anchor_rotation_active = false;
+  // Per-anchor world scale. *_target is the override's requested value (0 = none); the smoothed
+  // current value is 0 while disengaged so GetEffectiveUnitsPerMeter passes the global setting
+  // through untouched (dragging the global slider must not lag).
+  float m_camera_anchor_pending_upm = 0.0f;
+  float m_camera_anchor_target_upm = 0.0f;
+  float m_camera_anchor_upm = 0.0f;
 
   // Controller Anchor per-frame cache (video-thread only). Under the head-pose lock a
   // valid entry is reused until InvalidateControllerAnchorCache() so all draws of a game

@@ -256,8 +256,12 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
         vr_headlocked_projection_offset_y = 0.0f;
         // Hoisted out of the session block so it is also available when finalizing the
         // ortho/head-locked depth_params (HUD thickness) below.
-        const float upm = std::max(
-            upm_override > 0.0f ? upm_override : g_ActiveConfig.vr_units_per_meter, 0.0001f);
+        // Base scale: an engaged Camera Anchor may impose its own world scale (a first-person
+        // anchor often wants a different one than the game's global value); per-draw
+        // UnitsPerMeter overrides still win over both.
+        const float base_upm = VR::g_openxr ? VR::g_openxr->GetEffectiveUnitsPerMeter() :
+                                              g_ActiveConfig.vr_units_per_meter;
+        const float upm = std::max(upm_override > 0.0f ? upm_override : base_upm, 0.0001f);
 
         if (VR::g_openxr && VR::g_openxr->IsSessionRunning())
         {

@@ -113,6 +113,9 @@ public:
     // facing backward).
     ShaderHunter::AnchorRotationMode anchor_rotation = ShaderHunter::AnchorRotationMode::Off;
     float anchor_yaw_deg = 0.0f;
+    // World scale to use while this anchor is active, so a first-person view can have its own
+    // scale without disturbing the game's global Units per Meter (-1 = keep the global value).
+    float anchor_units_per_meter = -1.0f;
     // ControllerAnchor handling: which VR controller the element follows (0 = left, 1 = right).
     // Reuses anchor_right/up/forward as meter offsets from the controller's aim pose and
     // anchor_rotation (Off/Full) for orientation follow; yaw/pitch/roll are the model-axis
@@ -230,6 +233,7 @@ public:
     bool hide = true;
     ShaderHunter::AnchorRotationMode rotation = ShaderHunter::AnchorRotationMode::Off;
     float yaw_offset_deg = 0.0f;
+    float units_per_meter = -1.0f;  // -1 = keep the global Units per Meter
   };
   // Fills the parameters of the first matching CameraAnchor override.
   // Returns false when none matches the draw.

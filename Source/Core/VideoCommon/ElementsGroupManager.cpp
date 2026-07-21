@@ -779,6 +779,8 @@ LoadElementGroupOverridesFromINIFile(const std::string& path)
                                                   ShaderHunter::AnchorRotationMode::Off;
     else if (key == "anchor_yaw")
       current.anchor_yaw_deg = std::stof(value);
+    else if (key == "anchor_upm" || key == "anchor_units_per_meter")
+      current.anchor_units_per_meter = std::stof(value);
     else if (key == "anchor_hand")
       current.anchor_hand = (value == "left" || value == "0") ? 0 : 1;
     else if (key == "anchor_pitch")
@@ -967,6 +969,8 @@ void ElementsGroupManager::SaveOverridesToINI(const std::string& game_id,
       }
       if (entry.anchor_yaw_deg != 0.0f)
         out << "anchor_yaw=" << entry.anchor_yaw_deg << "\n";
+      if (entry.anchor_units_per_meter > 0.0f)
+        out << "anchor_upm=" << entry.anchor_units_per_meter << "\n";
     }
     if (entry.handling == HandlingType::ControllerAnchor)
     {
@@ -2008,6 +2012,7 @@ bool ElementsGroupManager::GetOverrideCameraAnchor(const DrawRecord& draw,
       out_params->hide = entry.anchor_hide;
       out_params->rotation = entry.anchor_rotation;
       out_params->yaw_offset_deg = entry.anchor_yaw_deg;
+      out_params->units_per_meter = entry.anchor_units_per_meter;
       return true;
     }
   }

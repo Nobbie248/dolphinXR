@@ -2793,7 +2793,8 @@ bool OrthonormalizeAnchorRotation(std::array<float, 9>& m)
 }  // namespace
 
 void OpenXRManager::SetPendingCameraAnchor(float x, float y, float z,
-                                           const std::array<float, 9>& rotation)
+                                           const std::array<float, 9>& rotation,
+                                           float units_per_meter)
 {
   // First anchor draw of the frame wins; later matches (e.g. a second character
   // sharing the element signature) are ignored for determinism.
@@ -2802,6 +2803,12 @@ void OpenXRManager::SetPendingCameraAnchor(float x, float y, float z,
   m_camera_anchor_pending_valid = true;
   m_camera_anchor_pending = {x, y, z};
   m_camera_anchor_pending_rotation = rotation;
+  m_camera_anchor_pending_upm = units_per_meter > 0.0f ? units_per_meter : 0.0f;
+}
+
+float OpenXRManager::GetEffectiveUnitsPerMeter() const
+{
+  return m_camera_anchor_upm > 0.0f ? m_camera_anchor_upm : g_ActiveConfig.vr_units_per_meter;
 }
 
 void OpenXRManager::CommitCameraAnchorFrame()
@@ -2816,6 +2823,7 @@ void OpenXRManager::CommitCameraAnchorFrame()
     m_camera_anchor_target_rotation = m_camera_anchor_pending_rotation;
     if (!OrthonormalizeAnchorRotation(m_camera_anchor_target_rotation))
       m_camera_anchor_target_rotation = CAMERA_ANCHOR_IDENTITY;
+    m_camera_anchor_target_upm = m_camera_anchor_pending_upm;
     m_camera_anchor_has_target = true;
     m_camera_anchor_missing_frames = 0;
   }
@@ -2824,6 +2832,7 @@ void OpenXRManager::CommitCameraAnchorFrame()
     m_camera_anchor_has_target = false;
     m_camera_anchor_target = {};
     m_camera_anchor_target_rotation = CAMERA_ANCHOR_IDENTITY;
+    m_camera_anchor_target_upm = 0.0f;
   }
   m_camera_anchor_pending_valid = false;
 
@@ -2846,6 +2855,23 @@ void OpenXRManager::CommitCameraAnchorFrame()
   }
   if (!OrthonormalizeAnchorRotation(m_camera_anchor_rotation))
     m_camera_anchor_rotation = m_camera_anchor_target_rotation;
+
+  // World scale: glide toward the anchor's own scale while engaged, and back to the global
+  // setting on release. Once it lands back on the global value the scale disengages entirely
+  // (m_camera_anchor_upm = 0) so the global slider stays immediate when no anchor scale is set.
+  const float global_upm = std::max(g_ActiveConfig.vr_units_per_meter, 0.0001f);
+  if (m_camera_anchor_target_upm > 0.0f)
+  {
+    if (m_camera_anchor_upm <= 0.0f)
+      m_camera_anchor_upm = global_upm;  // engage from the scale currently on screen
+    m_camera_anchor_upm = k * m_camera_anchor_upm + (1.0f - k) * m_camera_anchor_target_upm;
+  }
+  else if (m_camera_anchor_upm > 0.0f)
+  {
+    m_camera_anchor_upm = k * m_camera_anchor_upm + (1.0f - k) * global_upm;
+    if (std::abs(m_camera_anchor_upm - global_upm) <= 0.001f * global_upm)
+      m_camera_anchor_upm = 0.0f;
+  }
 
   bool rotation_active = false;
   for (size_t i = 0; i < 9; ++i)

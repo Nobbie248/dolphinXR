@@ -325,6 +325,19 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
       tr("Fixed heading correction for the rotation modes. Models differ in which way\n"
          "they face: if the anchored view comes up looking backward use 180, if it looks\n"
          "sideways use 90 or -90."));
+  m_anchor_upm_label = new QLabel(tr("Anchor Units per Meter:"));
+  m_anchor_upm_spin = new QDoubleSpinBox;
+  m_anchor_upm_spin->setRange(0.0, UPM_OVERRIDE_MAX);
+  m_anchor_upm_spin->setDecimals(2);
+  m_anchor_upm_spin->setSingleStep(UPM_OVERRIDE_STEP);
+  m_anchor_upm_spin->setSpecialValueText(tr("Default"));
+  m_anchor_upm_spin->setValue(0.0);
+  m_anchor_upm_spin->setToolTip(
+      tr("World scale to use while this anchor is active, so a first-person view can have a\n"
+         "different scale than the game's global Units per Meter setting, which is left\n"
+         "untouched. Default = keep the global value. The scale eases in when the anchor\n"
+         "engages and back out when it is released."));
+
   m_anchor_hide_check = new QCheckBox(tr("Hide Anchor Element"));
   m_anchor_hide_check->setChecked(true);
   m_anchor_hide_check->setToolTip(
@@ -469,6 +482,7 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
   form->addRow(m_anchor_forward_label, m_anchor_forward_spin);
   form->addRow(m_anchor_rotation_label, m_anchor_rotation_combo);
   form->addRow(m_anchor_yaw_label, m_anchor_yaw_spin);
+  form->addRow(m_anchor_upm_label, m_anchor_upm_spin);
   form->addRow(QString(), m_anchor_hide_check);
   form->addRow(m_anchor_hand_label, m_anchor_hand_combo);
   form->addRow(QString(), m_anchor_follow_rotation_check);
@@ -583,6 +597,8 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
         m_anchor_rotation_combo->setCurrentIndex(idx);
     }
     m_anchor_yaw_spin->setValue(edit_override->anchor_yaw_deg);
+    if (edit_override->anchor_units_per_meter > 0.0f)
+      m_anchor_upm_spin->setValue(edit_override->anchor_units_per_meter);
     m_anchor_hide_check->setChecked(edit_override->anchor_hide);
     {
       const int idx = m_anchor_hand_combo->findData(edit_override->anchor_hand == 0 ? 0 : 1);
@@ -675,6 +691,9 @@ ElementsGroupManager::ElementGroupOverride ElementsGroupOverrideAddEditDialog::G
     result.anchor_rotation = static_cast<ShaderHunter::AnchorRotationMode>(
         m_anchor_rotation_combo->currentData().toInt());
     result.anchor_yaw_deg = static_cast<float>(m_anchor_yaw_spin->value());
+    result.anchor_units_per_meter = m_anchor_upm_spin->value() >= UPM_OVERRIDE_MIN ?
+                                        static_cast<float>(m_anchor_upm_spin->value()) :
+                                        -1.0f;
     result.anchor_hide = m_anchor_hide_check->isChecked();
   }
   if (result.handling == ElementsGroupManager::HandlingType::ControllerAnchor)
@@ -879,6 +898,8 @@ void ElementsGroupOverrideAddEditDialog::RefreshHandlingUi()
   m_anchor_rotation_combo->setVisible(show_anchor);
   m_anchor_yaw_label->setVisible(show_anchor);
   m_anchor_yaw_spin->setVisible(show_anchor);
+  m_anchor_upm_label->setVisible(show_anchor);
+  m_anchor_upm_spin->setVisible(show_anchor);
   m_anchor_hide_check->setVisible(show_anchor);
   m_anchor_hand_label->setVisible(show_controller_anchor);
   m_anchor_hand_combo->setVisible(show_controller_anchor);
