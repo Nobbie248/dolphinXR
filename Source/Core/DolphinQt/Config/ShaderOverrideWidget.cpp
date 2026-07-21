@@ -207,6 +207,8 @@ void ShaderOverrideWidget::UpdateList()
                                    "passthrough" :
                                ovr.handling == ShaderHunter::HandlingType::CameraAnchor ?
                                    "camera_anchor" :
+                               ovr.handling == ShaderHunter::HandlingType::ControllerAnchor ?
+                                   "controller_anchor" :
                                                                                          "skip";
 
     QString label;

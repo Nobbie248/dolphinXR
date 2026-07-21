@@ -147,6 +147,7 @@ void TextureElementOverrideWidget::UpdateList()
         ovr.handling == HandlingType::UnitsPerMeter ? "units_per_meter" :
         ovr.handling == HandlingType::Passthrough   ? "passthrough" :
         ovr.handling == HandlingType::CameraAnchor  ? "camera_anchor" :
+        ovr.handling == HandlingType::ControllerAnchor ? "controller_anchor" :
                                                       "skip";
 
     QString label = QStringLiteral("%1  (%2)  [%3 tex]")

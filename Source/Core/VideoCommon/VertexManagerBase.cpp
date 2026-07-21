@@ -1333,6 +1333,11 @@ void VertexManagerBase::Flush()
               {
                 hunter.GetOverrideCameraAnchor(vs_hash, ps_hash, gs_hash, &anchor_params);
               }
+              else if (handling == ShaderHunter::HandlingType::ControllerAnchor)
+              {
+                hunter.GetOverrideControllerAnchor(vs_hash, ps_hash, gs_hash,
+                                                   &controller_anchor_params);
+              }
             }
             // Texture Element Override (fallback): match purely on bound texture hash, applied
             // only when neither Elements nor Shader overrides produced a handling for this draw.
@@ -1340,7 +1345,7 @@ void VertexManagerBase::Flush()
             {
               handling = texmgr.GetHandlingForTextures(tex_hashes, &manual_layer, &element_depth,
                                                        &units_per_meter, &passthrough_opacity,
-                                                       &anchor_params);
+                                                       &anchor_params, &controller_anchor_params);
             }
             if (handling == ShaderHunter::HandlingType::Skip && metroid_profile_active)
               handling = GetMetroidLayerBehavior(metroid_layer).handling;

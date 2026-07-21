@@ -71,6 +71,20 @@ public:
     float units_per_meter = -1.0f;  // -1 = keep the global Units per Meter
   };
 
+  // ControllerAnchor parameters resolved for a matching draw. Shared transport type, like
+  // CameraAnchorParams: all three override systems resolve into this and the draw path
+  // applies it identically regardless of which system matched.
+  struct ControllerAnchorParams
+  {
+    int hand = 1;                   // 0 = left, 1 = right
+    std::array<float, 3> offset{};  // meters: right, up, forward
+    bool rotation = false;          // follow the controller's orientation
+    // Model-axis correction applied in the controller frame (degrees).
+    float yaw_deg = 0.0f;
+    float pitch_deg = 0.0f;
+    float roll_deg = 0.0f;
+  };
+
   enum class HuntingOption
   {
     Skip = 0,
@@ -193,6 +207,12 @@ public:
     AnchorRotationMode anchor_rotation = AnchorRotationMode::Off;
     float anchor_yaw_deg = 0.0f;
     float anchor_units_per_meter = -1.0f;
+    // ControllerAnchor handling: which controller the element follows (0 = left, 1 = right).
+    // Reuses anchor_right/up/forward as meter offsets and anchor_rotation (Off/Full) for
+    // orientation follow; yaw/pitch/roll are the model-axis correction in the controller frame.
+    int anchor_hand = 1;
+    float anchor_pitch_deg = 0.0f;
+    float anchor_roll_deg = 0.0f;
     std::vector<u64> texture_hashes;  // Only apply when any listed texture is bound (empty = any)
     bool texture_hashes_excluded = false;  // false=Include list, true=Exclude list
     bool hash_family_match = false;  // false=exact hash, true=family signature
@@ -244,6 +264,11 @@ public:
   // Returns false when no CameraAnchor override matches the draw.
   bool GetOverrideCameraAnchor(u64 vs_hash, u64 ps_hash, u64 gs_hash,
                                CameraAnchorParams* out_params) const;
+
+  // Fills the parameters of the matching ControllerAnchor override.
+  // Returns false when no ControllerAnchor override matches the draw.
+  bool GetOverrideControllerAnchor(u64 vs_hash, u64 ps_hash, u64 gs_hash,
+                                   ControllerAnchorParams* out_params) const;
 
   // Flag system: register flag shaders and check conditions.
   void RegisterFlags(u64 vs_hash, u64 ps_hash, u64 gs_hash);
@@ -339,6 +364,8 @@ private:
   std::unordered_map<u64, float> m_element_depths;  // hash → per-override element depth (-1 = global)
   std::unordered_map<u64, float> m_passthrough_opacities;  // hash → Passthrough opacity
   std::unordered_map<u64, CameraAnchorParams> m_camera_anchors;  // hash → CameraAnchor params
+  // hash → ControllerAnchor params
+  std::unordered_map<u64, ControllerAnchorParams> m_controller_anchors;
   std::string m_loaded_game_id;
   std::atomic_bool m_has_overrides = false;
   std::atomic_bool m_needs_shader_family_signatures = false;
@@ -376,6 +403,7 @@ private:
     float units_per_meter;
     float passthrough_opacity;
     CameraAnchorParams anchor;
+    ControllerAnchorParams controller_anchor;
     std::vector<u64> texture_hashes;  // Only apply when any listed texture is bound (empty = any)
     bool texture_hashes_excluded;     // false=Include list, true=Exclude list
     bool hash_family_match;           // false=exact hash, true=family signature

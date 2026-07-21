@@ -37,6 +37,7 @@ public:
   using TextureUsage = ShaderHunter::TextureUsage;
   using AnchorRotationMode = ShaderHunter::AnchorRotationMode;
   using CameraAnchorParams = ShaderHunter::CameraAnchorParams;
+  using ControllerAnchorParams = ShaderHunter::ControllerAnchorParams;
 
   // --- Persistent overrides (per-game INI) ---
   struct TextureElementOverride
@@ -58,6 +59,12 @@ public:
     AnchorRotationMode anchor_rotation = AnchorRotationMode::Off;
     float anchor_yaw_deg = 0.0f;
     float anchor_units_per_meter = -1.0f;
+    // ControllerAnchor handling: which controller the element follows (0 = left, 1 = right).
+    // Reuses anchor_right/up/forward as meter offsets and anchor_rotation (Off/Full) for
+    // orientation follow; yaw/pitch/roll are the model-axis correction in the controller frame.
+    int anchor_hand = 1;
+    float anchor_pitch_deg = 0.0f;
+    float anchor_roll_deg = 0.0f;
     std::vector<u64> texture_hashes;  // The group's textures (matched when any is bound)
     bool enabled = true;
   };
@@ -82,11 +89,12 @@ public:
   bool ShouldSkipByTexture(const std::array<u64, 8>& bound) const;
   // Handling for the first bound texture with a non-Skip override (Skip if none). Out-params are
   // filled for Screen/HeadLocked (layer, element_depth), UnitsPerMeter (units_per_meter),
-  // Passthrough (passthrough_opacity) and CameraAnchor (anchor).
+  // Passthrough (passthrough_opacity), CameraAnchor (anchor) and ControllerAnchor
+  // (controller_anchor).
   HandlingType GetHandlingForTextures(const std::array<u64, 8>& bound, int* layer,
                                       float* element_depth, float* units_per_meter,
-                                      float* passthrough_opacity,
-                                      CameraAnchorParams* anchor) const;
+                                      float* passthrough_opacity, CameraAnchorParams* anchor,
+                                      ControllerAnchorParams* controller_anchor) const;
 
   // --- Texture Hunter browse support (global per-frame texture capture) ---
   void SetHunterActive(bool active);
@@ -118,6 +126,7 @@ private:
     float units_per_meter = -1.0f;
     float passthrough_opacity = 0.0f;
     CameraAnchorParams anchor;
+    ControllerAnchorParams controller_anchor;
   };
 
   mutable std::mutex m_mutex;

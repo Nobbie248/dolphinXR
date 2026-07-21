@@ -98,6 +98,8 @@ TextureElementOverrideAddEditDialog::TextureElementOverrideAddEditDialog(
   m_handling_combo->addItem(tr("Units per Meter"), static_cast<int>(HandlingType::UnitsPerMeter));
   m_handling_combo->addItem(tr("Passthrough"), static_cast<int>(HandlingType::Passthrough));
   m_handling_combo->addItem(tr("Camera Anchor"), static_cast<int>(HandlingType::CameraAnchor));
+  m_handling_combo->addItem(tr("Controller Anchor"),
+                            static_cast<int>(HandlingType::ControllerAnchor));
   m_handling_combo->setToolTip(
       tr("How every draw that binds a listed texture is handled in VR.\n"
          "Skip = hide, Screen = world-fixed, Head Locked = follows head, Fullscreen = no VR,\n"
@@ -207,6 +209,51 @@ TextureElementOverrideAddEditDialog::TextureElementOverrideAddEditDialog(
       tr("Skip drawing the anchor element itself so its mesh (e.g. the character's head)\n"
          "does not block the first-person view. Other body parts need their own Skip\n"
          "overrides. Disabled while the Camera Anchor toggle in the VR pane is off."));
+  m_anchor_hand_label = new QLabel(tr("Controller:"));
+  m_anchor_hand_combo = new QComboBox;
+  m_anchor_hand_combo->addItem(tr("Right"), 1);
+  m_anchor_hand_combo->addItem(tr("Left"), 0);
+  m_anchor_hand_combo->setToolTip(
+      tr("Which VR controller the element follows. The element's position is replaced by\n"
+         "the controller's aim pose (plus the anchor offsets).\n"
+         "Disabled while the Controller Anchor toggle in the VR pane is off."));
+  m_anchor_follow_rotation_check = new QCheckBox(tr("Follow Controller Rotation"));
+  m_anchor_follow_rotation_check->setChecked(false);
+  m_anchor_follow_rotation_check->setToolTip(
+      tr("Rotate the element with the controller so it stays rigidly in hand (sword,\n"
+         "cannon). Off = the element only moves with the controller and keeps its\n"
+         "game orientation. The anchor offsets follow the controller's frame when on."));
+  const auto make_anchor_angle_spin = []() {
+    auto* spin = new QDoubleSpinBox;
+    spin->setRange(-180.0, 180.0);
+    spin->setDecimals(0);
+    spin->setSingleStep(15.0);
+    spin->setValue(0.0);
+    spin->setSuffix(QStringLiteral("°"));
+    return spin;
+  };
+  m_anchor_ctrl_yaw_label = new QLabel(tr("Model Yaw:"));
+  m_anchor_ctrl_yaw_spin = make_anchor_angle_spin();
+  m_anchor_ctrl_pitch_label = new QLabel(tr("Model Pitch:"));
+  m_anchor_ctrl_pitch_spin = make_anchor_angle_spin();
+  m_anchor_ctrl_roll_label = new QLabel(tr("Model Roll:"));
+  m_anchor_ctrl_roll_spin = make_anchor_angle_spin();
+  const QString anchor_angle_tooltip =
+      tr("Fixed correction for the model's native orientation, applied in the\n"
+         "controller's frame (yaw, then pitch, then roll). Models differ in which way\n"
+         "they point: if the element comes up backward use yaw 180, if it lies flat\n"
+         "use pitch ±90, and roll spins it about the aim direction.");
+  m_anchor_ctrl_yaw_spin->setToolTip(anchor_angle_tooltip);
+  m_anchor_ctrl_pitch_spin->setToolTip(anchor_angle_tooltip);
+  m_anchor_ctrl_roll_spin->setToolTip(anchor_angle_tooltip);
+  m_anchor_ctrl_yaw_spin->setEnabled(false);
+  m_anchor_ctrl_pitch_spin->setEnabled(false);
+  m_anchor_ctrl_roll_spin->setEnabled(false);
+  connect(m_anchor_follow_rotation_check, &QCheckBox::toggled, this, [this](bool checked) {
+    m_anchor_ctrl_yaw_spin->setEnabled(checked);
+    m_anchor_ctrl_pitch_spin->setEnabled(checked);
+    m_anchor_ctrl_roll_spin->setEnabled(checked);
+  });
 
   m_view_textures_button = new QPushButton(tr("Texture Hunter"));
   m_view_textures_button->setToolTip(
@@ -256,6 +303,19 @@ TextureElementOverrideAddEditDialog::TextureElementOverrideAddEditDialog(
     if (edit_override->anchor_units_per_meter > 0.0f)
       m_anchor_upm_spin->setValue(edit_override->anchor_units_per_meter);
     m_anchor_hide_check->setChecked(edit_override->anchor_hide);
+    {
+      const int idx = m_anchor_hand_combo->findData(edit_override->anchor_hand == 0 ? 0 : 1);
+      if (idx >= 0)
+        m_anchor_hand_combo->setCurrentIndex(idx);
+    }
+    if (edit_override->handling == HandlingType::ControllerAnchor)
+    {
+      m_anchor_follow_rotation_check->setChecked(edit_override->anchor_rotation !=
+                                                 AnchorRotationMode::Off);
+      m_anchor_ctrl_yaw_spin->setValue(edit_override->anchor_yaw_deg);
+      m_anchor_ctrl_pitch_spin->setValue(edit_override->anchor_pitch_deg);
+      m_anchor_ctrl_roll_spin->setValue(edit_override->anchor_roll_deg);
+    }
 
     m_updating_texture_hash_fields = true;
     while (m_texture_hash_edits.size() < edit_override->texture_hashes.size())
@@ -285,6 +345,11 @@ TextureElementOverrideAddEditDialog::TextureElementOverrideAddEditDialog(
   form->addRow(m_anchor_yaw_label, m_anchor_yaw_spin);
   form->addRow(m_anchor_upm_label, m_anchor_upm_spin);
   form->addRow(QString(), m_anchor_hide_check);
+  form->addRow(m_anchor_hand_label, m_anchor_hand_combo);
+  form->addRow(QString(), m_anchor_follow_rotation_check);
+  form->addRow(m_anchor_ctrl_yaw_label, m_anchor_ctrl_yaw_spin);
+  form->addRow(m_anchor_ctrl_pitch_label, m_anchor_ctrl_pitch_spin);
+  form->addRow(m_anchor_ctrl_roll_label, m_anchor_ctrl_roll_spin);
   form->addRow(QString(), m_view_textures_button);
   form->addRow(QString(), m_import_textures_button);
   form->addRow(tr("Texture Hashes:"), m_texture_hash_scroll);
@@ -341,6 +406,19 @@ TextureElementOverride TextureElementOverrideAddEditDialog::GetResult() const
                                         static_cast<float>(m_anchor_upm_spin->value()) :
                                         -1.0f;
     result.anchor_hide = m_anchor_hide_check->isChecked();
+  }
+  if (result.handling == HandlingType::ControllerAnchor)
+  {
+    result.anchor_hand = m_anchor_hand_combo->currentData().toInt();
+    result.anchor_right = static_cast<float>(m_anchor_right_spin->value());
+    result.anchor_up = static_cast<float>(m_anchor_up_spin->value());
+    result.anchor_forward = static_cast<float>(m_anchor_forward_spin->value());
+    result.anchor_rotation = m_anchor_follow_rotation_check->isChecked() ?
+                                 AnchorRotationMode::Full :
+                                 AnchorRotationMode::Off;
+    result.anchor_yaw_deg = static_cast<float>(m_anchor_ctrl_yaw_spin->value());
+    result.anchor_pitch_deg = static_cast<float>(m_anchor_ctrl_pitch_spin->value());
+    result.anchor_roll_deg = static_cast<float>(m_anchor_ctrl_roll_spin->value());
   }
 
   for (const std::string& token : CollectTextureHashTokens())
@@ -412,6 +490,8 @@ void TextureElementOverrideAddEditDialog::OnHandlingChanged()
   const bool show_units_per_meter = (handling == HandlingType::UnitsPerMeter);
   const bool show_passthrough = (handling == HandlingType::Passthrough);
   const bool show_anchor = (handling == HandlingType::CameraAnchor);
+  const bool show_controller_anchor = (handling == HandlingType::ControllerAnchor);
+  const bool show_anchor_offsets = show_anchor || show_controller_anchor;
 
   m_layer_label->setVisible(show_layer);
   m_layer_spin->setVisible(show_layer);
@@ -421,12 +501,12 @@ void TextureElementOverrideAddEditDialog::OnHandlingChanged()
   m_units_per_meter_spin->setVisible(show_units_per_meter);
   m_passthrough_opacity_label->setVisible(show_passthrough);
   m_passthrough_opacity_spin->setVisible(show_passthrough);
-  m_anchor_right_label->setVisible(show_anchor);
-  m_anchor_right_spin->setVisible(show_anchor);
-  m_anchor_up_label->setVisible(show_anchor);
-  m_anchor_up_spin->setVisible(show_anchor);
-  m_anchor_forward_label->setVisible(show_anchor);
-  m_anchor_forward_spin->setVisible(show_anchor);
+  m_anchor_right_label->setVisible(show_anchor_offsets);
+  m_anchor_right_spin->setVisible(show_anchor_offsets);
+  m_anchor_up_label->setVisible(show_anchor_offsets);
+  m_anchor_up_spin->setVisible(show_anchor_offsets);
+  m_anchor_forward_label->setVisible(show_anchor_offsets);
+  m_anchor_forward_spin->setVisible(show_anchor_offsets);
   m_anchor_rotation_label->setVisible(show_anchor);
   m_anchor_rotation_combo->setVisible(show_anchor);
   m_anchor_yaw_label->setVisible(show_anchor);
@@ -434,6 +514,15 @@ void TextureElementOverrideAddEditDialog::OnHandlingChanged()
   m_anchor_upm_label->setVisible(show_anchor);
   m_anchor_upm_spin->setVisible(show_anchor);
   m_anchor_hide_check->setVisible(show_anchor);
+  m_anchor_hand_label->setVisible(show_controller_anchor);
+  m_anchor_hand_combo->setVisible(show_controller_anchor);
+  m_anchor_follow_rotation_check->setVisible(show_controller_anchor);
+  m_anchor_ctrl_yaw_label->setVisible(show_controller_anchor);
+  m_anchor_ctrl_yaw_spin->setVisible(show_controller_anchor);
+  m_anchor_ctrl_pitch_label->setVisible(show_controller_anchor);
+  m_anchor_ctrl_pitch_spin->setVisible(show_controller_anchor);
+  m_anchor_ctrl_roll_label->setVisible(show_controller_anchor);
+  m_anchor_ctrl_roll_spin->setVisible(show_controller_anchor);
 }
 
 void TextureElementOverrideAddEditDialog::ShowTextureBrowser()

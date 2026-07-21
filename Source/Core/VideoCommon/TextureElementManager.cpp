@@ -138,6 +138,8 @@ const char* HandlingToString(HandlingType handling)
     return "passthrough";
   case HandlingType::CameraAnchor:
     return "camera_anchor";
+  case HandlingType::ControllerAnchor:
+    return "controller_anchor";
   default:
     return "skip";
   }
@@ -157,6 +159,8 @@ HandlingType HandlingFromString(const std::string& value)
     return HandlingType::Passthrough;
   if (value == "camera_anchor" || value == "cameraanchor")
     return HandlingType::CameraAnchor;
+  if (value == "controller_anchor" || value == "controlleranchor")
+    return HandlingType::ControllerAnchor;
   return HandlingType::Skip;
 }
 
@@ -277,6 +281,12 @@ ParsedTextureOverrideFile LoadTextureOverridesFromINIFile(const std::string& pat
         current.anchor_yaw_deg = std::stof(value);
       else if (key == "anchor_upm" || key == "anchor_units_per_meter")
         current.anchor_units_per_meter = std::stof(value);
+      else if (key == "anchor_hand")
+        current.anchor_hand = (value == "left" || value == "0") ? 0 : 1;
+      else if (key == "anchor_pitch")
+        current.anchor_pitch_deg = std::stof(value);
+      else if (key == "anchor_roll")
+        current.anchor_roll_deg = std::stof(value);
       else if (key == "comments")
         current.comments = value;
       else if (key == "texture")
@@ -405,6 +415,24 @@ void TextureElementManager::SaveOverridesToINI(
       if (ovr.anchor_units_per_meter > 0.0f)
         out << "anchor_upm=" << ovr.anchor_units_per_meter << "\n";
     }
+    if (ovr.handling == HandlingType::ControllerAnchor)
+    {
+      out << "anchor_hand=" << (ovr.anchor_hand == 0 ? "left" : "right") << "\n";
+      if (ovr.anchor_right != 0.0f)
+        out << "anchor_right=" << ovr.anchor_right << "\n";
+      if (ovr.anchor_up != 0.0f)
+        out << "anchor_up=" << ovr.anchor_up << "\n";
+      if (ovr.anchor_forward != 0.0f)
+        out << "anchor_forward=" << ovr.anchor_forward << "\n";
+      if (ovr.anchor_rotation != AnchorRotationMode::Off)
+        out << "anchor_rotation=full\n";
+      if (ovr.anchor_yaw_deg != 0.0f)
+        out << "anchor_yaw=" << ovr.anchor_yaw_deg << "\n";
+      if (ovr.anchor_pitch_deg != 0.0f)
+        out << "anchor_pitch=" << ovr.anchor_pitch_deg << "\n";
+      if (ovr.anchor_roll_deg != 0.0f)
+        out << "anchor_roll=" << ovr.anchor_roll_deg << "\n";
+    }
     if (!ovr.comments.empty())
     {
       // Keep comments single-line so they don't corrupt the section.
@@ -451,7 +479,14 @@ void TextureElementManager::LoadOverrides(const std::string& game_id)
                            .hide = ovr.anchor_hide,
                            .rotation = ovr.anchor_rotation,
                            .yaw_offset_deg = ovr.anchor_yaw_deg,
-                           .units_per_meter = ovr.anchor_units_per_meter}};
+                           .units_per_meter = ovr.anchor_units_per_meter},
+        ControllerAnchorParams{
+            .hand = ovr.anchor_hand == 0 ? 0 : 1,
+            .offset = {ovr.anchor_right, ovr.anchor_up, ovr.anchor_forward},
+            .rotation = ovr.anchor_rotation != AnchorRotationMode::Off,
+            .yaw_deg = ovr.anchor_yaw_deg,
+            .pitch_deg = ovr.anchor_pitch_deg,
+            .roll_deg = ovr.anchor_roll_deg}};
     for (u64 texture_hash : ovr.texture_hashes)
     {
       // First enabled override that lists a texture wins.
@@ -506,7 +541,8 @@ bool TextureElementManager::ShouldSkipByTexture(const std::array<u64, 8>& bound)
 
 TextureElementManager::HandlingType TextureElementManager::GetHandlingForTextures(
     const std::array<u64, 8>& bound, int* layer, float* element_depth, float* units_per_meter,
-    float* passthrough_opacity, CameraAnchorParams* anchor) const
+    float* passthrough_opacity, CameraAnchorParams* anchor,
+    ControllerAnchorParams* controller_anchor) const
 {
   if (m_texture_handling.empty())
     return HandlingType::Skip;
@@ -529,6 +565,8 @@ TextureElementManager::HandlingType TextureElementManager::GetHandlingForTexture
       *passthrough_opacity = it->second.passthrough_opacity;
     if (anchor != nullptr)
       *anchor = it->second.anchor;
+    if (controller_anchor != nullptr)
+      *controller_anchor = it->second.controller_anchor;
     return it->second.handling;
   }
   return HandlingType::Skip;

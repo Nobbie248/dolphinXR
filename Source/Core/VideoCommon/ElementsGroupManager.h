@@ -22,6 +22,7 @@ public:
   using HandlingType = ShaderHunter::HandlingType;
   using HuntingOption = ShaderHunter::HuntingOption;
   using CameraAnchorParams = ShaderHunter::CameraAnchorParams;
+  using ControllerAnchorParams = ShaderHunter::ControllerAnchorParams;
 
   enum class PreviewAction
   {
@@ -230,17 +231,6 @@ public:
   // Fills the parameters of the first matching CameraAnchor override.
   // Returns false when none matches the draw.
   bool GetOverrideCameraAnchor(const DrawRecord& draw, CameraAnchorParams* out_params) const;
-  // ControllerAnchor: per-override parameters resolved for a matching draw.
-  struct ControllerAnchorParams
-  {
-    int hand = 1;                   // 0 = left, 1 = right
-    std::array<float, 3> offset{};  // meters: right, up, forward
-    bool rotation = false;          // follow the controller's orientation
-    // Model-axis correction applied in the controller frame (degrees).
-    float yaw_deg = 0.0f;
-    float pitch_deg = 0.0f;
-    float roll_deg = 0.0f;
-  };
   // Fills the parameters of the first matching ControllerAnchor override.
   // Returns false when none matches the draw.
   bool GetOverrideControllerAnchor(const DrawRecord& draw, ControllerAnchorParams* out_params) const;
