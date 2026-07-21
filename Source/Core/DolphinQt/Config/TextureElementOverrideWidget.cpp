@@ -157,8 +157,6 @@ void TextureElementOverrideWidget::UpdateList()
 
     if (ovr.handling == HandlingType::Screen || ovr.handling == HandlingType::HeadLocked)
     {
-      if (ovr.layer >= 0)
-        label += QStringLiteral(" L%1").arg(ovr.layer);
       if (ovr.element_depth >= 0.0f)
         label += QStringLiteral(" D%1").arg(ovr.element_depth, 0, 'f', 4);
     }

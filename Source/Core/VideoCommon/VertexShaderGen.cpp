@@ -14,7 +14,7 @@
 #include "VideoCommon/VideoConfig.h"
 #include "VideoCommon/XFMemory.h"
 
-static constexpr u32 VERTEX_SHADER_CODE_VERSION = 20;
+static constexpr u32 VERTEX_SHADER_CODE_VERSION = 21;
 
 VertexShaderUid GetVertexShaderUid()
 {
@@ -468,11 +468,9 @@ void GenerateVRMultiviewVSProjection(ShaderCode& out, APIType api_type,
   out.Write("\t\to.pos.x = dot(row0, screenPos);\n");
   out.Write("\t\to.pos.y = dot(row1, screenPos);\n");
   out.Write("\t\to.pos.w = max(-screenPos.z, 0.001);\n");
-  out.Write("\t\tfloat layer_idx = max(" I_VR_SCREEN ".w, 0.0);\n");
-  out.Write("\t\tfloat layer_step = max(" I_VR_DEPTH ".x, 0.0);\n");
-  out.Write("\t\tfloat max_safe_step = 0.49 / max(layer_idx + 1.0, 1.0);\n");
-  out.Write("\t\tlayer_step = min(layer_step, max_safe_step);\n");
-  out.Write("\t\to.pos.z = o.pos.w * (0.5 - layer_idx * layer_step + ndc_z_clamped * 0.0001);\n");
+  // Park the geometry mid-range; the real depth comes from the PS export (Exact Screen Depth),
+  // with the tiny game-z term left as the legacy fallback ordering.
+  out.Write("\t\to.pos.z = o.pos.w * (0.5 + ndc_z_clamped * 0.0001);\n");
   // Exact game depth for the PS depth export: remap the console-convention NDC (-1..0) to the
   // backend 0..1 convention, mirroring the trailing capture this branch suppresses.
   out.Write("\t\to.vr_depth = clamp(" I_PIXELCENTERCORRECTION ".w - ndc_z_clamped * "
@@ -516,12 +514,10 @@ void GenerateVRMultiviewVSProjection(ShaderCode& out, APIType api_type,
   out.Write("\t\tfloat clip_y = dot(row1, screenPos);\n");
   out.Write("\t\tfloat clip_w = -z_eye;\n");
   out.Write("\t\to.pos = float4(clip_x, clip_y, 0.0, clip_w);\n");
-  out.Write("\t\tfloat layer_idx = max(" I_VR_SCREEN ".w, 0.0);\n");
-  out.Write("\t\tfloat layer_step = max(" I_VR_DEPTH ".x, 0.0);\n");
-  out.Write("\t\tfloat max_safe_step = 0.49 / max(layer_idx + 1.0, 1.0);\n");
-  out.Write("\t\tlayer_step = min(layer_step, max_safe_step);\n");
-  out.Write("\t\to.pos.z = o.pos.w * (0.5 - layer_idx * layer_step + ndc_z_clamped * " I_VR_DEPTH
-            ".y);\n");
+  // Park the geometry mid-range and spread elements by their own game-space ortho z
+  // (cvr_depth.y = Element Depth). With Exact Screen Depth on (the default) the PS overwrites
+  // this with the game's original depth value; this remains as the legacy fallback.
+  out.Write("\t\to.pos.z = o.pos.w * (0.5 + ndc_z_clamped * " I_VR_DEPTH ".y);\n");
   // Exact game depth for the PS depth export: remap the console-convention NDC (-1..0) to the
   // backend 0..1 convention, mirroring the trailing capture this branch suppresses.
   out.Write("\t\to.vr_depth = clamp(" I_PIXELCENTERCORRECTION ".w - ndc_z_clamped * "

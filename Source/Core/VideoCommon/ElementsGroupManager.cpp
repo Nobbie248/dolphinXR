@@ -757,8 +757,9 @@ LoadElementGroupOverridesFromINIFile(const std::string& path)
                          value == "units_per_meter" || value == "upm" ?
                              HandlingType::UnitsPerMeter :
                              HandlingType::Skip;
-    else if (key == "layer")
-      current.layer = ParseGroupedInt(value);
+    // "layer" (manual depth layer) was removed along with Auto Layer Spread / Layer Offset —
+    // silently ignored so older INIs still load. (Note: "sig_layer" is a different, still
+    // supported key — it is part of the element signature, not the depth layering.)
     else if (key == "element_depth")
       current.element_depth = std::stof(value);
     else if (key == "units_per_meter" || key == "upm")
@@ -944,8 +945,6 @@ void ElementsGroupManager::SaveOverridesToINI(const std::string& game_id,
         << (entry.match_kind == MatchKind::ProfileLayer ? "element_profile_v1" : "element_only_v6")
         << "\n";
     out << "handling=" << GetHandlingName(entry.handling) << "\n";
-    if (entry.layer >= 0)
-      out << "layer=" << entry.layer << "\n";
     if (entry.element_depth >= 0.0f)
       out << "element_depth=" << entry.element_depth << "\n";
     if (entry.units_per_meter > 0.0f)
@@ -1939,20 +1938,6 @@ ElementsGroupManager::HandlingType ElementsGroupManager::GetOverrideHandling(
     }
   }
   return HandlingType::Skip;
-}
-
-int ElementsGroupManager::GetOverrideLayer(const DrawRecord& draw) const
-{
-  std::lock_guard lock(m_mutex);
-  GetStableSubMatchSignatureLocked(draw);
-  for (const auto& entry : m_overrides)
-  {
-    if (entry.layer < 0)
-      continue;
-    if (DoesEntryMatch(entry, draw, true))
-      return entry.layer;
-  }
-  return -1;
 }
 
 float ElementsGroupManager::GetOverrideElementDepth(const DrawRecord& draw) const

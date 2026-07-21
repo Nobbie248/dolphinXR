@@ -86,9 +86,6 @@ private:
   ConfigBool* m_eager_heartbeat = nullptr;
   ConfigBool* m_exact_screen_depth = nullptr;
   ConfigBool* m_auto_native_efb_effects = nullptr;
-  ConfigBool* m_auto_layer_spread = nullptr;
-  ConfigFloatSlider* m_layer_offset = nullptr;
-  QLabel* m_layer_offset_value = nullptr;
   ConfigFloatSlider* m_element_depth = nullptr;
   QLabel* m_element_depth_value = nullptr;
   ConfigFloatSlider* m_hud_thickness = nullptr;

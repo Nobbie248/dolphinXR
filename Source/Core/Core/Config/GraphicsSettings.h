@@ -220,12 +220,10 @@ extern const Info<bool> GFX_VR_PIN_EMULATION_CORES;
 // runtime's SSW/ASW motion smoothing engages; heartbeat only as a keep-alive.
 extern const Info<bool> GFX_VR_EAGER_HEARTBEAT;
 extern const Info<bool> GFX_VR_AUTO_VBI_FROM_HMD;
-extern const Info<bool> GFX_VR_AUTO_LAYER_SPREAD;
 extern const Info<bool> GFX_VR_EXACT_SCREEN_DEPTH;
 // Auto-detect ortho draws sampling EFB copies (bloom, motion blur, post-processing) and render
 // them natively over each eye instead of capturing them onto the 2D Virtual Screen.
 extern const Info<bool> GFX_VR_AUTO_NATIVE_EFB_EFFECTS;
-extern const Info<float> GFX_VR_LAYER_OFFSET;
 extern const Info<float> GFX_VR_ELEMENT_DEPTH;
 extern const Info<float> GFX_VR_HUD_THICKNESS;
 extern const Info<bool> GFX_VR_REMOVE_BARS;
@@ -273,9 +271,6 @@ static constexpr int GFX_VR_FORCED_VBI_FREQUENCY_OFF = 0;
 static constexpr int GFX_VR_FORCED_VBI_FREQUENCY_72 = 72;
 static constexpr int GFX_VR_FORCED_VBI_FREQUENCY_90 = 90;
 static constexpr int GFX_VR_FORCED_VBI_FREQUENCY_120 = 120;
-static constexpr float GFX_VR_LAYER_OFFSET_MIN = 0.0001f;
-static constexpr float GFX_VR_LAYER_OFFSET_MAX = 0.01f;
-static constexpr float GFX_VR_LAYER_OFFSET_STEP = 0.0001f;
 static constexpr float GFX_VR_ELEMENT_DEPTH_MIN = 0.0f;
 static constexpr float GFX_VR_ELEMENT_DEPTH_MAX = 10.0f;
 static constexpr float GFX_VR_ELEMENT_DEPTH_STEP = 0.0001f;

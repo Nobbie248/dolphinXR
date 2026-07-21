@@ -338,11 +338,9 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
           const float dist = upm * g_ActiveConfig.vr_screen_distance;
           const float half_h = upm * g_ActiveConfig.vr_screen_size * 0.5f;
           const float half_w = half_h * (16.0f / 9.0f);
-          // Layer index: use manual override if set, otherwise auto counter.
-          const int layer = (vr_ortho_layer_override >= 0) ? vr_ortho_layer_override
-                                                           : vr_ortho_draw_counter;
-          vr_ortho_layer_override = -1;  // consume
-          constants.vr_screen = {half_w, half_h, dist, static_cast<float>(layer)};
+          // .w is unused since the per-draw depth layering was removed (Exact Screen Depth
+          // reproduces the game's own depth instead of synthesizing layer offsets).
+          constants.vr_screen = {half_w, half_h, dist, 0.0f};
 
           if (perspective)
           {
@@ -518,11 +516,10 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
 
         // For ortho/screen draws, pass depth params via depth_params
         // (depth_params is otherwise unused for non-perspective draws).
-        // .x = layer offset (between draw calls), .y = element depth (within draw call),
+        // .x = unused, .y = element depth (within draw call),
         // .z = HUD thickness in game units (world-space depth spread across the layer's ortho-Z)
         if (constants.stereoparams[3] < -0.5f)
         {
-          constants.depth_params[0] = g_ActiveConfig.vr_layer_offset;
           // Per-override element depth if set, otherwise global
           constants.depth_params[1] = (vr_element_depth_override >= 0.0f)
                                           ? vr_element_depth_override

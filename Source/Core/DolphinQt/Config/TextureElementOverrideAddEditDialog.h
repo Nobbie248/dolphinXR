@@ -56,8 +56,6 @@ private:
   QLineEdit* m_name_edit;
   QPlainTextEdit* m_comments_edit;
   QComboBox* m_handling_combo;
-  QSpinBox* m_layer_spin;
-  QLabel* m_layer_label;
   QDoubleSpinBox* m_element_depth_spin;
   QLabel* m_element_depth_label;
   QDoubleSpinBox* m_units_per_meter_spin;

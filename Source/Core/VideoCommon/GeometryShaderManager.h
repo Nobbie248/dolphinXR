@@ -41,13 +41,6 @@ public:
   // -1.0 = force screen; 0.0 = force fullscreen; 1.0 = force perspective.
   float vr_stereo_override = std::numeric_limits<float>::quiet_NaN();
 
-  // Per-frame counter for ortho/screen draws — used to spread depth and avoid Z-fighting.
-  // Incremented in Flush() for each ortho draw, reset in OnEndFrame().
-  int vr_ortho_draw_counter = 0;
-
-  // Per-draw manual layer override from shader overrides (-1 = use auto counter).
-  int vr_ortho_layer_override = -1;
-
   // Per-draw element depth override from shader overrides (-1 = use global setting).
   float vr_element_depth_override = -1.0f;
 

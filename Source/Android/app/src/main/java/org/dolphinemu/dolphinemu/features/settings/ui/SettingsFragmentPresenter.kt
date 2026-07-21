@@ -2645,19 +2645,10 @@ class SettingsFragmentPresenter(
             R.string.quest_detect_skybox_description
         )
         addBoolean(
-            "AutoLayerSpread",
+            "ExactScreenDepth",
             true,
-            R.string.quest_auto_layer_spread,
-            R.string.quest_auto_layer_spread_description
-        )
-        addFloat(
-            "LayerOffset",
-            0.002f,
-            R.string.quest_layer_offset,
-            R.string.quest_layer_offset_description,
-            0.0001f,
-            0.01f,
-            0.0001f
+            R.string.quest_exact_screen_depth,
+            R.string.quest_exact_screen_depth_description
         )
         addFloat(
             "ElementDepth",
@@ -2992,22 +2983,9 @@ class SettingsFragmentPresenter(
         sl.add(
             SwitchSetting(
                 context,
-                QuestVrSettings.autoLayerSpreadSetting(),
-                R.string.quest_auto_layer_spread,
-                R.string.quest_auto_layer_spread_description
-            )
-        )
-        sl.add(
-            FloatSliderSetting(
-                context,
-                QuestVrSettings.layerOffsetSetting(),
-                R.string.quest_layer_offset,
-                R.string.quest_layer_offset_description,
-                0.0001f,
-                0.01f,
-                "",
-                0.0001f,
-                true
+                QuestVrSettings.exactScreenDepthSetting(),
+                R.string.quest_exact_screen_depth,
+                R.string.quest_exact_screen_depth_description
             )
         )
         sl.add(

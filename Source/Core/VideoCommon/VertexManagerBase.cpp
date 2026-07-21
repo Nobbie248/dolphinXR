@@ -80,8 +80,7 @@ struct MetroidHydraHudSettings
 };
 
 ShaderHunter::RuntimeElementSignature BuildRuntimeElementSignature(const XFMemory& xf_memory,
-                                                                   const BPMemory& bp_memory,
-                                                                   int ortho_layer)
+                                                                   const BPMemory& bp_memory)
 {
   ShaderHunter::RuntimeElementSignature signature;
   signature.valid = true;
@@ -109,7 +108,10 @@ ShaderHunter::RuntimeElementSignature BuildRuntimeElementSignature(const XFMemor
     signature.ortho_right_x100 = static_cast<int>(std::lround(right * 100.0f));
     signature.ortho_top_x100 = static_cast<int>(std::lround(top * 100.0f));
     signature.ortho_bottom_x100 = static_cast<int>(std::lround(bottom * 100.0f));
-    signature.ortho_layer = ortho_layer;
+    // The per-draw ortho layer counter is gone (it only ever advanced under the removed Auto
+    // Layer Spread option). Kept at 0 so existing INIs with sig_use_layer=1/sig_layer=0 —
+    // i.e. every signature captured with the default settings — keep matching.
+    signature.ortho_layer = 0;
   }
 
   const auto& viewport = xf_memory.viewport;
@@ -1144,8 +1146,7 @@ void VertexManagerBase::Flush()
           ShaderHunter::RuntimeElementSignature draw_signature{};
           if (hunter_enabled || elements_runtime_active)
           {
-            draw_signature = BuildRuntimeElementSignature(
-                xfmem, bpmem, system.GetGeometryShaderManager().vr_ortho_draw_counter);
+            draw_signature = BuildRuntimeElementSignature(xfmem, bpmem);
             if (hunter_enabled)
               hunter.SetCurrentDrawSignature(draw_signature);
           }
@@ -1273,7 +1274,6 @@ void VertexManagerBase::Flush()
           if (!hunter_skip && !elements_skip && !texmgr_skip)
           {
             auto handling = ShaderHunter::HandlingType::Skip;
-            int manual_layer = -1;
             float element_depth = -1.0f;
             float units_per_meter = -1.0f;
             float passthrough_opacity = 0.0f;
@@ -1291,7 +1291,6 @@ void VertexManagerBase::Flush()
               if (handling == ShaderHunter::HandlingType::Screen ||
                   handling == ShaderHunter::HandlingType::HeadLocked)
               {
-                manual_layer = elements.GetOverrideLayer(*element_draw);
                 element_depth = elements.GetOverrideElementDepth(*element_draw);
               }
               else if (handling == ShaderHunter::HandlingType::UnitsPerMeter)
@@ -1317,7 +1316,6 @@ void VertexManagerBase::Flush()
               if (handling == ShaderHunter::HandlingType::Screen ||
                   handling == ShaderHunter::HandlingType::HeadLocked)
               {
-                manual_layer = hunter.GetOverrideLayer(vs_hash, ps_hash, gs_hash);
                 element_depth = hunter.GetOverrideElementDepth(vs_hash, ps_hash, gs_hash);
               }
               else if (handling == ShaderHunter::HandlingType::UnitsPerMeter)
@@ -1343,7 +1341,7 @@ void VertexManagerBase::Flush()
             // only when neither Elements nor Shader overrides produced a handling for this draw.
             if (handling == ShaderHunter::HandlingType::Skip && texmgr_has_overrides)
             {
-              handling = texmgr.GetHandlingForTextures(tex_hashes, &manual_layer, &element_depth,
+              handling = texmgr.GetHandlingForTextures(tex_hashes, &element_depth,
                                                        &units_per_meter, &passthrough_opacity,
                                                        &anchor_params, &controller_anchor_params);
             }
@@ -1362,8 +1360,6 @@ void VertexManagerBase::Flush()
             if (handling == ShaderHunter::HandlingType::Screen)
             {
               geometry_shader_manager.vr_stereo_override = -1.0f;
-              if (manual_layer >= 0)
-                geometry_shader_manager.vr_ortho_layer_override = manual_layer;
               if (element_depth >= 0.0f)
                 geometry_shader_manager.vr_element_depth_override = element_depth;
             }
@@ -1404,8 +1400,6 @@ void VertexManagerBase::Flush()
                                                              metroid_hud_context));
                 geometry_shader_manager.vr_metroid_hud_reference_context = metroid_hud_context;
               }
-              if (manual_layer >= 0)
-                geometry_shader_manager.vr_ortho_layer_override = manual_layer;
               if (element_depth >= 0.0f)
                 geometry_shader_manager.vr_element_depth_override = element_depth;
               if (metroid_hydra_hud.enabled)
@@ -1625,8 +1619,6 @@ void VertexManagerBase::Flush()
             const bool color_update = bpmem.blendmode.color_update != 0;
             const bool alpha_update = bpmem.blendmode.alpha_update != 0;
             const bool z_update = bpmem.zmode.update_enable != 0;
-            const int ortho_layer_counter = geometry_shader_manager.vr_ortho_draw_counter;
-            const int ortho_layer_override = geometry_shader_manager.vr_ortho_layer_override;
             if (proj.type == ProjectionType::Orthographic)
             {
               const float* p = proj.rawProjection.data();
@@ -1640,11 +1632,11 @@ void VertexManagerBase::Flush()
                            "VR_DRAW #{}: ORTHO l={:.1f} r={:.1f} t={:.1f} b={:.1f} n={:.1f} "
                            "f={:.1f} | VP({:.0f},{:.0f} {:.0f}x{:.0f}) | SC({},{} {},{})"
                            " | VS={:08x} PS={:08x} GS={:08x} | idx={} col={} alpha={} zt={} "
-                           "z={} zf={} | layer_ctr={} layer_ovr={} | skip={}",
+                           "z={} zf={} | skip={}",
                            m_draw_counter, left, right, top, bottom, znear, zfar, vp.xOrig,
                            vp.yOrig, vp.wd, vp.ht, scTL.x, scTL.y, scBR.x, scBR.y, vs_hash,
                            ps_hash, gs_hash, nidx, color_update, alpha_update, z_test, z_update,
-                           bpmem.zmode.func, ortho_layer_counter, ortho_layer_override, hunter_skip);
+                           bpmem.zmode.func, hunter_skip);
             }
             else
             {
@@ -1657,11 +1649,11 @@ void VertexManagerBase::Flush()
                            "VR_DRAW #{}: PERSP hfov={:.2f} vfov={:.2f} n={:.2f} f={:.2f}"
                            " | VP({:.0f},{:.0f} {:.0f}x{:.0f}) | SC({},{} {},{})"
                            " | VS={:08x} PS={:08x} GS={:08x} | idx={} col={} alpha={} zt={} "
-                           "z={} zf={} | layer_ctr={} layer_ovr={} | skip={}",
+                           "z={} zf={} | skip={}",
                            m_draw_counter, hfov, vfov, n, f, vp.xOrig, vp.yOrig, vp.wd, vp.ht,
                            scTL.x, scTL.y, scBR.x, scBR.y, vs_hash, ps_hash, gs_hash, nidx,
                            color_update, alpha_update, z_test, z_update, bpmem.zmode.func,
-                           ortho_layer_counter, ortho_layer_override, hunter_skip);
+                           hunter_skip);
             }
           }
         }
@@ -1693,33 +1685,6 @@ void VertexManagerBase::Flush()
               geometry_shader_manager.vr_stereo_override = 0.0f;
               break;
             }
-          }
-        }
-
-        // Increment ortho draw counter for depth layering on the VR virtual screen.
-        // Applies to natural ortho draws and draws forced to screen/head-locked by override.
-        // Keep read-only EQUAL passes on the previous layer to preserve multi-pass HUD rendering.
-        if (g_ActiveConfig.vr_auto_layer_spread)
-        {
-          const bool is_ortho = xfmem.projection.type != ProjectionType::Perspective;
-          const bool forced_screen_or_headlocked =
-              !std::isnan(geometry_shader_manager.vr_stereo_override) &&
-              geometry_shader_manager.vr_stereo_override < -0.5f;
-          if (is_ortho || forced_screen_or_headlocked)
-          {
-            const bool z_equal_read_only =
-                bpmem.zmode.test_enable && !bpmem.zmode.update_enable &&
-                bpmem.zmode.func == CompareMode::Equal;
-
-            if (z_equal_read_only && geometry_shader_manager.vr_ortho_layer_override < 0 &&
-                geometry_shader_manager.vr_ortho_draw_counter > 0)
-            {
-              geometry_shader_manager.vr_ortho_layer_override =
-                  geometry_shader_manager.vr_ortho_draw_counter - 1;
-            }
-
-            if (!z_equal_read_only)
-              geometry_shader_manager.vr_ortho_draw_counter++;
           }
         }
 
@@ -2162,8 +2127,6 @@ void VertexManagerBase::OnEndFrame()
   GetMetroidElementClassifier().ResetFrame();
   m_metroid_prime1_combat_context_seen = false;
   m_metroid_prime1_menu_context_seen = false;
-  auto& system = Core::System::GetInstance();
-  system.GetGeometryShaderManager().vr_ortho_draw_counter = 0;
   m_draw_counter = 0;
   m_last_efb_copy_draw_counter = 0;
   m_scheduled_command_buffer_kicks.clear();

@@ -393,7 +393,6 @@ struct VideoConfig final
   bool vr_use_openxr_play_space_center = false;
   bool vr_use_xr_pacing_thread = true;  // Dedicated xrWaitFrame/Begin/EndFrame thread + heartbeat
   bool vr_eager_heartbeat = false;  // Fill every HMD slot (standalone) vs pace to game (PC SSW/ASW)
-  bool vr_auto_layer_spread = false;
   bool vr_remove_bars = true;       // Expand scissor/viewport to remove cinematic letterbox bars
   bool vr_ortho_scissor_fix = true;  // Expand scissor for orthographic VR draws
   bool vr_detect_skybox = false;     // Treat objects drawn at camera origin (0,0,0) as skyboxes
@@ -412,7 +411,6 @@ struct VideoConfig final
   VRPassthroughCoverageMode vr_passthrough_coverage_mode =
       VRPassthroughCoverageMode::Exact;
   float vr_gamma = 1.0f;  // Gamma for VR eye output (1.0=off, 2.2=sRGB, adjustable per headset)
-  float vr_layer_offset = 0.002f;
   float vr_element_depth = 0.001f;
   int vr_clear_efb_min_width = 0;  // 0=disabled, >0=clear EFB copies wider than this
   bool vr_use_vulkan_multiview = true;  // Render OpenXR stereo via VK_KHR_multiview (Quest perf path)

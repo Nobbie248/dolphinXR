@@ -106,15 +106,6 @@ TextureElementOverrideAddEditDialog::TextureElementOverrideAddEditDialog(
          "Passthrough = pixels become a see-through window to the headset camera,\n"
          "Camera Anchor = the VR camera moves to the drawn element (first-person view)."));
 
-  m_layer_label = new QLabel(tr("Layer:"));
-  m_layer_spin = new QSpinBox;
-  m_layer_spin->setRange(-1, 999);
-  m_layer_spin->setSpecialValueText(tr("Auto"));
-  m_layer_spin->setValue(-1);
-  m_layer_spin->setToolTip(tr("Manual depth layer for Screen/Head Locked handling.\n"
-                              "-1 (Auto) = automatic per-draw counter.\n"
-                              "Higher values are closer to camera."));
-
   m_element_depth_label = new QLabel(tr("Element Depth:"));
   m_element_depth_spin = new QDoubleSpinBox;
   m_element_depth_spin->setRange(-1.0, 0.01);
@@ -285,7 +276,6 @@ TextureElementOverrideAddEditDialog::TextureElementOverrideAddEditDialog(
     if (handling_idx >= 0)
       m_handling_combo->setCurrentIndex(handling_idx);
 
-    m_layer_spin->setValue(edit_override->layer);
     m_element_depth_spin->setValue(edit_override->element_depth);
     if (edit_override->units_per_meter > 0.0f)
       m_units_per_meter_spin->setValue(edit_override->units_per_meter);
@@ -334,7 +324,6 @@ TextureElementOverrideAddEditDialog::TextureElementOverrideAddEditDialog(
   auto* form = new QFormLayout;
   form->addRow(tr("Name:"), m_name_edit);
   form->addRow(tr("Handling:"), m_handling_combo);
-  form->addRow(m_layer_label, m_layer_spin);
   form->addRow(m_element_depth_label, m_element_depth_spin);
   form->addRow(m_units_per_meter_label, m_units_per_meter_spin);
   form->addRow(m_passthrough_opacity_label, m_passthrough_opacity_spin);
@@ -380,10 +369,6 @@ TextureElementOverride TextureElementOverrideAddEditDialog::GetResult() const
   result.name = m_name_edit->text().toStdString();
   result.comments = m_comments_edit->toPlainText().trimmed().toStdString();
   result.handling = static_cast<HandlingType>(m_handling_combo->currentData().toInt());
-  result.layer = (result.handling == HandlingType::Screen ||
-                  result.handling == HandlingType::HeadLocked) ?
-                     m_layer_spin->value() :
-                     -1;
   result.element_depth = (result.handling == HandlingType::Screen ||
                           result.handling == HandlingType::HeadLocked) ?
                              static_cast<float>(m_element_depth_spin->value()) :
@@ -485,7 +470,7 @@ void TextureElementOverrideAddEditDialog::OnAccept()
 void TextureElementOverrideAddEditDialog::OnHandlingChanged()
 {
   const auto handling = static_cast<HandlingType>(m_handling_combo->currentData().toInt());
-  const bool show_layer =
+  const bool show_element_depth =
       (handling == HandlingType::Screen || handling == HandlingType::HeadLocked);
   const bool show_units_per_meter = (handling == HandlingType::UnitsPerMeter);
   const bool show_passthrough = (handling == HandlingType::Passthrough);
@@ -493,10 +478,8 @@ void TextureElementOverrideAddEditDialog::OnHandlingChanged()
   const bool show_controller_anchor = (handling == HandlingType::ControllerAnchor);
   const bool show_anchor_offsets = show_anchor || show_controller_anchor;
 
-  m_layer_label->setVisible(show_layer);
-  m_layer_spin->setVisible(show_layer);
-  m_element_depth_label->setVisible(show_layer);
-  m_element_depth_spin->setVisible(show_layer);
+  m_element_depth_label->setVisible(show_element_depth);
+  m_element_depth_spin->setVisible(show_element_depth);
   m_units_per_meter_label->setVisible(show_units_per_meter);
   m_units_per_meter_spin->setVisible(show_units_per_meter);
   m_passthrough_opacity_label->setVisible(show_passthrough);

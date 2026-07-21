@@ -257,8 +257,8 @@ ParsedTextureOverrideFile LoadTextureOverridesFromINIFile(const std::string& pat
 
       if (key == "handling")
         current.handling = HandlingFromString(value);
-      else if (key == "layer")
-        current.layer = std::stoi(value);
+      // "layer" (manual depth layer) was removed along with Auto Layer Spread / Layer Offset —
+      // silently ignored so older INIs still load.
       else if (key == "element_depth")
         current.element_depth = std::stof(value);
       else if (key == "units_per_meter" || key == "upm")
@@ -388,8 +388,6 @@ void TextureElementManager::SaveOverridesToINI(
   {
     out << "$" << ovr.name << "\n";
     out << "handling=" << HandlingToString(ovr.handling) << "\n";
-    if (ovr.layer >= 0)
-      out << "layer=" << ovr.layer << "\n";
     if (ovr.element_depth >= 0.0f)
       out << "element_depth=" << ovr.element_depth << "\n";
     if (ovr.handling == HandlingType::UnitsPerMeter && ovr.units_per_meter > 0.0f)
@@ -473,7 +471,7 @@ void TextureElementManager::LoadOverrides(const std::string& game_id)
     has_overrides = true;
 
     const ResolvedHandling resolved{
-        ovr.handling, ovr.layer, ovr.element_depth, ovr.units_per_meter,
+        ovr.handling, ovr.element_depth, ovr.units_per_meter,
         std::clamp(ovr.passthrough_opacity, 0.0f, 1.0f),
         CameraAnchorParams{.offset = {ovr.anchor_right, ovr.anchor_up, ovr.anchor_forward},
                            .hide = ovr.anchor_hide,
@@ -540,7 +538,7 @@ bool TextureElementManager::ShouldSkipByTexture(const std::array<u64, 8>& bound)
 }
 
 TextureElementManager::HandlingType TextureElementManager::GetHandlingForTextures(
-    const std::array<u64, 8>& bound, int* layer, float* element_depth, float* units_per_meter,
+    const std::array<u64, 8>& bound, float* element_depth, float* units_per_meter,
     float* passthrough_opacity, CameraAnchorParams* anchor,
     ControllerAnchorParams* controller_anchor) const
 {
@@ -555,8 +553,6 @@ TextureElementManager::HandlingType TextureElementManager::GetHandlingForTexture
     if (it == m_texture_handling.end() || it->second.handling == HandlingType::Skip)
       continue;
 
-    if (layer != nullptr)
-      *layer = it->second.layer;
     if (element_depth != nullptr)
       *element_depth = it->second.element_depth;
     if (units_per_meter != nullptr)

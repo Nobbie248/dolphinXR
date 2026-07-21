@@ -99,7 +99,6 @@ public:
     RuntimeElementSignature runtime_element;
     MetroidElementProfile profile_id = MetroidElementProfile::None;
     std::vector<MetroidElementLayer> profile_layers;
-    int layer = -1;
     float element_depth = -1.0f;
     float units_per_meter = -1.0f;
     float passthrough_opacity = 0.0f;  // Passthrough handling: element opacity (0 = fully camera)
@@ -223,7 +222,6 @@ public:
   void RegisterFlagsForDraw(const DrawRecord& draw);
   bool ShouldSkipByOverride(const DrawRecord& draw) const;
   HandlingType GetOverrideHandling(const DrawRecord& draw) const;
-  int GetOverrideLayer(const DrawRecord& draw) const;
   float GetOverrideElementDepth(const DrawRecord& draw) const;
   float GetOverrideUnitsPerMeter(const DrawRecord& draw) const;
   // Returns the opacity for a Passthrough override (0 = fully see-through to the camera).

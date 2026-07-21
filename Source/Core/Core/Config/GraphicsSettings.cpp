@@ -242,11 +242,9 @@ constexpr bool DEFAULT_IMMEDIATE_XFB = false;
 
 const Info<int> GFX_VR_FORCED_VBI_FREQUENCY{{System::GFX, "VR", "ForcedVBIFrequency"}, 0};
 const Info<bool> GFX_VR_AUTO_VBI_FROM_HMD{{System::GFX, "VR", "AutoVBIFromHMD"}, false};
-const Info<bool> GFX_VR_AUTO_LAYER_SPREAD{{System::GFX, "VR", "AutoLayerSpread"}, false};
 const Info<bool> GFX_VR_EXACT_SCREEN_DEPTH{{System::GFX, "VR", "ExactScreenDepth"}, true};
 const Info<bool> GFX_VR_AUTO_NATIVE_EFB_EFFECTS{{System::GFX, "VR", "AutoNativeEfbEffects"},
                                                 true};
-const Info<float> GFX_VR_LAYER_OFFSET{{System::GFX, "VR", "LayerOffset"}, 0.002f};
 const Info<float> GFX_VR_ELEMENT_DEPTH{{System::GFX, "VR", "ElementDepth"}, 0.001f};
 const Info<float> GFX_VR_HUD_THICKNESS{{System::GFX, "VR", "HudThickness"}, 0.0f};
 const Info<bool> GFX_VR_REMOVE_BARS{{System::GFX, "VR", "RemoveCinematicBars"}, true};

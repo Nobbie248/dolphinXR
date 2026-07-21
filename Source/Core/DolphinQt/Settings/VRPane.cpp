@@ -390,35 +390,15 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
          "misdetected and leaves the screen."));
   virtual_screen_layout->addWidget(m_auto_native_efb_effects, 5, 0, 1, 3);
 
-  // Auto Layer Spread
-  m_auto_layer_spread =
-      new ConfigBool(tr("Auto Layer Spread"), Config::GFX_VR_AUTO_LAYER_SPREAD);
-  virtual_screen_layout->addWidget(m_auto_layer_spread, 6, 0, 1, 3);
-
-  m_layer_offset = new ConfigFloatSlider(Config::GFX_VR_LAYER_OFFSET_MIN,
-                                          Config::GFX_VR_LAYER_OFFSET_MAX,
-                                          Config::GFX_VR_LAYER_OFFSET,
-                                          Config::GFX_VR_LAYER_OFFSET_STEP);
-  m_layer_offset_value = new QLabel();
-  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("Layer Offset:"), m_layer_offset), 7,
-                                   0);
-  virtual_screen_layout->addWidget(m_layer_offset, 7, 1);
-  virtual_screen_layout->addWidget(m_layer_offset_value, 7, 2);
-
-  m_layer_offset_value->setText(QString::asprintf("%.4f", m_layer_offset->GetValue()));
-  connect(m_layer_offset, &ConfigFloatSlider::valueChanged, this, [this] {
-    m_layer_offset_value->setText(QString::asprintf("%.4f", m_layer_offset->GetValue()));
-  });
-
   m_element_depth = new ConfigFloatSlider(Config::GFX_VR_ELEMENT_DEPTH_MIN,
                                            Config::GFX_VR_ELEMENT_DEPTH_MAX,
                                            Config::GFX_VR_ELEMENT_DEPTH,
                                            Config::GFX_VR_ELEMENT_DEPTH_STEP);
   m_element_depth_value = new QLabel();
-  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("Element Depth:"), m_element_depth), 8,
+  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("Element Depth:"), m_element_depth), 6,
                                    0);
-  virtual_screen_layout->addWidget(m_element_depth, 8, 1);
-  virtual_screen_layout->addWidget(m_element_depth_value, 8, 2);
+  virtual_screen_layout->addWidget(m_element_depth, 6, 1);
+  virtual_screen_layout->addWidget(m_element_depth_value, 6, 2);
 
   m_element_depth_value->setText(QString::asprintf("%.4f", m_element_depth->GetValue()));
   connect(m_element_depth, &ConfigFloatSlider::valueChanged, this, [this] {
@@ -430,10 +410,10 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
                                           Config::GFX_VR_HUD_THICKNESS,
                                           Config::GFX_VR_HUD_THICKNESS_STEP);
   m_hud_thickness_value = new QLabel();
-  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("HUD Thickness:"), m_hud_thickness), 9,
+  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("HUD Thickness:"), m_hud_thickness), 7,
                                    0);
-  virtual_screen_layout->addWidget(m_hud_thickness, 9, 1);
-  virtual_screen_layout->addWidget(m_hud_thickness_value, 9, 2);
+  virtual_screen_layout->addWidget(m_hud_thickness, 7, 1);
+  virtual_screen_layout->addWidget(m_hud_thickness_value, 7, 2);
 
   auto update_hud_thickness_label = [this] {
     const float val = m_hud_thickness->GetValue();
@@ -705,21 +685,11 @@ void VRPane::AddDescriptions()
       "the closest supported value: 72, 90, or 120 Hz."
       "<br><br>This overrides the Advanced tab's VBI percentage during VR sessions."
       "<br><br><dolphin_emphasis>If unsure, leave this set to Off.</dolphin_emphasis>");
-  static constexpr char TR_AUTO_LAYER_SPREAD_DESCRIPTION[] = QT_TR_NOOP(
-      "Automatically spreads 2D elements (menus, HUD, text) on the virtual screen into separate "
-      "depth layers to prevent Z-fighting."
-      "<br><br>Each ortho draw call gets a unique layer index, with later draws closer to the "
-      "camera. Disable this if you prefer manual layer control via Shader Overrides."
-      "<br><br><dolphin_emphasis>If unsure, leave this checked.</dolphin_emphasis>");
-  static constexpr char TR_LAYER_OFFSET_DESCRIPTION[] = QT_TR_NOOP(
-      "Controls the depth separation between consecutive 2D layers on the virtual screen."
-      "<br><br>Higher values spread layers further apart (stronger Z-fighting fix but may look "
-      "wrong at extreme values). Lower values keep layers closer together."
-      "<br><br>Default: 0.0020");
   static constexpr char TR_ELEMENT_DEPTH_DESCRIPTION[] = QT_TR_NOOP(
       "Controls the depth range within individual 2D elements on the virtual screen."
-      "<br><br>Higher values give more depth separation within each element, fixing Z-fighting "
-      "that appears as flickering inside UI elements. Set to 0 to flatten elements completely."
+      "<br><br>Only used when Exact Screen Depth is disabled. Higher values give more depth "
+      "separation within each element, fixing Z-fighting that appears as flickering inside UI "
+      "elements. Set to 0 to flatten elements completely."
       "<br><br>Default: 0.0010");
   static constexpr char TR_HUD_THICKNESS_DESCRIPTION[] = QT_TR_NOOP(
       "Gives 2D HUD/menu layers real 3D depth in VR by spreading their elements across this "
@@ -843,8 +813,6 @@ void VRPane::AddDescriptions()
   m_layered_palette_conversion_path->SetDescription(
       tr(TR_LAYERED_PALETTE_CONVERSION_PATH_DESCRIPTION));
   m_vr_gamma->SetDescription(tr(TR_VR_GAMMA_DESCRIPTION));
-  m_auto_layer_spread->SetDescription(tr(TR_AUTO_LAYER_SPREAD_DESCRIPTION));
-  m_layer_offset->SetDescription(tr(TR_LAYER_OFFSET_DESCRIPTION));
   m_element_depth->SetDescription(tr(TR_ELEMENT_DEPTH_DESCRIPTION));
   m_hud_thickness->SetDescription(tr(TR_HUD_THICKNESS_DESCRIPTION));
   m_load_custom_shaders->SetDescription(tr(TR_LOAD_CUSTOM_SHADERS_DESCRIPTION));
@@ -913,14 +881,10 @@ void VRPane::ResetGeneralSettings()
   Config::SetBaseOrCurrent(Config::GFX_VR_CLEAR_EFB_COPIES,
                            Config::GFX_VR_CLEAR_EFB_COPIES.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_GAMMA, Config::GFX_VR_GAMMA.GetDefaultValue());
-  Config::SetBaseOrCurrent(Config::GFX_VR_AUTO_LAYER_SPREAD,
-                           Config::GFX_VR_AUTO_LAYER_SPREAD.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_EXACT_SCREEN_DEPTH,
                            Config::GFX_VR_EXACT_SCREEN_DEPTH.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_AUTO_NATIVE_EFB_EFFECTS,
                            Config::GFX_VR_AUTO_NATIVE_EFB_EFFECTS.GetDefaultValue());
-  Config::SetBaseOrCurrent(Config::GFX_VR_LAYER_OFFSET,
-                           Config::GFX_VR_LAYER_OFFSET.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_ELEMENT_DEPTH,
                            Config::GFX_VR_ELEMENT_DEPTH.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_HUD_THICKNESS,

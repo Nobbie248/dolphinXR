@@ -63,8 +63,6 @@ private:
   QLabel* m_profile_layers_label = nullptr;
   QListWidget* m_profile_layers_list = nullptr;
   QComboBox* m_handling_combo = nullptr;
-  QSpinBox* m_layer_spin = nullptr;
-  QLabel* m_layer_label = nullptr;
   QDoubleSpinBox* m_element_depth_spin = nullptr;
   QLabel* m_element_depth_label = nullptr;
   QDoubleSpinBox* m_units_per_meter_spin = nullptr;

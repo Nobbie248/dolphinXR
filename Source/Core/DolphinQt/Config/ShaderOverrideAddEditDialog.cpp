@@ -102,15 +102,6 @@ ShaderOverrideAddEditDialog::ShaderOverrideAddEditDialog(
   m_handling_combo->addItem(tr("Controller Anchor"),
                             static_cast<int>(ShaderHunter::HandlingType::ControllerAnchor));
 
-  m_layer_label = new QLabel(tr("Layer:"));
-  m_layer_spin = new QSpinBox;
-  m_layer_spin->setRange(-1, 999);
-  m_layer_spin->setSpecialValueText(tr("Auto"));
-  m_layer_spin->setValue(-1);
-  m_layer_spin->setToolTip(tr("Manual depth layer for Screen/Head Locked handling.\n"
-                               "-1 (Auto) = automatic per-draw counter.\n"
-                               "Higher values are closer to camera."));
-
   m_element_depth_label = new QLabel(tr("Element Depth:"));
   m_element_depth_spin = new QDoubleSpinBox;
   m_element_depth_spin->setRange(-1.0, 0.01);
@@ -350,7 +341,6 @@ ShaderOverrideAddEditDialog::ShaderOverrideAddEditDialog(
     if (handling_idx >= 0)
       m_handling_combo->setCurrentIndex(handling_idx);
 
-    m_layer_spin->setValue(edit_override->layer);
     m_element_depth_spin->setValue(edit_override->element_depth);
     if (edit_override->units_per_meter > 0.0f)
       m_units_per_meter_spin->setValue(edit_override->units_per_meter);
@@ -427,7 +417,6 @@ ShaderOverrideAddEditDialog::ShaderOverrideAddEditDialog(
   form->addRow(tr("Shader Type:"), m_type_combo);
   form->addRow(m_match_mode_label, m_match_mode_combo);
   form->addRow(tr("Handling:"), m_handling_combo);
-  form->addRow(m_layer_label, m_layer_spin);
   form->addRow(m_element_depth_label, m_element_depth_spin);
   form->addRow(m_units_per_meter_label, m_units_per_meter_spin);
   form->addRow(m_passthrough_opacity_label, m_passthrough_opacity_spin);
@@ -508,9 +497,6 @@ ShaderHunter::ShaderOverride ShaderOverrideAddEditDialog::GetResult() const
   }
   result.handling =
       static_cast<ShaderHunter::HandlingType>(m_handling_combo->currentData().toInt());
-  result.layer = (result.handling == ShaderHunter::HandlingType::Screen ||
-                  result.handling == ShaderHunter::HandlingType::HeadLocked) ?
-                     m_layer_spin->value() : -1;
   result.element_depth = (result.handling == ShaderHunter::HandlingType::Screen ||
                           result.handling == ShaderHunter::HandlingType::HeadLocked) ?
                              static_cast<float>(m_element_depth_spin->value()) : -1.0f;
@@ -655,16 +641,14 @@ void ShaderOverrideAddEditDialog::OnHandlingChanged()
 {
   const auto handling = static_cast<ShaderHunter::HandlingType>(
       m_handling_combo->currentData().toInt());
-  const bool show_layer = (handling == ShaderHunter::HandlingType::Screen ||
-                           handling == ShaderHunter::HandlingType::HeadLocked);
+  const bool show_element_depth = (handling == ShaderHunter::HandlingType::Screen ||
+                                   handling == ShaderHunter::HandlingType::HeadLocked);
   const bool show_units_per_meter = (handling == ShaderHunter::HandlingType::UnitsPerMeter);
   const bool show_passthrough = (handling == ShaderHunter::HandlingType::Passthrough);
   const bool is_flag = (handling == ShaderHunter::HandlingType::Flag);
 
-  m_layer_label->setVisible(show_layer);
-  m_layer_spin->setVisible(show_layer);
-  m_element_depth_label->setVisible(show_layer);
-  m_element_depth_spin->setVisible(show_layer);
+  m_element_depth_label->setVisible(show_element_depth);
+  m_element_depth_spin->setVisible(show_element_depth);
   m_units_per_meter_label->setVisible(show_units_per_meter);
   m_units_per_meter_spin->setVisible(show_units_per_meter);
   m_passthrough_opacity_label->setVisible(show_passthrough);

@@ -193,7 +193,6 @@ public:
     HandlingType handling = HandlingType::Skip;
     MatchMode match_mode = MatchMode::ExactHash;
     RuntimeElementSignature runtime_element;
-    int layer = -1;          // Manual layer index for Screen handling (-1 = auto)
     float element_depth = -1.0f;  // Per-override within-element depth (-1 = use global)
     float units_per_meter = -1.0f;  // Per-override UPM for UnitsPerMeter handling (-1 = global)
     float passthrough_opacity = 0.0f;  // Passthrough handling: element opacity (0 = fully camera)
@@ -247,9 +246,6 @@ public:
   // (Screen/Fullscreen/HeadLocked/UnitsPerMeter),
   // or Skip if no non-skip override matches.
   HandlingType GetOverrideHandling(u64 vs_hash, u64 ps_hash, u64 gs_hash) const;
-
-  // Returns the manual layer for a Screen override (-1 = auto).
-  int GetOverrideLayer(u64 vs_hash, u64 ps_hash, u64 gs_hash) const;
 
   // Returns the per-override element depth (-1 = use global setting).
   float GetOverrideElementDepth(u64 vs_hash, u64 ps_hash, u64 gs_hash) const;
@@ -360,7 +356,6 @@ private:
   std::unordered_set<u64> m_fullscreen_hashes;   // Fullscreen handling (all shader types)
   std::unordered_set<u64> m_headlocked_hashes;   // HeadLocked handling (all shader types)
   std::unordered_map<u64, float> m_units_per_meter_overrides;  // hash -> per-override UPM
-  std::unordered_map<u64, int> m_screen_layers;      // hash → manual layer (-1 = auto)
   std::unordered_map<u64, float> m_element_depths;  // hash → per-override element depth (-1 = global)
   std::unordered_map<u64, float> m_passthrough_opacities;  // hash → Passthrough opacity
   std::unordered_map<u64, CameraAnchorParams> m_camera_anchors;  // hash → CameraAnchor params
@@ -398,7 +393,6 @@ private:
     u64 hash;
     HandlingType handling;
     ShaderType type;
-    int layer;
     float element_depth;
     float units_per_meter;
     float passthrough_opacity;

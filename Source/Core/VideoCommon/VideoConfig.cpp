@@ -230,7 +230,6 @@ void VideoConfig::Refresh()
   {
     vr_reference_space_mode = OpenXRReferenceSpaceMode::Stage;
   }
-  vr_auto_layer_spread = Config::Get(Config::GFX_VR_AUTO_LAYER_SPREAD);
   vr_exact_screen_depth = Config::Get(Config::GFX_VR_EXACT_SCREEN_DEPTH);
   vr_auto_native_efb_effects = Config::Get(Config::GFX_VR_AUTO_NATIVE_EFB_EFFECTS);
   vr_remove_bars = Config::Get(Config::GFX_VR_REMOVE_BARS);
@@ -248,9 +247,6 @@ void VideoConfig::Refresh()
   vr_passthrough_coverage_mode = Config::Get(Config::GFX_VR_PASSTHROUGH_COVERAGE_MODE);
   vr_gamma = std::clamp(Config::Get(Config::GFX_VR_GAMMA),
                         Config::GFX_VR_GAMMA_MIN, Config::GFX_VR_GAMMA_MAX);
-  vr_layer_offset = std::clamp(Config::Get(Config::GFX_VR_LAYER_OFFSET),
-                                Config::GFX_VR_LAYER_OFFSET_MIN,
-                                Config::GFX_VR_LAYER_OFFSET_MAX);
   vr_element_depth = std::clamp(Config::Get(Config::GFX_VR_ELEMENT_DEPTH),
                                 Config::GFX_VR_ELEMENT_DEPTH_MIN,
                                 Config::GFX_VR_ELEMENT_DEPTH_MAX);

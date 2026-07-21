@@ -242,8 +242,6 @@ void ShaderOverrideWidget::UpdateList()
     if (ovr.handling == ShaderHunter::HandlingType::Screen ||
         ovr.handling == ShaderHunter::HandlingType::HeadLocked)
     {
-      if (ovr.layer >= 0)
-        label += QStringLiteral(" L%1").arg(ovr.layer);
       if (ovr.element_depth >= 0.0f)
         label += QStringLiteral(" D%1").arg(ovr.element_depth, 0, 'f', 4);
     }

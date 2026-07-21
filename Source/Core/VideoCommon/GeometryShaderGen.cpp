@@ -48,7 +48,7 @@ GeometryShaderUid GetGeometryShaderUid(PrimitiveType primitive_type)
   GeometryShaderUid out;
 
   geometry_shader_uid_data* const uid_data = out.GetUidData();
-  uid_data->code_version = 36;
+  uid_data->code_version = 37;
   uid_data->primitive_type = static_cast<u32>(primitive_type);
   uid_data->numTexGens = xfmem.numTexGen.numTexGens;
 
@@ -390,13 +390,9 @@ ShaderCode GenerateGeometryShaderCode(APIType api_type, const ShaderHostConfig& 
       out.Write("\t\tf.pos.x = dot(row0, screenPos);\n");
       out.Write("\t\tf.pos.y = dot(row1, screenPos);\n");
       out.Write("\t\tf.pos.w = max(-screenPos.z, 0.001);\n");
-      out.Write("\t\tfloat layer_idx = max(" I_VR_SCREEN ".w, 0.0);\n");
-      out.Write("\t\tfloat layer_step = max(" I_VR_DEPTH ".x, 0.0);\n");
-      out.Write(
-          "\t\tfloat max_safe_step = 0.49 / max(layer_idx + 1.0, 1.0);\n");
-      out.Write("\t\tlayer_step = min(layer_step, max_safe_step);\n");
-      out.Write(
-          "\t\tf.pos.z = f.pos.w * (0.5 - layer_idx * layer_step + ndc_z_clamped * 0.0001);\n");
+      // Park the geometry mid-range; the real depth comes from the PS export (Exact Screen
+      // Depth), with the tiny game-z term left as the legacy fallback ordering.
+      out.Write("\t\tf.pos.z = f.pos.w * (0.5 + ndc_z_clamped * 0.0001);\n");
       if (!host_config.fast_depth_calc)
         out.Write("\t\tf.clipPos = f.pos;\n");
       if (!host_config.backend_clip_control)
@@ -458,17 +454,10 @@ ShaderCode GenerateGeometryShaderCode(APIType api_type, const ShaderHostConfig& 
       if (!host_config.fast_depth_calc)
         out.Write("\t\tf.clipPos = float4(clip_x, clip_y, 0.0, clip_w);\n");
       out.Write("\t\tf.pos = float4(clip_x, clip_y, 0.0, clip_w);\n");
-      // Depth: use per-draw layer counter to spread ortho elements apart.
-      // Later draws (higher layer index) get smaller z = closer to camera.
-      // cvr_depth.x = layer offset (between draws); cvr_depth.y = element depth (within draw).
-      out.Write("\t\tfloat layer_idx = max(" I_VR_SCREEN ".w, 0.0);\n");
-      out.Write("\t\tfloat layer_step = max(" I_VR_DEPTH ".x, 0.0);\n");
-      out.Write(
-          "\t\tfloat max_safe_step = 0.49 / max(layer_idx + 1.0, 1.0);\n");
-      out.Write("\t\tlayer_step = min(layer_step, max_safe_step);\n");
-      out.Write(
-          "\t\tf.pos.z = f.pos.w * (0.5 - layer_idx * layer_step + ndc_z_clamped * " I_VR_DEPTH
-          ".y);\n");
+      // Depth: park the geometry mid-range and spread elements by their own game-space ortho z
+      // (cvr_depth.y = Element Depth). With Exact Screen Depth on (the default) the PS overwrites
+      // this with the game's original depth value; this remains as the legacy fallback.
+      out.Write("\t\tf.pos.z = f.pos.w * (0.5 + ndc_z_clamped * " I_VR_DEPTH ".y);\n");
       if (!host_config.backend_clip_control)
         out.Write("\t\tf.pos.z = f.pos.z * 2.0 - f.pos.w;\n");
       out.Write("\t\tf.pos.xy *= sign(" I_VR_PIXELCENTER ".xy * float2(1.0, -1.0));\n");

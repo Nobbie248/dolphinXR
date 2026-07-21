@@ -242,12 +242,6 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
       tr("Controller Anchor"),
       static_cast<int>(ElementsGroupManager::HandlingType::ControllerAnchor));
 
-  m_layer_label = new QLabel(tr("Layer:"));
-  m_layer_spin = new QSpinBox;
-  m_layer_spin->setRange(-1, 255);
-  m_layer_spin->setSpecialValueText(tr("Default"));
-  m_layer_spin->setValue(-1);
-
   m_element_depth_label = new QLabel(tr("Element Depth:"));
   m_element_depth_spin = new QDoubleSpinBox;
   m_element_depth_spin->setRange(-1.0, 1000.0);
@@ -473,7 +467,6 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
   form->addRow(m_profile_label, m_profile_combo);
   form->addRow(m_profile_layers_label, m_profile_layers_list);
   form->addRow(tr("Handling:"), m_handling_combo);
-  form->addRow(m_layer_label, m_layer_spin);
   form->addRow(m_element_depth_label, m_element_depth_spin);
   form->addRow(m_units_per_meter_label, m_units_per_meter_spin);
   form->addRow(m_passthrough_opacity_label, m_passthrough_opacity_spin);
@@ -582,7 +575,6 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
       if (handling_idx >= 0)
         m_handling_combo->setCurrentIndex(handling_idx);
     }
-    m_layer_spin->setValue(edit_override->layer);
     m_element_depth_spin->setValue(edit_override->element_depth);
     if (edit_override->units_per_meter > 0.0f)
       m_units_per_meter_spin->setValue(edit_override->units_per_meter);
@@ -675,7 +667,6 @@ ElementsGroupManager::ElementGroupOverride ElementsGroupOverrideAddEditDialog::G
   result.runtime_element = m_runtime_element;
   result.profile_id = static_cast<MetroidElementProfile>(m_profile_combo->currentData().toInt());
   result.profile_layers = CollectProfileLayers();
-  result.layer = m_layer_spin->value();
   result.element_depth = m_element_depth_spin->value();
   result.units_per_meter = m_units_per_meter_spin->value() > 0.0 ? m_units_per_meter_spin->value() :
                                                                   -1.0f;
@@ -869,8 +860,8 @@ void ElementsGroupOverrideAddEditDialog::RefreshHandlingUi()
 {
   const auto handling = static_cast<ElementsGroupManager::HandlingType>(
       m_handling_combo->currentData().toInt());
-  const bool show_layer = (handling == ElementsGroupManager::HandlingType::Screen ||
-                           handling == ElementsGroupManager::HandlingType::HeadLocked);
+  const bool show_element_depth = (handling == ElementsGroupManager::HandlingType::Screen ||
+                                   handling == ElementsGroupManager::HandlingType::HeadLocked);
   const bool show_units_per_meter =
       (handling == ElementsGroupManager::HandlingType::UnitsPerMeter);
   const bool show_passthrough = (handling == ElementsGroupManager::HandlingType::Passthrough);
@@ -880,10 +871,8 @@ void ElementsGroupOverrideAddEditDialog::RefreshHandlingUi()
   const bool show_anchor_offsets = show_anchor || show_controller_anchor;
   const bool is_flag = (handling == ElementsGroupManager::HandlingType::Flag);
 
-  m_layer_label->setVisible(show_layer);
-  m_layer_spin->setVisible(show_layer);
-  m_element_depth_label->setVisible(show_layer);
-  m_element_depth_spin->setVisible(show_layer);
+  m_element_depth_label->setVisible(show_element_depth);
+  m_element_depth_spin->setVisible(show_element_depth);
   m_units_per_meter_label->setVisible(show_units_per_meter);
   m_units_per_meter_spin->setVisible(show_units_per_meter);
   m_passthrough_opacity_label->setVisible(show_passthrough);

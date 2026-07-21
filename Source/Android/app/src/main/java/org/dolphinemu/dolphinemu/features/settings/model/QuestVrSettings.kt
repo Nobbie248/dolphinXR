@@ -70,9 +70,7 @@ object QuestVrSettings {
 
     fun vrGammaSetting() = vrFloatSetting("Gamma", 1.0f)
 
-    fun autoLayerSpreadSetting() = vrBooleanSetting("AutoLayerSpread", true)
-
-    fun layerOffsetSetting() = vrFloatSetting("LayerOffset", 0.002f)
+    fun exactScreenDepthSetting() = vrBooleanSetting("ExactScreenDepth", true)
 
     fun elementDepthSetting() = vrFloatSetting("ElementDepth", 0.001f)
 
@@ -152,7 +150,7 @@ object QuestVrSettings {
         IntSetting.GFX_EFB_SCALE.setInt(settings, 4)
         BooleanSetting.GFX_WAIT_FOR_SHADERS_BEFORE_STARTING.setBoolean(settings, false)
         BooleanSetting.MAIN_SHOW_INPUT_OVERLAY.setBoolean(settings, false)
-        autoLayerSpreadSetting().setBoolean(settings, true)
+        exactScreenDepthSetting().setBoolean(settings, true)
         androidDirectToHmdSetting().setBoolean(settings, true)
         removeBarsSetting().setBoolean(settings, true)
         virtualScreenSetting().setBoolean(settings, false)

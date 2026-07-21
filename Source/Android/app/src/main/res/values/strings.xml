@@ -834,10 +834,8 @@ It can efficiently compress both junk data and encrypted Wii data.
     <string name="quest_screen_size_description">Controls the size of the virtual screen used for 2D content.</string>
     <string name="quest_head_locked_curvature">Head Locked Curvature</string>
     <string name="quest_head_locked_curvature_description">Curves head-locked virtual screens so they wrap more around the viewer.</string>
-    <string name="quest_auto_layer_spread">Auto Layer Spread</string>
-    <string name="quest_auto_layer_spread_description">Automatically spreads 2D elements across depth layers to reduce Z-fighting.</string>
-    <string name="quest_layer_offset">Layer Offset</string>
-    <string name="quest_layer_offset_description">Controls the depth separation between consecutive 2D layers on the virtual screen.</string>
+    <string name="quest_exact_screen_depth">Exact Screen Depth</string>
+    <string name="quest_exact_screen_depth_description">Writes the game\'s original depth values on the 2D Virtual Screen, eliminating Z-fighting between menu elements.</string>
     <string name="quest_element_depth">Element Depth</string>
     <string name="quest_element_depth_description">Controls the depth range within individual 2D elements on the virtual screen.</string>
     <string name="quest_controller_preset">Default controller preset</string>

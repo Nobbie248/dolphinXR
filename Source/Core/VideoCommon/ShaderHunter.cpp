@@ -903,10 +903,8 @@ LoadShaderOverridesFromINIFile(const std::string& path)
         else
           current.handling = HandlingType::Skip;
       }
-      else if (key == "layer")
-      {
-        current.layer = std::stoi(value);
-      }
+      // "layer" (manual depth layer) was removed along with Auto Layer Spread / Layer Offset —
+      // silently ignored so older INIs still load.
       else if (key == "element_depth")
       {
         current.element_depth = std::stof(value);
@@ -1149,8 +1147,6 @@ void ShaderHunter::SaveOverridesToINI(const std::string& game_id,
     out << "match_mode="
         << (ovr.match_mode == MatchMode::ShaderFamily ? "shader_family" : "exact_hash") << "\n";
     out << "handling=" << handling_str << "\n";
-    if (ovr.layer >= 0)
-      out << "layer=" << ovr.layer << "\n";
     if (ovr.element_depth >= 0.0f)
       out << "element_depth=" << ovr.element_depth << "\n";
     if (ovr.handling == HandlingType::UnitsPerMeter && ovr.units_per_meter > 0.0f)
@@ -1237,7 +1233,6 @@ void ShaderHunter::LoadOverrides(const std::string& game_id)
   m_fullscreen_hashes.clear();
   m_headlocked_hashes.clear();
   m_units_per_meter_overrides.clear();
-  m_screen_layers.clear();
   m_element_depths.clear();
   m_passthrough_opacities.clear();
   m_camera_anchors.clear();
@@ -1292,7 +1287,7 @@ void ShaderHunter::LoadOverrides(const std::string& game_id)
       if (!ovr.texture_hashes.empty())
         m_has_texture_overrides = true;
       m_conditional_overrides.push_back(
-          {ovr.hash, ovr.handling, ovr.type, ovr.layer, ovr.element_depth, ovr.units_per_meter,
+          {ovr.hash, ovr.handling, ovr.type, ovr.element_depth, ovr.units_per_meter,
            ovr.passthrough_opacity, MakeCameraAnchorParams(ovr), MakeControllerAnchorParams(ovr),
            ovr.texture_hashes, ovr.texture_hashes_excluded, ovr.hash_family_match,
            ovr.family_signature, ovr.family_version, ovr.condition_flag, ovr.condition_inverted});
@@ -1321,8 +1316,6 @@ void ShaderHunter::LoadOverrides(const std::string& game_id)
       break;
     case HandlingType::Screen:
       m_screen_hashes.insert(ovr.hash);
-      if (ovr.layer >= 0)
-        m_screen_layers[ovr.hash] = ovr.layer;
       if (ovr.element_depth >= 0.0f)
         m_element_depths[ovr.hash] = ovr.element_depth;
       break;
@@ -1336,8 +1329,6 @@ void ShaderHunter::LoadOverrides(const std::string& game_id)
       m_headlocked_hashes.insert(ovr.hash);
       if (ovr.element_depth >= 0.0f)
         m_element_depths[ovr.hash] = ovr.element_depth;
-      if (ovr.layer >= 0)
-        m_screen_layers[ovr.hash] = ovr.layer;
       break;
     case HandlingType::UnitsPerMeter:
       if (ovr.units_per_meter > 0.0f)
@@ -1854,36 +1845,6 @@ ShaderHunter::HandlingType ShaderHunter::GetOverrideHandling(u64 vs_hash, u64 ps
   }
 
   return result;
-}
-
-int ShaderHunter::GetOverrideLayer(u64 vs_hash, u64 ps_hash, u64 gs_hash) const
-{
-  if (ShouldBypassSelectedOverrideForTextureTool(vs_hash, ps_hash, gs_hash))
-    return -1;
-
-  // Unconditional layers
-  for (u64 h : {vs_hash, ps_hash, gs_hash})
-  {
-    auto it = m_screen_layers.find(h);
-    if (it != m_screen_layers.end())
-      return it->second;
-  }
-
-  // Conditional layers
-  for (const auto& cond : m_conditional_overrides)
-  {
-    if (cond.layer < 0)
-      continue;
-    if (!IsConditionalHashMatch(cond, vs_hash, ps_hash, gs_hash))
-      continue;
-    if (!IsConditionFlagMatch(cond))
-      continue;
-    if (!DoesTextureFilterPass(m_current_draw_textures, cond.texture_hashes,
-                               cond.texture_hashes_excluded))
-      continue;
-    return cond.layer;
-  }
-  return -1;  // auto
 }
 
 float ShaderHunter::GetOverrideElementDepth(u64 vs_hash, u64 ps_hash, u64 gs_hash) const

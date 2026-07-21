@@ -45,7 +45,6 @@ public:
     std::string name;
     std::string comments;
     HandlingType handling = HandlingType::Skip;
-    int layer = -1;                 // Manual layer for Screen/HeadLocked (-1 = auto)
     float element_depth = -1.0f;    // Per-override within-element depth (-1 = global)
     float units_per_meter = -1.0f;  // Per-override UPM for UnitsPerMeter handling (-1 = global)
     float passthrough_opacity = 0.0f;  // Passthrough handling: element opacity (0 = fully camera)
@@ -88,10 +87,10 @@ public:
   // True if any bound texture maps to a Skip override.
   bool ShouldSkipByTexture(const std::array<u64, 8>& bound) const;
   // Handling for the first bound texture with a non-Skip override (Skip if none). Out-params are
-  // filled for Screen/HeadLocked (layer, element_depth), UnitsPerMeter (units_per_meter),
+  // filled for Screen/HeadLocked (element_depth), UnitsPerMeter (units_per_meter),
   // Passthrough (passthrough_opacity), CameraAnchor (anchor) and ControllerAnchor
   // (controller_anchor).
-  HandlingType GetHandlingForTextures(const std::array<u64, 8>& bound, int* layer,
+  HandlingType GetHandlingForTextures(const std::array<u64, 8>& bound,
                                       float* element_depth, float* units_per_meter,
                                       float* passthrough_opacity, CameraAnchorParams* anchor,
                                       ControllerAnchorParams* controller_anchor) const;
@@ -121,7 +120,6 @@ private:
   struct ResolvedHandling
   {
     HandlingType handling = HandlingType::Skip;
-    int layer = -1;
     float element_depth = -1.0f;
     float units_per_meter = -1.0f;
     float passthrough_opacity = 0.0f;
