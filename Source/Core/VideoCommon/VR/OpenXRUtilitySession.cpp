@@ -32,12 +32,33 @@
 #include <imgui_impl_vulkan.h>
 #include <openxr/openxr_platform.h>
 
+// On Linux, VulkanLoader.h defines VK_USE_PLATFORM_XLIB_KHR, so <vulkan/vulkan.h> pulls in
+// <X11/Xlib.h>, which #defines None/Bool/Status/etc. as macros. Undo them before including the
+// Dolphin headers below that use those names as identifiers (e.g. WiimoteSource::None,
+// SettingType::Bool), matching the #undef pattern already used in BPMemory.h/XFMemory.h.
+#ifdef None
+#undef None
+#endif
+#ifdef Bool
+#undef Bool
+#endif
+#ifdef Status
+#undef Status
+#endif
+#ifdef Success
+#undef Success
+#endif
+#ifdef Always
+#undef Always
+#endif
+
 #include "Common/CommonPaths.h"
 #include "Common/FileUtil.h"
 #include "Common/Logging/Log.h"
 #include "Common/MsgHandler.h"
 #include "Common/VR/OpenXRInputState.h"
 #include "Core/Core.h"
+#include "Core/HW/GCPad.h"
 #include "Core/HW/Wiimote.h"
 #include "Core/System.h"
 #include "InputCommon/ControlReference/ControlReference.h"
@@ -227,27 +248,32 @@ class BindingWizard
 public:
   using Result = OpenXRBindingWizardModel::Result;
 
-  explicit BindingWizard(int port) : m_port(port)
+  explicit BindingWizard(OpenXRUtilitySessionTarget target) : m_target(target)
   {
-    InputConfig* config = Wiimote::GetConfig();
-    m_controller = config ? config->GetController(port) : nullptr;
+    InputConfig* config = target.type == OpenXRUtilitySessionTargetType::WiiRemote ?
+                              Wiimote::GetConfig() :
+                              Pad::GetConfig();
+    m_controller = config ? config->GetController(target.port) : nullptr;
     if (!m_controller)
       return;
 
     AddMappableControls(*m_controller, &m_controls);
-    for (const auto& group : m_controller->groups)
+    if (target.type == OpenXRUtilitySessionTargetType::WiiRemote)
     {
-      if (group->type != ControllerEmu::GroupType::Attachments)
-        continue;
-      auto* attachments = static_cast<ControllerEmu::Attachments*>(group.get());
-      const auto selected = attachments->GetSelectedAttachment();
-      const auto& list = attachments->GetAttachmentList();
-      if (selected < list.size())
+      for (const auto& group : m_controller->groups)
       {
-        AddMappableControls(*list[selected], &m_controls,
-                            Common::GetStringT(list[selected]->GetDisplayName().c_str()));
+        if (group->type != ControllerEmu::GroupType::Attachments)
+          continue;
+        auto* attachments = static_cast<ControllerEmu::Attachments*>(group.get());
+        const auto selected = attachments->GetSelectedAttachment();
+        const auto& list = attachments->GetAttachmentList();
+        if (selected < list.size())
+        {
+          AddMappableControls(*list[selected], &m_controls,
+                              Common::GetStringT(list[selected]->GetDisplayName().c_str()));
+        }
+        break;
       }
-      break;
     }
 
     BuildGroupColumns();
@@ -274,7 +300,10 @@ public:
     ImGui::Begin("OpenXR Controller Mapper", nullptr, flags);
 
     ImGui::SetCursorPos({45.0f, 28.0f});
-    ImGui::Text("OpenXR Wii Remote %d", m_port + 1);
+    if (m_target.type == OpenXRUtilitySessionTargetType::WiiRemote)
+      ImGui::Text("OpenXR Wii Remote %d", m_target.port + 1);
+    else
+      ImGui::Text("OpenXR GameCube Standard Controller %d", m_target.port + 1);
     ImGui::SetCursorPos({45.0f, 68.0f});
     ImGui::TextDisabled("Select any control to listen for a new OpenXR input");
 
@@ -359,7 +388,7 @@ public:
   OpenXRPendingBindings BuildPendingBindings() const
   {
     OpenXRPendingBindings pending;
-    pending.wiimote_port = m_port;
+    pending.target = m_target;
     pending.default_device = OPENXR_DEVICE;
     pending.bindings.reserve(m_controls.size());
     const auto& expressions = m_model->GetExpressions();
@@ -504,7 +533,7 @@ private:
     m_suppress_ui_clicks = true;
   }
 
-  int m_port;
+  OpenXRUtilitySessionTarget m_target;
   ControllerEmu::EmulatedController* m_controller = nullptr;
   std::vector<MappableControl> m_controls;
   std::array<std::vector<MappableGroup>, 3> m_group_columns;
@@ -562,7 +591,7 @@ struct OpenXRUtilitySession::Impl
   OpenXRUtilitySession& owner;
   std::thread thread;
   std::atomic<bool> stop_requested{false};
-  int port = -1;
+  OpenXRUtilitySessionTarget target;
 
   std::unique_ptr<OpenXRManager> manager;
   std::unique_ptr<Vulkan::VulkanContext> vulkan;
@@ -1179,11 +1208,11 @@ struct OpenXRUtilitySession::Impl
   void ThreadMain()
   {
     Common::VR::OpenXRInputState::Reset();
-    BindingWizard wizard(port);
+    BindingWizard wizard(target);
     if (!wizard.IsValid())
     {
       Fail(OpenXRUtilitySessionFailure::InitializationFailed,
-           "selected Wii Remote has no bindable controls");
+           "selected controller has no bindable controls");
       Cleanup();
       return;
     }
@@ -1287,7 +1316,7 @@ OpenXRUtilitySession::~OpenXRUtilitySession()
   Stop();
 }
 
-bool OpenXRUtilitySession::Start(int wiimote_port)
+bool OpenXRUtilitySession::Start(OpenXRUtilitySessionTarget target)
 {
   Stop();
   {
@@ -1298,7 +1327,7 @@ bool OpenXRUtilitySession::Start(int wiimote_port)
   m_failure.store(OpenXRUtilitySessionFailure::None, std::memory_order_release);
   m_state.store(OpenXRUtilitySessionState::Starting, std::memory_order_release);
 
-  if (wiimote_port < 0 || wiimote_port >= 4 ||
+  if (target.port < 0 || target.port >= 4 ||
       Core::GetState(Core::System::GetInstance()) != Core::State::Uninitialized || g_openxr)
   {
     m_failure.store(OpenXRUtilitySessionFailure::SessionBusy, std::memory_order_release);
@@ -1314,10 +1343,15 @@ bool OpenXRUtilitySession::Start(int wiimote_port)
     return false;
   }
 
-  m_impl->port = wiimote_port;
+  m_impl->target = target;
   m_impl->stop_requested.store(false, std::memory_order_release);
   m_impl->thread = std::thread(&Impl::ThreadMain, m_impl.get());
   return true;
+}
+
+bool OpenXRUtilitySession::Start(int wiimote_port)
+{
+  return Start({OpenXRUtilitySessionTargetType::WiiRemote, wiimote_port});
 }
 
 void OpenXRUtilitySession::RequestStop()

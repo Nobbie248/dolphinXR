@@ -80,6 +80,7 @@
 namespace
 {
 constexpr const char* OPENXR_WIIMOTE_DEFAULT_PROFILE = "OpenXR Wii Remote.ini";
+constexpr const char* OPENXR_CONTROLLER_DEVICE = "OpenXR/0/OpenXR Controller";
 }
 
 MappingWindow::MappingWindow(QWidget* parent, Type type, int port_num)
@@ -114,11 +115,19 @@ MappingWindow::MappingWindow(QWidget* parent, Type type, int port_num)
   emit ConfigChanged();
 
 #if defined(ENABLE_VR) && defined(HAS_VULKAN)
-  if (m_mapping_type == Type::MAPPING_WIIMOTE_EMU && m_is_openxr_wiimote)
+  const bool is_openxr_wiimote_mapper =
+      m_mapping_type == Type::MAPPING_WIIMOTE_EMU && m_is_openxr_wiimote;
+  const bool is_gamecube_mapper = m_mapping_type == Type::MAPPING_GCPAD;
+  if (is_openxr_wiimote_mapper || is_gamecube_mapper)
   {
-    m_openxr_config_session_controller = new OpenXRWiimoteConfigSessionController(this, m_port);
+    using TargetType = OpenXRWiimoteConfigSessionController::TargetType;
+    const TargetType target_type =
+        is_openxr_wiimote_mapper ? TargetType::WiiRemote : TargetType::GameCubeController;
+    m_openxr_config_session_controller =
+        new OpenXRWiimoteConfigSessionController(this, m_port, target_type);
     if (auto* outer = qobject_cast<QVBoxLayout*>(m_devices_box->layout()))
       outer->addWidget(m_openxr_config_session_controller->GetButton(), 0);
+    UpdateOpenXRConfigButtonVisibility();
   }
 #endif
 
@@ -295,6 +304,8 @@ void MappingWindow::ConnectWidgets()
   connect(&Settings::Instance(), &Settings::DevicesChanged, this, &MappingWindow::ConfigChanged);
   connect(this, &MappingWindow::ConfigChanged, this, &MappingWindow::UpdateDeviceList);
   connect(m_devices_combo, &QComboBox::currentIndexChanged, this, &MappingWindow::OnSelectDevice);
+  connect(m_devices_combo, &QComboBox::currentIndexChanged, this,
+          &MappingWindow::UpdateOpenXRConfigButtonVisibility);
 
   connect(m_reset_clear, &QPushButton::clicked, this, &MappingWindow::OnClearFieldsPressed);
   connect(m_reset_default, &QPushButton::clicked, this, &MappingWindow::OnDefaultFieldsPressed);
@@ -524,6 +535,20 @@ void MappingWindow::UpdateDeviceList()
       m_devices_combo->setCurrentIndex(m_devices_combo->count() - 1);
     }
   }
+
+  UpdateOpenXRConfigButtonVisibility();
+}
+
+void MappingWindow::UpdateOpenXRConfigButtonVisibility()
+{
+  if (!m_openxr_config_session_controller)
+    return;
+
+  const bool visible =
+      m_mapping_type == Type::MAPPING_WIIMOTE_EMU ||
+      (m_mapping_type == Type::MAPPING_GCPAD &&
+       m_devices_combo->currentData().toString() == QString::fromLatin1(OPENXR_CONTROLLER_DEVICE));
+  m_openxr_config_session_controller->GetButton()->setVisible(visible);
 }
 
 void MappingWindow::SetMappingType(MappingWindow::Type type)

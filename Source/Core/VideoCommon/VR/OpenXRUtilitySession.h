@@ -37,6 +37,18 @@ enum class OpenXRUtilitySessionFailure : uint8_t
   SessionLost,
 };
 
+enum class OpenXRUtilitySessionTargetType : uint8_t
+{
+  WiiRemote,
+  GameCubeController,
+};
+
+struct OpenXRUtilitySessionTarget
+{
+  OpenXRUtilitySessionTargetType type = OpenXRUtilitySessionTargetType::WiiRemote;
+  int port = -1;
+};
+
 struct OpenXRPendingBinding
 {
   ControlReference* reference = nullptr;
@@ -45,7 +57,7 @@ struct OpenXRPendingBinding
 
 struct OpenXRPendingBindings
 {
-  int wiimote_port = -1;
+  OpenXRUtilitySessionTarget target;
   std::string default_device;
   std::vector<OpenXRPendingBinding> bindings;
 };
@@ -62,6 +74,7 @@ public:
   OpenXRUtilitySession(const OpenXRUtilitySession&) = delete;
   OpenXRUtilitySession& operator=(const OpenXRUtilitySession&) = delete;
 
+  bool Start(OpenXRUtilitySessionTarget target);
   bool Start(int wiimote_port);
   void RequestStop();
   void Stop();

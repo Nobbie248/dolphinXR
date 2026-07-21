@@ -24,7 +24,13 @@ class OpenXRWiimoteConfigSessionController final : public QObject
   Q_OBJECT
 
 public:
-  OpenXRWiimoteConfigSessionController(MappingWindow* window, int port);
+  enum class TargetType
+  {
+    WiiRemote,
+    GameCubeController,
+  };
+
+  OpenXRWiimoteConfigSessionController(MappingWindow* window, int port, TargetType target_type);
   ~OpenXRWiimoteConfigSessionController() override;
 
   QPushButton* GetButton() const;
@@ -38,6 +44,7 @@ private:
 
   QPointer<MappingWindow> m_window;
   const int m_port;
+  const TargetType m_target_type;
   QPointer<QPushButton> m_button;
   QTimer* const m_status_timer;
 #if defined(ENABLE_VR) && defined(HAS_VULKAN)

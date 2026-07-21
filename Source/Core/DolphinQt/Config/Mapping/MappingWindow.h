@@ -97,6 +97,7 @@ private:
   void UpdateProfileButtonState();
   void PopulateProfileSelection();
   void UpdateDeviceList();
+  void UpdateOpenXRConfigButtonVisibility();
 
   void OnDefaultFieldsPressed();
   void OnClearFieldsPressed();

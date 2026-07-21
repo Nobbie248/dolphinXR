@@ -21,8 +21,9 @@
 #endif
 
 OpenXRWiimoteConfigSessionController::OpenXRWiimoteConfigSessionController(MappingWindow* window,
-                                                                           int port)
-    : QObject(window), m_window(window), m_port(port),
+                                                                           int port,
+                                                                           TargetType target_type)
+    : QObject(window), m_window(window), m_port(port), m_target_type(target_type),
       m_button(new QPushButton(tr("Configure in VR"), window)), m_status_timer(new QTimer(this))
 {
   m_button->setToolTip(
@@ -66,7 +67,11 @@ void OpenXRWiimoteConfigSessionController::Start()
   }
 
   m_session = std::make_unique<VR::OpenXRUtilitySession>();
-  if (!m_session->Start(m_port))
+  const VR::OpenXRUtilitySessionTarget target{
+      m_target_type == TargetType::WiiRemote ? VR::OpenXRUtilitySessionTargetType::WiiRemote :
+                                               VR::OpenXRUtilitySessionTargetType::GameCubeController,
+      m_port};
+  if (!m_session->Start(target))
   {
     QMessageBox::critical(m_window, tr("OpenXR Controller Mapper"),
                           QString::fromStdString(m_session->GetFailureMessage()));
@@ -149,11 +154,14 @@ void OpenXRWiimoteConfigSessionController::FinishSession()
 #if defined(ENABLE_VR) && defined(HAS_VULKAN)
   VR::OpenXRPendingBindings pending = m_session->TakePendingBindings();
   auto* controller = m_window->GetController();
-  if (!controller || pending.wiimote_port != m_port)
+  const auto expected_target =
+      m_target_type == TargetType::WiiRemote ? VR::OpenXRUtilitySessionTargetType::WiiRemote :
+                                               VR::OpenXRUtilitySessionTargetType::GameCubeController;
+  if (!controller || pending.target.type != expected_target || pending.target.port != m_port)
   {
     Stop();
     QMessageBox::critical(m_window, tr("OpenXR Controller Mapper"),
-                          tr("The selected Wii Remote changed before the bindings were applied."));
+                          tr("The selected controller changed before the bindings were applied."));
     return;
   }
 

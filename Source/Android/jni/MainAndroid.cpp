@@ -356,8 +356,10 @@ Java_org_dolphinemu_dolphinemu_NativeLibrary_ApplyOpenXRControllerMapper(JNIEnv*
   }
 
   VR::OpenXRPendingBindings pending = s_openxr_mapper->TakePendingBindings();
+  if (pending.target.type != VR::OpenXRUtilitySessionTargetType::WiiRemote)
+    return JNI_FALSE;
   InputConfig* config = Wiimote::GetConfig();
-  auto* controller = config ? config->GetController(pending.wiimote_port) : nullptr;
+  auto* controller = config ? config->GetController(pending.target.port) : nullptr;
   if (!controller)
     return JNI_FALSE;
 
