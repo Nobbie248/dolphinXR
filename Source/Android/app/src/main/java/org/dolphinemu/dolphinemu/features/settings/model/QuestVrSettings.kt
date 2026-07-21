@@ -46,8 +46,6 @@ object QuestVrSettings {
     fun controllerPresetSetting() =
         androidIntSetting("QuestControllerPreset", CONTROLLER_PRESET_GAMECUBE)
 
-    fun autoImmediateXfbSetting() = vrBooleanSetting("AutoImmediateXFB", true)
-
     fun autoVbiFromHmdSetting() = vrBooleanSetting("AutoVBIFromHMD", false)
 
     fun unitsPerMeterSetting(): AbstractFloatSetting = FloatSetting.GFX_VR_UNITS_PER_METER
@@ -57,8 +55,6 @@ object QuestVrSettings {
     fun cameraForwardSetting() = vrFloatSetting("CameraForward", 0.0f)
 
     fun cameraHeightSetting() = vrFloatSetting("CameraHeight", 0.0f)
-
-    fun lockHeadPoseSetting() = vrBooleanSetting("LockHeadPosePerFrame", false)
 
     fun detectSkyboxSetting() = vrBooleanSetting("DetectSkybox", false)
 
@@ -156,7 +152,6 @@ object QuestVrSettings {
         IntSetting.GFX_EFB_SCALE.setInt(settings, 4)
         BooleanSetting.GFX_WAIT_FOR_SHADERS_BEFORE_STARTING.setBoolean(settings, false)
         BooleanSetting.MAIN_SHOW_INPUT_OVERLAY.setBoolean(settings, false)
-        lockHeadPoseSetting().setBoolean(settings, false)
         autoLayerSpreadSetting().setBoolean(settings, true)
         androidDirectToHmdSetting().setBoolean(settings, true)
         removeBarsSetting().setBoolean(settings, true)
@@ -198,12 +193,9 @@ object QuestVrSettings {
                 backendMultithreadingReenabledSetting().setBoolean(settings, true)
             }
             BooleanSetting.MAIN_SHOW_INPUT_OVERLAY.setBoolean(settings, false)
-            if (lockHeadPoseSetting().boolean) {
-                autoImmediateXfbSetting().setBoolean(settings, false)
-                BooleanSetting.GFX_HACK_IMMEDIATE_XFB.setBoolean(settings, false)
-            } else if (autoImmediateXfbSetting().boolean) {
-                BooleanSetting.GFX_HACK_IMMEDIATE_XFB.setBoolean(settings, true)
-            }
+            // Immediately Present XFB is left as the user set it (applyRecommendedDefaults
+            // turns it on): games that need it off now render correctly in VR, and the
+            // head-pose lock is applied automatically whenever it is off.
             BooleanSetting.GFX_HACK_VI_SKIP.setBoolean(settings, false)
         } else {
             // flatScreen already set false above (immersive is false here).

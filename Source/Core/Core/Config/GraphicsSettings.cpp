@@ -189,7 +189,6 @@ const Info<bool> GFX_VR_ENABLE_OPENXR{{System::GFX, "VR", "EnableOpenXR"}, true}
 // When OpenXR is enabled, render the game as a flat mono panel in the VR scene instead of
 // per-eye stereoscopic 3D (the "Launch games in VR" off / cinema path).
 const Info<bool> GFX_VR_FLAT_SCREEN{{System::GFX, "VR", "FlatScreen"}, false};
-const Info<bool> GFX_VR_AUTO_IMMEDIATE_XFB{{System::GFX, "VR", "AutoImmediateXFB"}, true};
 const Info<float> GFX_VR_UNITS_PER_METER{{System::GFX, "VR", "UnitsPerMeter"}, 1.0f};
 const Info<float> GFX_VR_LEAN_BACK_ANGLE{{System::GFX, "VR", "LeanBackAngle"}, 0.0f};
 const Info<bool> GFX_VR_ENABLE_CAMERA_FORWARD{{System::GFX, "VR", "EnableCameraForward"}, true};
@@ -257,7 +256,6 @@ const Info<bool> GFX_VR_METROID_THERMAL_VISOR_FIX{
     {System::GFX, "VR", "MetroidThermalVisorFix"}, true};
 const Info<bool> GFX_VR_METROID_D3D_THERMAL_PALETTE_FIX{
     {System::GFX, "VR", "MetroidD3DThermalPaletteFix"}, true};
-const Info<bool> GFX_VR_LOCK_HEAD_POSE{{System::GFX, "VR", "LockHeadPosePerFrame"}, false};
 const Info<bool> GFX_VR_PASSTHROUGH{{System::GFX, "VR", "Passthrough"}, false};
 const Info<bool> GFX_VR_PASSTHROUGH_REMOVE_BLACK_BG{
     {System::GFX, "VR", "PassthroughRemoveBlackBackground"}, true};

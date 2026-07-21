@@ -40,7 +40,6 @@ private:
   ConfigBool* m_flat_screen = nullptr;
   ConfigChoiceMap<OpenXRReferenceSpaceMode>* m_reference_space_mode = nullptr;
   ConfigChoiceMap<OpenXRTrackingMode>* m_tracking_mode = nullptr;
-  ConfigBool* m_auto_immediate_xfb = nullptr;
   ConfigFloatSlider* m_units_per_meter = nullptr;
   QLabel* m_units_per_meter_value = nullptr;
   ConfigFloatSlider* m_lean_back_angle = nullptr;
@@ -70,7 +69,6 @@ private:
   QLabel* m_clear_efb_value = nullptr;
   ConfigBool* m_remove_bars = nullptr;
   ConfigBool* m_detect_skybox = nullptr;
-  ConfigBool* m_lock_head_pose = nullptr;
   ConfigBool* m_use_vulkan_multiview = nullptr;
   ConfigBool* m_passthrough = nullptr;
   ConfigBool* m_passthrough_remove_black_bg = nullptr;

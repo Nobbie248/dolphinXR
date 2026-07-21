@@ -2778,14 +2778,6 @@ class SettingsFragmentPresenter(
         sl.add(
             SwitchSetting(
                 context,
-                QuestVrSettings.autoImmediateXfbSetting(),
-                R.string.quest_force_immediately_present_xfb,
-                R.string.quest_force_immediately_present_xfb_description
-            )
-        )
-        sl.add(
-            SwitchSetting(
-                context,
                 QuestVrSettings.autoVbiFromHmdSetting(),
                 R.string.quest_force_vbi_from_hmd,
                 R.string.quest_force_vbi_from_hmd_description
@@ -2836,14 +2828,6 @@ class SettingsFragmentPresenter(
                 QuestVrSettings.foveateEfbSetting(),
                 R.string.quest_foveate_efb,
                 R.string.quest_foveate_efb_description
-            )
-        )
-        sl.add(
-            SwitchSetting(
-                context,
-                QuestVrSettings.lockHeadPoseSetting(),
-                R.string.quest_lock_head_pose,
-                R.string.quest_lock_head_pose_description
             )
         )
         sl.add(

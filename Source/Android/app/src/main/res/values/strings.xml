@@ -796,8 +796,6 @@ It can efficiently compress both junk data and encrypted Wii data.
     <string name="quest_launch_in_vr_description">On: renders games in stereoscopic 3D VR. Off: shows the game on a flat screen in the headset (requires Enable OpenXR).</string>
     <string name="quest_recenter_on_launch">Recenter on launch</string>
     <string name="quest_recenter_on_launch_description">Recenters the active OpenXR view as soon as emulation starts.</string>
-    <string name="quest_force_immediately_present_xfb">Force Immediately Present XFB</string>
-    <string name="quest_force_immediately_present_xfb_description">Keeps Immediately Present XFB enabled while OpenXR is active for lower latency head tracking.</string>
     <string name="quest_force_vbi_from_hmd">Force VBI frequency to 90 Hz in VR</string>
     <string name="quest_force_vbi_from_hmd_description">Overrides Dolphin\'s VBI frequency while OpenXR is active to better match a 90 Hz headset.</string>
     <string name="quest_cpu_level_5_hint">Request Quest CPU level 5</string>
@@ -816,8 +814,6 @@ It can efficiently compress both junk data and encrypted Wii data.
     <string name="quest_show_mirror_surface_description">Keeps the Android surface visible while OpenXR is active for debugging and capture.</string>
     <string name="quest_show_perf_hud">Show performance HUD</string>
     <string name="quest_show_perf_hud_description">Displays Dolphin frame rate statistics in the headset mirror.</string>
-    <string name="quest_lock_head_pose">Lock head pose per frame</string>
-    <string name="quest_lock_head_pose_description">Keeps pose updates aligned with emulation frame boundaries for more stable stereo output.</string>
     <string name="quest_detect_skybox">Detect Skybox</string>
     <string name="quest_detect_skybox_description">Treats objects drawn at the camera origin as skyboxes and locks them to head rotation only, so the sky renders at infinity instead of appearing too close. Disable if it incorrectly affects non-sky geometry.</string>
     <string name="quest_passthrough">Enable passthrough</string>

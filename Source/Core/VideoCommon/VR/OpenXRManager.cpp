@@ -2881,7 +2881,7 @@ bool OpenXRManager::GetControllerAnchorViewPose(int hand, float units_per_meter,
   // Under the head-pose lock the eye projection is frozen for the whole game frame, so
   // the hand pose must be too — a fresher hand than head would jitter against the
   // world. Without the lock the GS refetches per draw and so do we.
-  const bool lock = g_ActiveConfig.VRLockHeadPoseEffective();
+  const bool lock = g_ActiveConfig.VRLockHeadPosePerFrame();
   if (lock && m_controller_anchor_cache_valid[hand] &&
       std::abs(m_controller_anchor_cache_upm[hand] - units_per_meter) <= 0.0001f)
   {

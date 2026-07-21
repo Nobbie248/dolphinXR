@@ -167,7 +167,6 @@ static constexpr float GFX_STEREO_CONVERGENCE_MAXIMUM = 200;
 
 extern const Info<bool> GFX_VR_ENABLE_OPENXR;
 extern const Info<bool> GFX_VR_FLAT_SCREEN;
-extern const Info<bool> GFX_VR_AUTO_IMMEDIATE_XFB;
 extern const Info<float> GFX_VR_UNITS_PER_METER;
 extern const Info<float> GFX_VR_LEAN_BACK_ANGLE;
 extern const Info<bool> GFX_VR_ENABLE_CAMERA_FORWARD;
@@ -234,7 +233,6 @@ extern const Info<bool> GFX_VR_ORTHO_SCISSOR_FIX;
 extern const Info<bool> GFX_VR_DETECT_SKYBOX;
 extern const Info<bool> GFX_VR_METROID_THERMAL_VISOR_FIX;
 extern const Info<bool> GFX_VR_METROID_D3D_THERMAL_PALETTE_FIX;
-extern const Info<bool> GFX_VR_LOCK_HEAD_POSE;
 extern const Info<bool> GFX_VR_PASSTHROUGH;
 extern const Info<bool> GFX_VR_PASSTHROUGH_REMOVE_BLACK_BG;
 extern const Info<bool> GFX_VR_PASSTHROUGH_REMOVE_BLACK_CLEARS;

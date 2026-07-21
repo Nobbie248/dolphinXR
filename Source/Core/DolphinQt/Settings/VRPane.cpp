@@ -82,9 +82,6 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
       Config::GFX_VR_TRACKING_MODE);
   m_use_vulkan_multiview = new ConfigBool(tr("Use Vulkan Multiview"),
                                           Config::GFX_VR_USE_VULKAN_MULTIVIEW);
-  m_auto_immediate_xfb =
-      new ConfigBool(tr("Force Immediately Present XFB"),
-                     Config::GFX_VR_AUTO_IMMEDIATE_XFB);
   // Exponential scale: precise near the minimum, while still reaching large values at the far end.
   m_units_per_meter = new ConfigFloatSlider(Config::GFX_VR_UNITS_PER_METER_MIN,
                                             Config::GFX_VR_UNITS_PER_METER_MAX,
@@ -481,12 +478,8 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
             update_layered_palette_conversion_path(checked);
           });
   update_layered_palette_conversion_path(m_layered_palette_conversion_path->isChecked());
-  m_lock_head_pose =
-      new ConfigBool(tr("Lock Head Pose Per Frame"), Config::GFX_VR_LOCK_HEAD_POSE);
 
   hacks_group_layout->addWidget(m_use_vulkan_multiview);
-  hacks_group_layout->addWidget(m_auto_immediate_xfb);
-  hacks_group_layout->addWidget(m_lock_head_pose);
   hacks_group_layout->addWidget(m_dont_clear_screen);
   hacks_group_layout->addWidget(m_disable_cpu_cull);
   hacks_group_layout->addWidget(m_remove_bars);
@@ -515,27 +508,6 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   passthrough_group->setVisible(false);
 #endif
   hack_layout->addWidget(passthrough_group);
-
-  // Lock Head Pose is incompatible with Immediately Present XFB — when enabled,
-  // force-disable both Auto-enable Immediate XFB (local) and the Graphics Hacks
-  // Immediately Present XFB config key, and grey them out.
-  const auto update_lock_head_pose = [this] {
-    const bool locked = m_lock_head_pose->isChecked();
-    m_auto_immediate_xfb->setDisabled(locked);
-    if (locked)
-    {
-      Config::SetBaseOrCurrent(Config::GFX_VR_AUTO_IMMEDIATE_XFB, false);
-      Config::SetBaseOrCurrent(Config::GFX_HACK_IMMEDIATE_XFB, false);
-    }
-  };
-#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
-  connect(m_lock_head_pose, &QCheckBox::checkStateChanged, this,
-          [update_lock_head_pose](Qt::CheckState) { update_lock_head_pose(); });
-#else
-  connect(m_lock_head_pose, &QCheckBox::stateChanged, this,
-          [update_lock_head_pose](int) { update_lock_head_pose(); });
-#endif
-  update_lock_head_pose();  // Apply initial state
 
   auto* tools_group = new QGroupBox(tr("Tools"));
   auto* tools_layout = new QGridLayout;
@@ -665,13 +637,6 @@ void VRPane::AddDescriptions()
       "geometry-shader stereo expansion, which can be much faster on Quest/Adreno."
       "<br><br>This setting only affects the Vulkan backend and requires restarting emulation."
       "<br><br><dolphin_emphasis>If unsure on Quest, leave this checked.</dolphin_emphasis>");
-  static constexpr char TR_AUTO_IMMEDIATE_XFB_DESCRIPTION[] = QT_TR_NOOP(
-      "Forces Immediately Present XFB on while OpenXR is enabled."
-      "<br><br>This improves head-tracking responsiveness and reduces latency in VR by presenting "
-      "each XFB copy as soon as it is created."
-      "<br><br>Turn this off if a game flickers with Immediately Present XFB, then use "
-      "<b>Lock Head Pose Per Frame</b> instead to keep head-tracking coherent."
-      "<br><br><dolphin_emphasis>If unsure, leave this checked.</dolphin_emphasis>");
   static constexpr char TR_UNITS_PER_METER_DESCRIPTION[] = QT_TR_NOOP(
       "Sets how many game world units correspond to one real-world meter."
       "<br><br>Higher values increase stereo scale and make the world appear smaller."
@@ -803,16 +768,6 @@ void VRPane::AddDescriptions()
       "<br><br>This only changes palette conversion for Metroid Prime thermal-sized stereo EFB "
       "copies. It does not change normal game shaders, X-Ray handling, or non-Metroid games."
       "<br><br><dolphin_emphasis>If unsure, leave this checked.</dolphin_emphasis>");
-  static constexpr char TR_LOCK_HEAD_POSE_DESCRIPTION[] = QT_TR_NOOP(
-      "Snaps OpenXR head-tracking updates to game-frame boundaries (XFB copies) so every draw "
-      "call within a single game frame uses one consistent head pose."
-      "<br><br>Without this, <code>LocateViews()</code> can mutate the head pose mid-frame on "
-      "the video thread, causing different parts of the same frame (e.g. level geometry vs. "
-      "dynamic objects) to be rendered with different poses."
-      "<br><br>This behavior is applied automatically whenever <b>Immediately Present XFB</b> "
-      "is disabled (deferred presentation is only coherent with a locked pose). The checkbox "
-      "additionally forces it for games running with <b>Immediately Present XFB</b> on."
-      "<br><br><dolphin_emphasis>If unsure, leave this checked.</dolphin_emphasis>");
   static constexpr char TR_VR_GAMMA_DESCRIPTION[] = QT_TR_NOOP(
       "Adjusts gamma correction for VR eye output."
       "<br><br>1.0 = no correction (default). 2.2 = standard sRGB gamma. "
@@ -867,7 +822,6 @@ void VRPane::AddDescriptions()
   m_enable_openxr->SetDescription(tr(TR_ENABLE_OPENXR_DESCRIPTION));
   m_flat_screen->SetDescription(tr(TR_FLAT_SCREEN_DESCRIPTION));
   m_use_vulkan_multiview->SetDescription(tr(TR_USE_VULKAN_MULTIVIEW_DESCRIPTION));
-  m_auto_immediate_xfb->SetDescription(tr(TR_AUTO_IMMEDIATE_XFB_DESCRIPTION));
   m_reference_space_mode->SetDescription(tr(TR_REFERENCE_SPACE_MODE_DESCRIPTION));
   m_tracking_mode->SetDescription(tr(TR_TRACKING_MODE_DESCRIPTION));
   m_units_per_meter->SetDescription(tr(TR_UNITS_PER_METER_DESCRIPTION));
@@ -888,7 +842,6 @@ void VRPane::AddDescriptions()
   m_detect_skybox->SetDescription(tr(TR_DETECT_SKYBOX_DESCRIPTION));
   m_layered_palette_conversion_path->SetDescription(
       tr(TR_LAYERED_PALETTE_CONVERSION_PATH_DESCRIPTION));
-  m_lock_head_pose->SetDescription(tr(TR_LOCK_HEAD_POSE_DESCRIPTION));
   m_vr_gamma->SetDescription(tr(TR_VR_GAMMA_DESCRIPTION));
   m_auto_layer_spread->SetDescription(tr(TR_AUTO_LAYER_SPREAD_DESCRIPTION));
   m_layer_offset->SetDescription(tr(TR_LAYER_OFFSET_DESCRIPTION));

@@ -882,14 +882,13 @@ bool Presenter::StartOpenXRFrameNow(double* wait_frame_ms, double* locate_views_
     }
     auto& geometry_shader_manager = Core::System::GetInstance().GetGeometryShaderManager();
     geometry_shader_manager.SetProjectionChanged();
-    // Lock Head Pose Per Frame: LocateViews above still refreshes m_eye_views with
-    // the latest predicted pose, but we intentionally do NOT invalidate the GS
-    // cache here. The cache is only invalidated by BPStructs' XFB-copy boundary
-    // (guaranteed FIFO-ordered between game frames), so every draw within a
-    // single game frame sees one consistent pose snapshot. The lock is implied
-    // when ImmediateXFB is off (VRLockHeadPoseEffective) — a per-present
-    // invalidate would land mid-frame there.
-    if (!g_ActiveConfig.VRLockHeadPoseEffective())
+    // Head-pose lock: LocateViews above still refreshes m_eye_views with the latest
+    // predicted pose, but we intentionally do NOT invalidate the GS cache here. The
+    // cache is only invalidated by BPStructs' XFB-copy boundary (guaranteed
+    // FIFO-ordered between game frames), so every draw within a single game frame
+    // sees one consistent pose snapshot. The lock applies when ImmediateXFB is off
+    // (VRLockHeadPosePerFrame) — a per-present invalidate would land mid-frame there.
+    if (!g_ActiveConfig.VRLockHeadPosePerFrame())
       geometry_shader_manager.InvalidateVRHeadPose();
   }
 
@@ -914,9 +913,9 @@ void Presenter::PrepareNextOpenXRFrame()
     {
       auto& geometry_shader_manager = Core::System::GetInstance().GetGeometryShaderManager();
       geometry_shader_manager.SetProjectionChanged();
-      // Lock Head Pose Per Frame: see StartOpenXRFrameNow — the GS pose cache is only
-      // invalidated at the XFB-copy boundary when the lock (or implied lock) is on.
-      if (!g_ActiveConfig.VRLockHeadPoseEffective())
+      // Head-pose lock: see StartOpenXRFrameNow — the GS pose cache is only
+      // invalidated at the XFB-copy boundary while the lock is in effect.
+      if (!g_ActiveConfig.VRLockHeadPosePerFrame())
         geometry_shader_manager.InvalidateVRHeadPose();
     }
     m_last_openxr_wait_frame_ms = 0.0;

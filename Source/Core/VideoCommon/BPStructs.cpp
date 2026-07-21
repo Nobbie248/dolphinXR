@@ -396,17 +396,14 @@ static void BPWritten(PixelShaderManager& pixel_shader_manager, XFStateManager& 
       }
 
 #ifdef ENABLE_VR
-      // Lock Head Pose Per Frame: refresh the OpenXR head pose at this XFB-copy
-      // point in the FIFO stream — between the just-finished game frame and the
-      // next one. Runs on the video thread in FIFO order so every draw within a
-      // single game frame sees one consistent head pose.
-      // Must run for BOTH the ImmediateXFB and non-ImmediateXFB paths (games
-      // like Zack & Wiki use ImmediateXFB; without this firing the GS pose
-      // cache never gets invalidated and head tracking locks).
-      // VRLockHeadPoseEffective: the lock is implied whenever ImmediateXFB is off,
-      // since per-draw refresh would land mid-frame at VI presents (see VideoConfig.h).
+      // Head-pose lock: refresh the OpenXR head pose at this XFB-copy point in the
+      // FIFO stream — between the just-finished game frame and the next one. Runs on
+      // the video thread in FIFO order so every draw within a single game frame sees
+      // one consistent head pose. Only applies when ImmediateXFB is off (see
+      // VideoConfig::VRLockHeadPosePerFrame); with it on, the GS refetches per draw
+      // and this invalidation is unnecessary.
       if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
-          g_ActiveConfig.VRLockHeadPoseEffective() && VR::g_openxr &&
+          g_ActiveConfig.VRLockHeadPosePerFrame() && VR::g_openxr &&
           VR::g_openxr->IsSessionRunning() && VR::g_openxr->ShouldRender())
       {
         // Debounce: some games emit multiple XFB copies per visual frame within

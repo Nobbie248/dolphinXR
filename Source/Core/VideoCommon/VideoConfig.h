@@ -399,7 +399,6 @@ struct VideoConfig final
   bool vr_detect_skybox = false;     // Treat objects drawn at camera origin (0,0,0) as skyboxes
   bool vr_metroid_thermal_visor_fix = false;  // Preserve thermal EFB copy layers for MP1 Vulkan
   bool vr_metroid_d3d_thermal_palette_fix = false;  // Layered MP1 thermal palette conversion on D3D11
-  bool vr_lock_head_pose = true;    // Snap head-pose updates to XFB-copy boundaries (FIFO order)
   bool vr_passthrough = false;  // Show the headset camera feed behind unrendered (transparent) areas
   // Reveal EFB regions untouched by game color draws or clears. Off initializes coverage
   // opaque so only elements marked with Passthrough overrides make holes.
@@ -482,11 +481,13 @@ struct VideoConfig final
   {
     return stereo_mode == StereoMode::OpenXR || vr_flat_screen;
   }
-  // Lock Head Pose Per Frame is implied whenever ImmediateXFB is off: presentation
-  // then happens at VI time, interleaved with the NEXT frame's draw stream, so
-  // per-draw pose refresh would change the pose mid-frame and desync draws within
-  // one game frame. The checkbox only adds forcing the lock for ImmediateXFB games.
-  bool VRLockHeadPoseEffective() const { return vr_lock_head_pose || !bImmediateXFB; }
+  // Hold one head pose for every draw of a game frame, refreshed only at the XFB-copy
+  // boundary. Required whenever ImmediateXFB is off: presentation then happens at VI
+  // time, interleaved with the NEXT frame's draw stream, so a per-draw pose refresh
+  // would change the pose mid-frame and desync draws within one game frame. With
+  // ImmediateXFB on, presentation is already frame-aligned and per-draw refresh gives
+  // slightly fresher tracking, so the lock is not applied there.
+  bool VRLockHeadPosePerFrame() const { return !bImmediateXFB; }
   // VR passthrough (headset camera feed behind unrendered areas) is only meaningful
   // while rendering through OpenXR.
   bool VRPassthroughEnabled() const

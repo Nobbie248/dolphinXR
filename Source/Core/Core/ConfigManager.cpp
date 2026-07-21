@@ -172,7 +172,6 @@ static void ClearAppliedVRSettings()
   ClearAppliedVRSetting("ReferenceSpaceMode", Config::GFX_VR_REFERENCE_SPACE_MODE);
   ClearAppliedVRSetting("TrackingMode", Config::GFX_VR_TRACKING_MODE);
   ClearAppliedVRSetting("UseOpenXRPlaySpaceCenter", Config::GFX_VR_USE_OPENXR_PLAY_SPACE_CENTER);
-  ClearAppliedVRSetting("LockHeadPosePerFrame", Config::GFX_VR_LOCK_HEAD_POSE);
   ClearAppliedVRSetting("ForcedVBIFrequency", Config::GFX_VR_FORCED_VBI_FREQUENCY);
   ClearAppliedVRSetting("AutoVBIFromHMD", Config::GFX_VR_AUTO_VBI_FROM_HMD);
   ClearAppliedVRSetting("AutoLayerSpread", Config::GFX_VR_AUTO_LAYER_SPREAD);
@@ -235,7 +234,6 @@ static void ApplyGameVRConfigOverrides(std::string_view game_id, std::optional<u
   ApplyVRSetting(values, "ReferenceSpaceMode", Config::GFX_VR_REFERENCE_SPACE_MODE);
   ApplyVRSetting(values, "TrackingMode", Config::GFX_VR_TRACKING_MODE);
   ApplyVRSetting(values, "UseOpenXRPlaySpaceCenter", Config::GFX_VR_USE_OPENXR_PLAY_SPACE_CENTER);
-  ApplyVRSetting(values, "LockHeadPosePerFrame", Config::GFX_VR_LOCK_HEAD_POSE);
   const bool has_forced_vbi_frequency = values.find("ForcedVBIFrequency") != values.end();
   ApplyVRSetting(values, "ForcedVBIFrequency", Config::GFX_VR_FORCED_VBI_FREQUENCY);
   if (!has_forced_vbi_frequency)
