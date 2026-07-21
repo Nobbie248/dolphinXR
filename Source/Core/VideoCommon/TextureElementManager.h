@@ -35,6 +35,8 @@ class TextureElementManager
 public:
   using HandlingType = ShaderHunter::HandlingType;
   using TextureUsage = ShaderHunter::TextureUsage;
+  using AnchorRotationMode = ShaderHunter::AnchorRotationMode;
+  using CameraAnchorParams = ShaderHunter::CameraAnchorParams;
 
   // --- Persistent overrides (per-game INI) ---
   struct TextureElementOverride
@@ -46,6 +48,16 @@ public:
     float element_depth = -1.0f;    // Per-override within-element depth (-1 = global)
     float units_per_meter = -1.0f;  // Per-override UPM for UnitsPerMeter handling (-1 = global)
     float passthrough_opacity = 0.0f;  // Passthrough handling: element opacity (0 = fully camera)
+    // CameraAnchor handling: offset from the element's origin (meters, right/up/forward),
+    // whether to hide the anchor element, how much of its orientation to follow (+ a fixed yaw
+    // correction), and the world scale to use while anchored (-1 = keep the global value).
+    float anchor_right = 0.0f;
+    float anchor_up = 0.0f;
+    float anchor_forward = 0.0f;
+    bool anchor_hide = true;
+    AnchorRotationMode anchor_rotation = AnchorRotationMode::Off;
+    float anchor_yaw_deg = 0.0f;
+    float anchor_units_per_meter = -1.0f;
     std::vector<u64> texture_hashes;  // The group's textures (matched when any is bound)
     bool enabled = true;
   };
@@ -69,11 +81,12 @@ public:
   // True if any bound texture maps to a Skip override.
   bool ShouldSkipByTexture(const std::array<u64, 8>& bound) const;
   // Handling for the first bound texture with a non-Skip override (Skip if none). Out-params are
-  // filled for Screen/HeadLocked (layer, element_depth), UnitsPerMeter (units_per_meter) and
-  // Passthrough (passthrough_opacity).
+  // filled for Screen/HeadLocked (layer, element_depth), UnitsPerMeter (units_per_meter),
+  // Passthrough (passthrough_opacity) and CameraAnchor (anchor).
   HandlingType GetHandlingForTextures(const std::array<u64, 8>& bound, int* layer,
                                       float* element_depth, float* units_per_meter,
-                                      float* passthrough_opacity) const;
+                                      float* passthrough_opacity,
+                                      CameraAnchorParams* anchor) const;
 
   // --- Texture Hunter browse support (global per-frame texture capture) ---
   void SetHunterActive(bool active);
@@ -104,6 +117,7 @@ private:
     float element_depth = -1.0f;
     float units_per_meter = -1.0f;
     float passthrough_opacity = 0.0f;
+    CameraAnchorParams anchor;
   };
 
   mutable std::mutex m_mutex;

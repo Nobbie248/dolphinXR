@@ -97,6 +97,8 @@ ShaderOverrideAddEditDialog::ShaderOverrideAddEditDialog(
                             static_cast<int>(ShaderHunter::HandlingType::UnitsPerMeter));
   m_handling_combo->addItem(tr("Passthrough"),
                             static_cast<int>(ShaderHunter::HandlingType::Passthrough));
+  m_handling_combo->addItem(tr("Camera Anchor"),
+                            static_cast<int>(ShaderHunter::HandlingType::CameraAnchor));
 
   m_layer_label = new QLabel(tr("Layer:"));
   m_layer_spin = new QSpinBox;
@@ -138,6 +140,73 @@ ShaderOverrideAddEditDialog::ShaderOverrideAddEditDialog(
          "0.00 = fully see-through (pure passthrough window).\n"
          "1.00 = fully opaque (no passthrough).\n"
          "Requires the VR Passthrough setting to be enabled."));
+
+  const auto make_anchor_offset_spin = []() {
+    auto* spin = new QDoubleSpinBox;
+    spin->setRange(-10.0, 10.0);
+    spin->setDecimals(2);
+    spin->setSingleStep(0.05);
+    spin->setValue(0.0);
+    spin->setSuffix(QStringLiteral(" m"));
+    return spin;
+  };
+  m_anchor_right_label = new QLabel(tr("Anchor Right:"));
+  m_anchor_right_spin = make_anchor_offset_spin();
+  m_anchor_right_spin->setToolTip(
+      tr("Sideways offset of the VR camera from the anchor element's origin, in meters.\n"
+         "Positive = right in camera space."));
+  m_anchor_up_label = new QLabel(tr("Anchor Up:"));
+  m_anchor_up_spin = make_anchor_offset_spin();
+  m_anchor_up_spin->setToolTip(
+      tr("Height offset of the VR camera above the anchor element's origin, in meters.\n"
+         "Use this when the element's matrix sits at the character's root instead of the head."));
+  m_anchor_forward_label = new QLabel(tr("Anchor Forward:"));
+  m_anchor_forward_spin = make_anchor_offset_spin();
+  m_anchor_forward_spin->setToolTip(
+      tr("Forward offset of the VR camera from the anchor element's origin, in meters.\n"
+         "Positive = further ahead in the game camera's view direction."));
+  m_anchor_rotation_label = new QLabel(tr("Anchor Rotation:"));
+  m_anchor_rotation_combo = new QComboBox;
+  m_anchor_rotation_combo->addItem(tr("Off"),
+                                   static_cast<int>(ShaderHunter::AnchorRotationMode::Off));
+  m_anchor_rotation_combo->addItem(tr("Yaw Only"),
+                                   static_cast<int>(ShaderHunter::AnchorRotationMode::YawOnly));
+  m_anchor_rotation_combo->addItem(tr("Full"),
+                                   static_cast<int>(ShaderHunter::AnchorRotationMode::Full));
+  m_anchor_rotation_combo->setToolTip(
+      tr("Rotate the VR camera with the anchor element.\n"
+         "Off = camera keeps the game camera's orientation (position only).\n"
+         "Yaw Only = follow the element's heading but keep the horizon level (comfortable).\n"
+         "Full = follow the complete orientation including pitch and roll (intense).\n"
+         "Head tracking still works on top in every mode."));
+  m_anchor_yaw_label = new QLabel(tr("Rotation Yaw Offset:"));
+  m_anchor_yaw_spin = new QDoubleSpinBox;
+  m_anchor_yaw_spin->setRange(-180.0, 180.0);
+  m_anchor_yaw_spin->setDecimals(0);
+  m_anchor_yaw_spin->setSingleStep(15.0);
+  m_anchor_yaw_spin->setValue(0.0);
+  m_anchor_yaw_spin->setSuffix(QStringLiteral("°"));
+  m_anchor_yaw_spin->setToolTip(
+      tr("Fixed heading correction for the rotation modes. Models differ in which way\n"
+         "they face: if the anchored view comes up looking backward use 180, if it looks\n"
+         "sideways use 90 or -90."));
+  m_anchor_upm_label = new QLabel(tr("Anchor Units per Meter:"));
+  m_anchor_upm_spin = new QDoubleSpinBox;
+  m_anchor_upm_spin->setRange(0.0, UPM_OVERRIDE_MAX);
+  m_anchor_upm_spin->setDecimals(2);
+  m_anchor_upm_spin->setSingleStep(UPM_OVERRIDE_STEP);
+  m_anchor_upm_spin->setSpecialValueText(tr("Default"));
+  m_anchor_upm_spin->setValue(0.0);
+  m_anchor_upm_spin->setToolTip(
+      tr("World scale to use while this anchor is active, so a first-person view can have a\n"
+         "different scale than the game's global Units per Meter setting, which is left\n"
+         "untouched. Default = keep the global value."));
+  m_anchor_hide_check = new QCheckBox(tr("Hide Anchor Element"));
+  m_anchor_hide_check->setChecked(true);
+  m_anchor_hide_check->setToolTip(
+      tr("Skip drawing the anchor element itself so its mesh (e.g. the character's head)\n"
+         "does not block the first-person view. Other body parts need their own Skip\n"
+         "overrides. Disabled while the Camera Anchor toggle in the VR pane is off."));
 
   m_flag_label = new QLabel(tr("Flag Group:"));
   m_flag_edit = new QLineEdit;
@@ -239,6 +308,19 @@ ShaderOverrideAddEditDialog::ShaderOverrideAddEditDialog(
     if (edit_override->units_per_meter > 0.0f)
       m_units_per_meter_spin->setValue(edit_override->units_per_meter);
     m_passthrough_opacity_spin->setValue(edit_override->passthrough_opacity);
+    m_anchor_right_spin->setValue(edit_override->anchor_right);
+    m_anchor_up_spin->setValue(edit_override->anchor_up);
+    m_anchor_forward_spin->setValue(edit_override->anchor_forward);
+    {
+      const int idx =
+          m_anchor_rotation_combo->findData(static_cast<int>(edit_override->anchor_rotation));
+      if (idx >= 0)
+        m_anchor_rotation_combo->setCurrentIndex(idx);
+    }
+    m_anchor_yaw_spin->setValue(edit_override->anchor_yaw_deg);
+    if (edit_override->anchor_units_per_meter > 0.0f)
+      m_anchor_upm_spin->setValue(edit_override->anchor_units_per_meter);
+    m_anchor_hide_check->setChecked(edit_override->anchor_hide);
     m_flag_edit->setText(QString::fromStdString(edit_override->flag_group));
 
     m_hash_family_check->setChecked(edit_override->hash_family_match);
@@ -289,6 +371,13 @@ ShaderOverrideAddEditDialog::ShaderOverrideAddEditDialog(
   form->addRow(m_element_depth_label, m_element_depth_spin);
   form->addRow(m_units_per_meter_label, m_units_per_meter_spin);
   form->addRow(m_passthrough_opacity_label, m_passthrough_opacity_spin);
+  form->addRow(m_anchor_right_label, m_anchor_right_spin);
+  form->addRow(m_anchor_up_label, m_anchor_up_spin);
+  form->addRow(m_anchor_forward_label, m_anchor_forward_spin);
+  form->addRow(m_anchor_rotation_label, m_anchor_rotation_combo);
+  form->addRow(m_anchor_yaw_label, m_anchor_yaw_spin);
+  form->addRow(m_anchor_upm_label, m_anchor_upm_spin);
+  form->addRow(QString(), m_anchor_hide_check);
   form->addRow(m_flag_label, m_flag_edit);
   form->addRow(m_condition_label, m_condition_combo);
   form->addRow(m_condition_mode_label, m_condition_mode_combo);
@@ -366,6 +455,19 @@ ShaderHunter::ShaderOverride ShaderOverrideAddEditDialog::GetResult() const
   result.passthrough_opacity = result.handling == ShaderHunter::HandlingType::Passthrough ?
                                    static_cast<float>(m_passthrough_opacity_spin->value()) :
                                    0.0f;
+  if (result.handling == ShaderHunter::HandlingType::CameraAnchor)
+  {
+    result.anchor_right = static_cast<float>(m_anchor_right_spin->value());
+    result.anchor_up = static_cast<float>(m_anchor_up_spin->value());
+    result.anchor_forward = static_cast<float>(m_anchor_forward_spin->value());
+    result.anchor_rotation = static_cast<ShaderHunter::AnchorRotationMode>(
+        m_anchor_rotation_combo->currentData().toInt());
+    result.anchor_yaw_deg = static_cast<float>(m_anchor_yaw_spin->value());
+    result.anchor_units_per_meter = m_anchor_upm_spin->value() >= UPM_OVERRIDE_MIN ?
+                                        static_cast<float>(m_anchor_upm_spin->value()) :
+                                        -1.0f;
+    result.anchor_hide = m_anchor_hide_check->isChecked();
+  }
   const auto texture_tokens = CollectTextureHashTokens();
   for (const std::string& token : texture_tokens)
   {
@@ -489,6 +591,20 @@ void ShaderOverrideAddEditDialog::OnHandlingChanged()
   m_units_per_meter_spin->setVisible(show_units_per_meter);
   m_passthrough_opacity_label->setVisible(show_passthrough);
   m_passthrough_opacity_spin->setVisible(show_passthrough);
+  const bool show_anchor = (handling == ShaderHunter::HandlingType::CameraAnchor);
+  m_anchor_right_label->setVisible(show_anchor);
+  m_anchor_right_spin->setVisible(show_anchor);
+  m_anchor_up_label->setVisible(show_anchor);
+  m_anchor_up_spin->setVisible(show_anchor);
+  m_anchor_forward_label->setVisible(show_anchor);
+  m_anchor_forward_spin->setVisible(show_anchor);
+  m_anchor_rotation_label->setVisible(show_anchor);
+  m_anchor_rotation_combo->setVisible(show_anchor);
+  m_anchor_yaw_label->setVisible(show_anchor);
+  m_anchor_yaw_spin->setVisible(show_anchor);
+  m_anchor_upm_label->setVisible(show_anchor);
+  m_anchor_upm_spin->setVisible(show_anchor);
+  m_anchor_hide_check->setVisible(show_anchor);
   // Flag group is always visible (optional for non-Flag handling, required for Flag)
   m_flag_label->setVisible(true);
   m_flag_edit->setVisible(true);

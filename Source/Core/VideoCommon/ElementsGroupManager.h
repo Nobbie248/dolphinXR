@@ -21,6 +21,7 @@ public:
   using ShaderType = ShaderHunter::ShaderType;
   using HandlingType = ShaderHunter::HandlingType;
   using HuntingOption = ShaderHunter::HuntingOption;
+  using CameraAnchorParams = ShaderHunter::CameraAnchorParams;
 
   enum class PreviewAction
   {
@@ -226,15 +227,6 @@ public:
   float GetOverrideUnitsPerMeter(const DrawRecord& draw) const;
   // Returns the opacity for a Passthrough override (0 = fully see-through to the camera).
   float GetOverridePassthroughOpacity(const DrawRecord& draw) const;
-  // CameraAnchor: per-override parameters resolved for a matching draw.
-  struct CameraAnchorParams
-  {
-    std::array<float, 3> offset{};  // meters: right, up, forward
-    bool hide = true;
-    ShaderHunter::AnchorRotationMode rotation = ShaderHunter::AnchorRotationMode::Off;
-    float yaw_offset_deg = 0.0f;
-    float units_per_meter = -1.0f;  // -1 = keep the global Units per Meter
-  };
   // Fills the parameters of the first matching CameraAnchor override.
   // Returns false when none matches the draw.
   bool GetOverrideCameraAnchor(const DrawRecord& draw, CameraAnchorParams* out_params) const;

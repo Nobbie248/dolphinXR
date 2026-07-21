@@ -1329,13 +1329,18 @@ void VertexManagerBase::Flush()
                 passthrough_opacity =
                     hunter.GetOverridePassthroughOpacity(vs_hash, ps_hash, gs_hash);
               }
+              else if (handling == ShaderHunter::HandlingType::CameraAnchor)
+              {
+                hunter.GetOverrideCameraAnchor(vs_hash, ps_hash, gs_hash, &anchor_params);
+              }
             }
             // Texture Element Override (fallback): match purely on bound texture hash, applied
             // only when neither Elements nor Shader overrides produced a handling for this draw.
             if (handling == ShaderHunter::HandlingType::Skip && texmgr_has_overrides)
             {
               handling = texmgr.GetHandlingForTextures(tex_hashes, &manual_layer, &element_depth,
-                                                       &units_per_meter, &passthrough_opacity);
+                                                       &units_per_meter, &passthrough_opacity,
+                                                       &anchor_params);
             }
             if (handling == ShaderHunter::HandlingType::Skip && metroid_profile_active)
               handling = GetMetroidLayerBehavior(metroid_layer).handling;

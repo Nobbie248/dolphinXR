@@ -175,6 +175,17 @@ std::vector<u64> GetSortedTextureHashes(
   hashes.erase(std::unique(hashes.begin(), hashes.end()), hashes.end());
   return hashes;
 }
+
+// Collapse an override's flat anchor fields into the shared transport struct.
+ShaderHunter::CameraAnchorParams MakeCameraAnchorParams(const ShaderHunter::ShaderOverride& ovr)
+{
+  return ShaderHunter::CameraAnchorParams{
+      .offset = {ovr.anchor_right, ovr.anchor_up, ovr.anchor_forward},
+      .hide = ovr.anchor_hide,
+      .rotation = ovr.anchor_rotation,
+      .yaw_offset_deg = ovr.anchor_yaw_deg,
+      .units_per_meter = ovr.anchor_units_per_meter};
+}
 }  // namespace
 
 ShaderHunter& ShaderHunter::GetInstance()
@@ -748,6 +759,7 @@ LoadShaderOverridesFromINIFile(const std::string& path)
   using ShaderType = ShaderHunter::ShaderType;
   using HandlingType = ShaderHunter::HandlingType;
   using MatchMode = ShaderHunter::MatchMode;
+  using AnchorRotationMode = ShaderHunter::AnchorRotationMode;
 
   ParsedShaderOverrideFile parsed;
   std::ifstream file(path);
@@ -872,6 +884,8 @@ LoadShaderOverridesFromINIFile(const std::string& path)
           current.handling = HandlingType::UnitsPerMeter;
         else if (value == "passthrough")
           current.handling = HandlingType::Passthrough;
+        else if (value == "camera_anchor" || value == "cameraanchor")
+          current.handling = HandlingType::CameraAnchor;
         else
           current.handling = HandlingType::Skip;
       }
@@ -890,6 +904,36 @@ LoadShaderOverridesFromINIFile(const std::string& path)
       else if (key == "passthrough_opacity")
       {
         current.passthrough_opacity = std::clamp(std::stof(value), 0.0f, 1.0f);
+      }
+      else if (key == "anchor_right")
+      {
+        current.anchor_right = std::stof(value);
+      }
+      else if (key == "anchor_up")
+      {
+        current.anchor_up = std::stof(value);
+      }
+      else if (key == "anchor_forward")
+      {
+        current.anchor_forward = std::stof(value);
+      }
+      else if (key == "anchor_hide")
+      {
+        current.anchor_hide = (value == "1" || value == "true");
+      }
+      else if (key == "anchor_rotation")
+      {
+        current.anchor_rotation = value == "full" ? AnchorRotationMode::Full :
+                                  value == "yaw"  ? AnchorRotationMode::YawOnly :
+                                                    AnchorRotationMode::Off;
+      }
+      else if (key == "anchor_yaw")
+      {
+        current.anchor_yaw_deg = std::stof(value);
+      }
+      else if (key == "anchor_upm" || key == "anchor_units_per_meter")
+      {
+        current.anchor_units_per_meter = std::stof(value);
       }
       else if (key == "flag")
       {
@@ -1069,6 +1113,7 @@ void ShaderHunter::SaveOverridesToINI(const std::string& game_id,
                                ovr.handling == HandlingType::Flag        ? "flag" :
                                ovr.handling == HandlingType::UnitsPerMeter ? "units_per_meter" :
                                ovr.handling == HandlingType::Passthrough ? "passthrough" :
+                               ovr.handling == HandlingType::CameraAnchor ? "camera_anchor" :
                                                                            "skip";
     out << "$" << ovr.name << "\n";
     out << "Hash=" << fmt::format("{:016x}", ovr.hash) << "\n";
@@ -1084,6 +1129,25 @@ void ShaderHunter::SaveOverridesToINI(const std::string& game_id,
       out << "units_per_meter=" << ovr.units_per_meter << "\n";
     if (ovr.handling == HandlingType::Passthrough)
       out << "passthrough_opacity=" << ovr.passthrough_opacity << "\n";
+    if (ovr.handling == HandlingType::CameraAnchor)
+    {
+      if (ovr.anchor_right != 0.0f)
+        out << "anchor_right=" << ovr.anchor_right << "\n";
+      if (ovr.anchor_up != 0.0f)
+        out << "anchor_up=" << ovr.anchor_up << "\n";
+      if (ovr.anchor_forward != 0.0f)
+        out << "anchor_forward=" << ovr.anchor_forward << "\n";
+      out << "anchor_hide=" << (ovr.anchor_hide ? 1 : 0) << "\n";
+      if (ovr.anchor_rotation != AnchorRotationMode::Off)
+      {
+        out << "anchor_rotation="
+            << (ovr.anchor_rotation == AnchorRotationMode::Full ? "full" : "yaw") << "\n";
+      }
+      if (ovr.anchor_yaw_deg != 0.0f)
+        out << "anchor_yaw=" << ovr.anchor_yaw_deg << "\n";
+      if (ovr.anchor_units_per_meter > 0.0f)
+        out << "anchor_upm=" << ovr.anchor_units_per_meter << "\n";
+    }
     if (!ovr.flag_group.empty())
       out << "flag=" << ovr.flag_group << "\n";
     if (!ovr.condition_flag.empty())
@@ -1130,6 +1194,7 @@ void ShaderHunter::LoadOverrides(const std::string& game_id)
   m_screen_layers.clear();
   m_element_depths.clear();
   m_passthrough_opacities.clear();
+  m_camera_anchors.clear();
   m_flag_rules.clear();
   m_conditional_overrides.clear();
   m_flags_seen_this_frame.clear();
@@ -1181,9 +1246,9 @@ void ShaderHunter::LoadOverrides(const std::string& game_id)
         m_has_texture_overrides = true;
       m_conditional_overrides.push_back(
           {ovr.hash, ovr.handling, ovr.type, ovr.layer, ovr.element_depth, ovr.units_per_meter,
-           ovr.passthrough_opacity, ovr.texture_hashes, ovr.texture_hashes_excluded,
-           ovr.hash_family_match, ovr.family_signature, ovr.family_version, ovr.condition_flag,
-           ovr.condition_inverted});
+           ovr.passthrough_opacity, MakeCameraAnchorParams(ovr), ovr.texture_hashes,
+           ovr.texture_hashes_excluded, ovr.hash_family_match, ovr.family_signature,
+           ovr.family_version, ovr.condition_flag, ovr.condition_inverted});
       m_overrides.push_back(std::move(ovr));
       continue;
     }
@@ -1233,6 +1298,9 @@ void ShaderHunter::LoadOverrides(const std::string& game_id)
       break;
     case HandlingType::Passthrough:
       m_passthrough_opacities[ovr.hash] = std::clamp(ovr.passthrough_opacity, 0.0f, 1.0f);
+      break;
+    case HandlingType::CameraAnchor:
+      m_camera_anchors[ovr.hash] = MakeCameraAnchorParams(ovr);
       break;
     default:
       break;
@@ -1304,6 +1372,7 @@ void ShaderHunter::AddAndSaveOverride(const std::string& game_id, const std::str
                handling == HandlingType::Flag         ? "flag" :
                handling == HandlingType::UnitsPerMeter ? "units_per_meter" :
                handling == HandlingType::Passthrough  ? "passthrough" :
+               handling == HandlingType::CameraAnchor ? "camera_anchor" :
                                                          "skip",
                game_id);
 }
@@ -1676,6 +1745,12 @@ ShaderHunter::HandlingType ShaderHunter::GetOverrideHandling(u64 vs_hash, u64 ps
     result = HandlingType::Passthrough;
     handling_name = "Passthrough";
   }
+  else if (m_camera_anchors.count(vs_hash) > 0 || m_camera_anchors.count(ps_hash) > 0 ||
+           m_camera_anchors.count(gs_hash) > 0)
+  {
+    result = HandlingType::CameraAnchor;
+    handling_name = "CameraAnchor";
+  }
   else
   {
     // Conditional/draw-call-range/texture overrides (small vector scan)
@@ -1701,6 +1776,8 @@ ShaderHunter::HandlingType ShaderHunter::GetOverrideHandling(u64 vs_hash, u64 ps
                           "UnitsPerMeter(conditional)" :
                       cond.handling == HandlingType::Passthrough ?
                           "Passthrough(conditional)" :
+                      cond.handling == HandlingType::CameraAnchor ?
+                          "CameraAnchor(conditional)" :
                                                                    "???";
       break;
     }
@@ -1842,6 +1919,42 @@ float ShaderHunter::GetOverridePassthroughOpacity(u64 vs_hash, u64 ps_hash, u64 
   }
 
   return 0.0f;  // fully see-through
+}
+
+bool ShaderHunter::GetOverrideCameraAnchor(u64 vs_hash, u64 ps_hash, u64 gs_hash,
+                                           CameraAnchorParams* out_params) const
+{
+  if (ShouldBypassSelectedOverrideForTextureTool(vs_hash, ps_hash, gs_hash))
+    return false;
+
+  // Unconditional per-hash CameraAnchor overrides
+  for (u64 h : {vs_hash, ps_hash, gs_hash})
+  {
+    auto it = m_camera_anchors.find(h);
+    if (it != m_camera_anchors.end())
+    {
+      *out_params = it->second;
+      return true;
+    }
+  }
+
+  // Conditional per-hash CameraAnchor overrides
+  for (const auto& cond : m_conditional_overrides)
+  {
+    if (cond.handling != HandlingType::CameraAnchor)
+      continue;
+    if (!IsConditionalHashMatch(cond, vs_hash, ps_hash, gs_hash))
+      continue;
+    if (!IsConditionFlagMatch(cond))
+      continue;
+    if (!DoesTextureFilterPass(m_current_draw_textures, cond.texture_hashes,
+                               cond.texture_hashes_excluded))
+      continue;
+    *out_params = cond.anchor;
+    return true;
+  }
+
+  return false;
 }
 
 // ============================================================================

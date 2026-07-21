@@ -118,6 +118,7 @@ std::vector<u64> ParseTextureHashList(const std::string& value)
 }
 
 using HandlingType = TextureElementManager::HandlingType;
+using AnchorRotationMode = TextureElementManager::AnchorRotationMode;
 using TextureElementOverride = TextureElementManager::TextureElementOverride;
 
 const char* HandlingToString(HandlingType handling)
@@ -135,6 +136,8 @@ const char* HandlingToString(HandlingType handling)
     return "units_per_meter";
   case HandlingType::Passthrough:
     return "passthrough";
+  case HandlingType::CameraAnchor:
+    return "camera_anchor";
   default:
     return "skip";
   }
@@ -152,6 +155,8 @@ HandlingType HandlingFromString(const std::string& value)
     return HandlingType::UnitsPerMeter;
   if (value == "passthrough")
     return HandlingType::Passthrough;
+  if (value == "camera_anchor" || value == "cameraanchor")
+    return HandlingType::CameraAnchor;
   return HandlingType::Skip;
 }
 
@@ -256,6 +261,22 @@ ParsedTextureOverrideFile LoadTextureOverridesFromINIFile(const std::string& pat
         current.units_per_meter = std::stof(value);
       else if (key == "passthrough_opacity")
         current.passthrough_opacity = std::clamp(std::stof(value), 0.0f, 1.0f);
+      else if (key == "anchor_right")
+        current.anchor_right = std::stof(value);
+      else if (key == "anchor_up")
+        current.anchor_up = std::stof(value);
+      else if (key == "anchor_forward")
+        current.anchor_forward = std::stof(value);
+      else if (key == "anchor_hide")
+        current.anchor_hide = (value == "1" || value == "true");
+      else if (key == "anchor_rotation")
+        current.anchor_rotation = value == "full" ? AnchorRotationMode::Full :
+                                  value == "yaw"  ? AnchorRotationMode::YawOnly :
+                                                    AnchorRotationMode::Off;
+      else if (key == "anchor_yaw")
+        current.anchor_yaw_deg = std::stof(value);
+      else if (key == "anchor_upm" || key == "anchor_units_per_meter")
+        current.anchor_units_per_meter = std::stof(value);
       else if (key == "comments")
         current.comments = value;
       else if (key == "texture")
@@ -365,6 +386,25 @@ void TextureElementManager::SaveOverridesToINI(
       out << "units_per_meter=" << ovr.units_per_meter << "\n";
     if (ovr.handling == HandlingType::Passthrough)
       out << "passthrough_opacity=" << ovr.passthrough_opacity << "\n";
+    if (ovr.handling == HandlingType::CameraAnchor)
+    {
+      if (ovr.anchor_right != 0.0f)
+        out << "anchor_right=" << ovr.anchor_right << "\n";
+      if (ovr.anchor_up != 0.0f)
+        out << "anchor_up=" << ovr.anchor_up << "\n";
+      if (ovr.anchor_forward != 0.0f)
+        out << "anchor_forward=" << ovr.anchor_forward << "\n";
+      out << "anchor_hide=" << (ovr.anchor_hide ? 1 : 0) << "\n";
+      if (ovr.anchor_rotation != AnchorRotationMode::Off)
+      {
+        out << "anchor_rotation="
+            << (ovr.anchor_rotation == AnchorRotationMode::Full ? "full" : "yaw") << "\n";
+      }
+      if (ovr.anchor_yaw_deg != 0.0f)
+        out << "anchor_yaw=" << ovr.anchor_yaw_deg << "\n";
+      if (ovr.anchor_units_per_meter > 0.0f)
+        out << "anchor_upm=" << ovr.anchor_units_per_meter << "\n";
+    }
     if (!ovr.comments.empty())
     {
       // Keep comments single-line so they don't corrupt the section.
@@ -404,9 +444,14 @@ void TextureElementManager::LoadOverrides(const std::string& game_id)
 
     has_overrides = true;
 
-    const ResolvedHandling resolved{ovr.handling, ovr.layer, ovr.element_depth,
-                                    ovr.units_per_meter,
-                                    std::clamp(ovr.passthrough_opacity, 0.0f, 1.0f)};
+    const ResolvedHandling resolved{
+        ovr.handling, ovr.layer, ovr.element_depth, ovr.units_per_meter,
+        std::clamp(ovr.passthrough_opacity, 0.0f, 1.0f),
+        CameraAnchorParams{.offset = {ovr.anchor_right, ovr.anchor_up, ovr.anchor_forward},
+                           .hide = ovr.anchor_hide,
+                           .rotation = ovr.anchor_rotation,
+                           .yaw_offset_deg = ovr.anchor_yaw_deg,
+                           .units_per_meter = ovr.anchor_units_per_meter}};
     for (u64 texture_hash : ovr.texture_hashes)
     {
       // First enabled override that lists a texture wins.
@@ -461,7 +506,7 @@ bool TextureElementManager::ShouldSkipByTexture(const std::array<u64, 8>& bound)
 
 TextureElementManager::HandlingType TextureElementManager::GetHandlingForTextures(
     const std::array<u64, 8>& bound, int* layer, float* element_depth, float* units_per_meter,
-    float* passthrough_opacity) const
+    float* passthrough_opacity, CameraAnchorParams* anchor) const
 {
   if (m_texture_handling.empty())
     return HandlingType::Skip;
@@ -482,6 +527,8 @@ TextureElementManager::HandlingType TextureElementManager::GetHandlingForTexture
       *units_per_meter = it->second.units_per_meter;
     if (passthrough_opacity != nullptr)
       *passthrough_opacity = it->second.passthrough_opacity;
+    if (anchor != nullptr)
+      *anchor = it->second.anchor;
     return it->second.handling;
   }
   return HandlingType::Skip;

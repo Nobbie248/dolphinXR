@@ -205,6 +205,8 @@ void ShaderOverrideWidget::UpdateList()
                                    "units_per_meter" :
                                ovr.handling == ShaderHunter::HandlingType::Passthrough ?
                                    "passthrough" :
+                               ovr.handling == ShaderHunter::HandlingType::CameraAnchor ?
+                                   "camera_anchor" :
                                                                                          "skip";
 
     QString label;
@@ -250,6 +252,19 @@ void ShaderOverrideWidget::UpdateList()
     else if (ovr.handling == ShaderHunter::HandlingType::Passthrough)
     {
       label += QStringLiteral(" O%1").arg(ovr.passthrough_opacity, 0, 'f', 2);
+    }
+    else if (ovr.handling == ShaderHunter::HandlingType::CameraAnchor)
+    {
+      if (ovr.anchor_rotation != ShaderHunter::AnchorRotationMode::Off)
+      {
+        label += ovr.anchor_rotation == ShaderHunter::AnchorRotationMode::Full ?
+                     QStringLiteral(" rot:full") :
+                     QStringLiteral(" rot:yaw");
+      }
+      if (ovr.anchor_units_per_meter > 0.0f)
+        label += QStringLiteral(" UPM%1").arg(ovr.anchor_units_per_meter, 0, 'f', 2);
+      if (ovr.anchor_hide)
+        label += QStringLiteral(" hidden");
     }
 
     if (ovr.hash_family_match)

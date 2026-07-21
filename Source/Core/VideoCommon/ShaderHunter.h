@@ -59,6 +59,18 @@ public:
     Full = 2
   };
 
+  // CameraAnchor parameters resolved for a matching draw. Shared transport type: the Elements
+  // Group, Shader and Texture Element override systems all resolve an anchor into this, and the
+  // draw path applies it identically regardless of which system matched.
+  struct CameraAnchorParams
+  {
+    std::array<float, 3> offset{};  // meters: right, up, forward
+    bool hide = true;
+    AnchorRotationMode rotation = AnchorRotationMode::Off;
+    float yaw_offset_deg = 0.0f;
+    float units_per_meter = -1.0f;  // -1 = keep the global Units per Meter
+  };
+
   enum class HuntingOption
   {
     Skip = 0,
@@ -171,6 +183,16 @@ public:
     float element_depth = -1.0f;  // Per-override within-element depth (-1 = use global)
     float units_per_meter = -1.0f;  // Per-override UPM for UnitsPerMeter handling (-1 = global)
     float passthrough_opacity = 0.0f;  // Passthrough handling: element opacity (0 = fully camera)
+    // CameraAnchor handling: offset from the element's origin (meters, right/up/forward),
+    // whether to hide the anchor element, how much of its orientation to follow (+ a fixed yaw
+    // correction), and the world scale to use while anchored (-1 = keep the global value).
+    float anchor_right = 0.0f;
+    float anchor_up = 0.0f;
+    float anchor_forward = 0.0f;
+    bool anchor_hide = true;
+    AnchorRotationMode anchor_rotation = AnchorRotationMode::Off;
+    float anchor_yaw_deg = 0.0f;
+    float anchor_units_per_meter = -1.0f;
     std::vector<u64> texture_hashes;  // Only apply when any listed texture is bound (empty = any)
     bool texture_hashes_excluded = false;  // false=Include list, true=Exclude list
     bool hash_family_match = false;  // false=exact hash, true=family signature
@@ -217,6 +239,11 @@ public:
 
   // Returns the opacity for a Passthrough override (0 = fully see-through to the camera).
   float GetOverridePassthroughOpacity(u64 vs_hash, u64 ps_hash, u64 gs_hash) const;
+
+  // Fills the parameters of the matching CameraAnchor override.
+  // Returns false when no CameraAnchor override matches the draw.
+  bool GetOverrideCameraAnchor(u64 vs_hash, u64 ps_hash, u64 gs_hash,
+                               CameraAnchorParams* out_params) const;
 
   // Flag system: register flag shaders and check conditions.
   void RegisterFlags(u64 vs_hash, u64 ps_hash, u64 gs_hash);
@@ -311,6 +338,7 @@ private:
   std::unordered_map<u64, int> m_screen_layers;      // hash → manual layer (-1 = auto)
   std::unordered_map<u64, float> m_element_depths;  // hash → per-override element depth (-1 = global)
   std::unordered_map<u64, float> m_passthrough_opacities;  // hash → Passthrough opacity
+  std::unordered_map<u64, CameraAnchorParams> m_camera_anchors;  // hash → CameraAnchor params
   std::string m_loaded_game_id;
   std::atomic_bool m_has_overrides = false;
   std::atomic_bool m_needs_shader_family_signatures = false;
@@ -347,6 +375,7 @@ private:
     float element_depth;
     float units_per_meter;
     float passthrough_opacity;
+    CameraAnchorParams anchor;
     std::vector<u64> texture_hashes;  // Only apply when any listed texture is bound (empty = any)
     bool texture_hashes_excluded;     // false=Include list, true=Exclude list
     bool hash_family_match;           // false=exact hash, true=family signature
