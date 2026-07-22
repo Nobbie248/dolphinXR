@@ -247,9 +247,9 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   virtual_screen_layout->addWidget(m_screen_size, 4, 1);
   virtual_screen_layout->addWidget(m_screen_size_value, 4, 2);
   virtual_screen_layout->addWidget(
-      new ConfigFloatLabel(tr("Head Locked Curvature:"), m_head_locked_curvature), 5, 0);
-  virtual_screen_layout->addWidget(m_head_locked_curvature, 5, 1);
-  virtual_screen_layout->addWidget(m_head_locked_curvature_value, 5, 2);
+      new ConfigFloatLabel(tr("Head Locked Curvature:"), m_head_locked_curvature), 6, 0);
+  virtual_screen_layout->addWidget(m_head_locked_curvature, 6, 1);
+  virtual_screen_layout->addWidget(m_head_locked_curvature_value, 6, 2);
 
   m_screen_distance_value->setText(QString::asprintf("%.1f", m_screen_distance->GetValue()));
   connect(m_screen_distance, &ConfigFloatSlider::valueChanged, this, [this] {
@@ -395,10 +395,10 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
                                           Config::GFX_VR_HUD_THICKNESS,
                                           Config::GFX_VR_HUD_THICKNESS_STEP);
   m_hud_thickness_value = new QLabel();
-  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("HUD Thickness:"), m_hud_thickness), 6,
+  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("Screen Depth:"), m_hud_thickness), 5,
                                    0);
-  virtual_screen_layout->addWidget(m_hud_thickness, 6, 1);
-  virtual_screen_layout->addWidget(m_hud_thickness_value, 6, 2);
+  virtual_screen_layout->addWidget(m_hud_thickness, 5, 1);
+  virtual_screen_layout->addWidget(m_hud_thickness_value, 5, 2);
 
   auto update_hud_thickness_label = [this] {
     const float val = m_hud_thickness->GetValue();
@@ -410,7 +410,6 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   general_layout->addWidget(openxr_group);
   general_layout->addWidget(camera_group);
   general_layout->addWidget(virtual_screen_group);
-  general_layout->addWidget(framerate_group);
   general_layout->addWidget(rendering_group);
   auto* general_actions_layout = new QHBoxLayout;
   general_actions_layout->addStretch();
@@ -452,6 +451,16 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   hacks_group_layout->addWidget(m_detect_skybox);
   hacks_group_layout->addWidget(m_layered_palette_conversion_path);
   hack_layout->addWidget(hacks_group);
+  hack_layout->addWidget(framerate_group);
+
+  auto* shaders_group = new QGroupBox(tr("Shaders"));
+  auto* shaders_group_layout = new QVBoxLayout;
+  shaders_group->setLayout(shaders_group_layout);
+
+  m_load_custom_shaders =
+      new ConfigBool(tr("Load Custom Shaders"), Config::GFX_VR_LOAD_CUSTOM_SHADERS);
+  shaders_group_layout->addWidget(m_load_custom_shaders);
+  hack_layout->addWidget(shaders_group);
 
   passthrough_layout->addWidget(m_passthrough, 0, 0, 1, 3);
   passthrough_layout->addWidget(m_passthrough_remove_black_bg, 1, 0, 1, 3);
@@ -556,18 +565,19 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   });
   tools_layout->addWidget(culling_finder_btn, 2, 0);
 
-  m_load_custom_shaders =
-      new ConfigBool(tr("Load Custom Shaders"), Config::GFX_VR_LOAD_CUSTOM_SHADERS);
-  tools_layout->addWidget(m_load_custom_shaders, 3, 0);
+  auto* debug_group = new QGroupBox(tr("Debug"));
+  auto* debug_layout = new QGridLayout;
+  debug_group->setLayout(debug_layout);
 
-  tools_layout->addWidget(new QLabel(tr("Default VR Position:")), 4, 0);
-  tools_layout->addWidget(m_reference_space_mode, 4, 1);
-  tools_layout->addWidget(new QLabel(tr("Tracking Mode:")), 5, 0);
-  tools_layout->addWidget(m_tracking_mode, 5, 1);
+  debug_layout->addWidget(new QLabel(tr("Default VR Position:")), 0, 0);
+  debug_layout->addWidget(m_reference_space_mode, 0, 1);
+  debug_layout->addWidget(new QLabel(tr("Tracking Mode:")), 1, 0);
+  debug_layout->addWidget(m_tracking_mode, 1, 1);
 
   general_layout->addStretch();
   hack_layout->addStretch();
   tools_tab_layout->addWidget(tools_group);
+  tools_tab_layout->addWidget(debug_group);
   tools_tab_layout->addStretch();
 
   main_layout->addWidget(tabs);
