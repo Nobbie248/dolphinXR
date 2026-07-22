@@ -58,6 +58,7 @@
 #include "Common/MsgHandler.h"
 #include "Common/VR/OpenXRInputState.h"
 #include "Core/Core.h"
+#include "Core/HotkeyManager.h"
 #include "Core/HW/GCPad.h"
 #include "Core/HW/Wiimote.h"
 #include "Core/System.h"
@@ -223,10 +224,13 @@ struct MappableGroup
 };
 
 void AddMappableControls(ControllerEmu::ControlGroupContainer& container,
-                         std::vector<MappableControl>* controls, std::string_view prefix = {})
+                         std::vector<MappableControl>* controls, std::string_view prefix = {},
+                         const ControllerEmu::ControlGroup* excluded_group = nullptr)
 {
   for (const auto& group : container.groups)
   {
+    if (group.get() == excluded_group)
+      continue;
     if (!IsOpenXRMapperMappableGroup(group->type))
       continue;
 
@@ -250,14 +254,28 @@ public:
 
   explicit BindingWizard(OpenXRUtilitySessionTarget target) : m_target(target)
   {
-    InputConfig* config = target.type == OpenXRUtilitySessionTargetType::WiiRemote ?
-                              Wiimote::GetConfig() :
-                              Pad::GetConfig();
+    InputConfig* config = nullptr;
+    switch (target.type)
+    {
+    case OpenXRUtilitySessionTargetType::WiiRemote:
+      config = Wiimote::GetConfig();
+      break;
+    case OpenXRUtilitySessionTargetType::GameCubeController:
+      config = Pad::GetConfig();
+      break;
+    case OpenXRUtilitySessionTargetType::Hotkeys:
+      config = HotkeyManagerEmu::GetConfig();
+      break;
+    }
     m_controller = config ? config->GetController(target.port) : nullptr;
     if (!m_controller)
       return;
 
-    AddMappableControls(*m_controller, &m_controls);
+    const ControllerEmu::ControlGroup* excluded_group =
+        target.type == OpenXRUtilitySessionTargetType::Hotkeys ?
+            HotkeyManagerEmu::GetHotkeyGroup(HKGP_ANDROID) :
+            nullptr;
+    AddMappableControls(*m_controller, &m_controls, {}, excluded_group);
     if (target.type == OpenXRUtilitySessionTargetType::WiiRemote)
     {
       for (const auto& group : m_controller->groups)
@@ -302,8 +320,10 @@ public:
     ImGui::SetCursorPos({45.0f, 28.0f});
     if (m_target.type == OpenXRUtilitySessionTargetType::WiiRemote)
       ImGui::Text("OpenXR Wii Remote %d", m_target.port + 1);
-    else
+    else if (m_target.type == OpenXRUtilitySessionTargetType::GameCubeController)
       ImGui::Text("OpenXR GameCube Standard Controller %d", m_target.port + 1);
+    else
+      ImGui::Text("OpenXR Hotkey Settings");
     ImGui::SetCursorPos({45.0f, 68.0f});
     ImGui::TextDisabled("Select any control to listen for a new OpenXR input");
 
@@ -1328,6 +1348,7 @@ bool OpenXRUtilitySession::Start(OpenXRUtilitySessionTarget target)
   m_state.store(OpenXRUtilitySessionState::Starting, std::memory_order_release);
 
   if (target.port < 0 || target.port >= 4 ||
+      (target.type == OpenXRUtilitySessionTargetType::Hotkeys && target.port != 0) ||
       Core::GetState(Core::System::GetInstance()) != Core::State::Uninitialized || g_openxr)
   {
     m_failure.store(OpenXRUtilitySessionFailure::SessionBusy, std::memory_order_release);

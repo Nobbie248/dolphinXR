@@ -118,11 +118,14 @@ MappingWindow::MappingWindow(QWidget* parent, Type type, int port_num)
   const bool is_openxr_wiimote_mapper =
       m_mapping_type == Type::MAPPING_WIIMOTE_EMU && m_is_openxr_wiimote;
   const bool is_gamecube_mapper = m_mapping_type == Type::MAPPING_GCPAD;
-  if (is_openxr_wiimote_mapper || is_gamecube_mapper)
+  const bool is_hotkey_mapper = m_mapping_type == Type::MAPPING_HOTKEYS;
+  if (is_openxr_wiimote_mapper || is_gamecube_mapper || is_hotkey_mapper)
   {
     using TargetType = OpenXRWiimoteConfigSessionController::TargetType;
-    const TargetType target_type =
-        is_openxr_wiimote_mapper ? TargetType::WiiRemote : TargetType::GameCubeController;
+    const TargetType target_type = is_openxr_wiimote_mapper ?
+                                       TargetType::WiiRemote :
+                                       (is_gamecube_mapper ? TargetType::GameCubeController :
+                                                             TargetType::Hotkeys);
     m_openxr_config_session_controller =
         new OpenXRWiimoteConfigSessionController(this, m_port, target_type);
     if (auto* outer = qobject_cast<QVBoxLayout*>(m_devices_box->layout()))
@@ -546,7 +549,7 @@ void MappingWindow::UpdateOpenXRConfigButtonVisibility()
 
   const bool visible =
       m_mapping_type == Type::MAPPING_WIIMOTE_EMU ||
-      (m_mapping_type == Type::MAPPING_GCPAD &&
+      ((m_mapping_type == Type::MAPPING_GCPAD || m_mapping_type == Type::MAPPING_HOTKEYS) &&
        m_devices_combo->currentData().toString() == QString::fromLatin1(OPENXR_CONTROLLER_DEVICE));
   m_openxr_config_session_controller->GetButton()->setVisible(visible);
 }

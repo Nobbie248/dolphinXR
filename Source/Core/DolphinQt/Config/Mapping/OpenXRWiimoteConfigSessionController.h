@@ -28,6 +28,7 @@ public:
   {
     WiiRemote,
     GameCubeController,
+    Hotkeys,
   };
 
   OpenXRWiimoteConfigSessionController(MappingWindow* window, int port, TargetType target_type);

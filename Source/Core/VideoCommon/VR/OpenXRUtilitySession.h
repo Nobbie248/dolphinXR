@@ -41,6 +41,7 @@ enum class OpenXRUtilitySessionTargetType : uint8_t
 {
   WiiRemote,
   GameCubeController,
+  Hotkeys,
 };
 
 struct OpenXRUtilitySessionTarget

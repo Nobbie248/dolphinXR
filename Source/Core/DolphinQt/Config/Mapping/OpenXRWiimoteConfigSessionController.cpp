@@ -18,6 +18,24 @@
 #include "InputCommon/ControllerInterface/ControllerInterface.h"
 #if defined(ENABLE_VR) && defined(HAS_VULKAN)
 #include "VideoCommon/VR/OpenXRUtilitySession.h"
+
+namespace
+{
+VR::OpenXRUtilitySessionTargetType ToUtilityTargetType(
+    OpenXRWiimoteConfigSessionController::TargetType type)
+{
+  switch (type)
+  {
+  case OpenXRWiimoteConfigSessionController::TargetType::WiiRemote:
+    return VR::OpenXRUtilitySessionTargetType::WiiRemote;
+  case OpenXRWiimoteConfigSessionController::TargetType::GameCubeController:
+    return VR::OpenXRUtilitySessionTargetType::GameCubeController;
+  case OpenXRWiimoteConfigSessionController::TargetType::Hotkeys:
+    return VR::OpenXRUtilitySessionTargetType::Hotkeys;
+  }
+  return VR::OpenXRUtilitySessionTargetType::WiiRemote;
+}
+}  // namespace
 #endif
 
 OpenXRWiimoteConfigSessionController::OpenXRWiimoteConfigSessionController(MappingWindow* window,
@@ -67,10 +85,7 @@ void OpenXRWiimoteConfigSessionController::Start()
   }
 
   m_session = std::make_unique<VR::OpenXRUtilitySession>();
-  const VR::OpenXRUtilitySessionTarget target{
-      m_target_type == TargetType::WiiRemote ? VR::OpenXRUtilitySessionTargetType::WiiRemote :
-                                               VR::OpenXRUtilitySessionTargetType::GameCubeController,
-      m_port};
+  const VR::OpenXRUtilitySessionTarget target{ToUtilityTargetType(m_target_type), m_port};
   if (!m_session->Start(target))
   {
     QMessageBox::critical(m_window, tr("OpenXR Controller Mapper"),
@@ -154,9 +169,7 @@ void OpenXRWiimoteConfigSessionController::FinishSession()
 #if defined(ENABLE_VR) && defined(HAS_VULKAN)
   VR::OpenXRPendingBindings pending = m_session->TakePendingBindings();
   auto* controller = m_window->GetController();
-  const auto expected_target =
-      m_target_type == TargetType::WiiRemote ? VR::OpenXRUtilitySessionTargetType::WiiRemote :
-                                               VR::OpenXRUtilitySessionTargetType::GameCubeController;
+  const auto expected_target = ToUtilityTargetType(m_target_type);
   if (!controller || pending.target.type != expected_target || pending.target.port != m_port)
   {
     Stop();
