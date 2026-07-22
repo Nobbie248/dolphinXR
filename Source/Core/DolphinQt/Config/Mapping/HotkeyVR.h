@@ -11,7 +11,13 @@ class HotkeyVR final : public MappingWidget
 {
   Q_OBJECT
 public:
-  explicit HotkeyVR(MappingWindow* window);
+  enum class Page
+  {
+    VR,
+    Overrides,
+  };
+
+  explicit HotkeyVR(MappingWindow* window, Page page);
 
   InputConfig* GetConfig() override;
 
@@ -20,6 +26,6 @@ private:
   void SaveSettings() override;
   void CreateMainLayout();
 
+  Page m_page;
   QHBoxLayout* m_main_layout;
 };
-

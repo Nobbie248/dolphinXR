@@ -17,6 +17,7 @@
 #include "Common/FileUtil.h"
 #include "Common/Logging/Log.h"
 #include "Core/ConfigLoaders/GameConfigLoader.h"
+#include "VideoCommon/VideoConfig.h"
 
 namespace
 {
@@ -578,6 +579,7 @@ void TextureElementManager::SetHunterActive(bool active)
     m_textures_collecting.clear();
     m_textures_display.clear();
     m_preview_textures.clear();
+    m_selected_texture_hash = 0;
   }
 }
 
@@ -619,6 +621,97 @@ std::vector<TextureElementManager::TextureUsage> TextureElementManager::GetCurre
   std::sort(result.begin(), result.end(),
             [](const TextureUsage& a, const TextureUsage& b) { return a.hash < b.hash; });
   return result;
+}
+
+void TextureElementManager::PrevTexture()
+{
+  std::lock_guard lock(m_mutex);
+  if (m_textures_display.empty())
+  {
+    m_selected_texture_hash = 0;
+    m_preview_textures.clear();
+    m_has_preview.store(false, std::memory_order_relaxed);
+    return;
+  }
+
+  std::vector<u64> hashes;
+  hashes.reserve(m_textures_display.size());
+  for (const auto& [hash, _] : m_textures_display)
+    hashes.push_back(hash);
+  std::sort(hashes.begin(), hashes.end());
+
+  const auto it = std::find(hashes.begin(), hashes.end(), m_selected_texture_hash);
+  if (it == hashes.end() || it == hashes.begin())
+    m_selected_texture_hash = hashes.back();
+  else
+    m_selected_texture_hash = *std::prev(it);
+
+  m_preview_textures = {m_selected_texture_hash};
+  m_has_preview.store(true, std::memory_order_relaxed);
+}
+
+void TextureElementManager::NextTexture()
+{
+  std::lock_guard lock(m_mutex);
+  if (m_textures_display.empty())
+  {
+    m_selected_texture_hash = 0;
+    m_preview_textures.clear();
+    m_has_preview.store(false, std::memory_order_relaxed);
+    return;
+  }
+
+  std::vector<u64> hashes;
+  hashes.reserve(m_textures_display.size());
+  for (const auto& [hash, _] : m_textures_display)
+    hashes.push_back(hash);
+  std::sort(hashes.begin(), hashes.end());
+
+  auto it = std::find(hashes.begin(), hashes.end(), m_selected_texture_hash);
+  if (it == hashes.end() || ++it == hashes.end())
+    m_selected_texture_hash = hashes.front();
+  else
+    m_selected_texture_hash = *it;
+
+  m_preview_textures = {m_selected_texture_hash};
+  m_has_preview.store(true, std::memory_order_relaxed);
+}
+
+u64 TextureElementManager::GetSelectedTextureHash() const
+{
+  std::lock_guard lock(m_mutex);
+  if (m_textures_display.empty())
+    return 0;
+  if (m_textures_display.contains(m_selected_texture_hash))
+    return m_selected_texture_hash;
+
+  return std::min_element(m_textures_display.begin(), m_textures_display.end(),
+                          [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; })
+      ->first;
+}
+
+bool TextureElementManager::SaveSelectedTextureOverride(const std::string& game_id,
+                                                        HandlingType handling)
+{
+  if (game_id.empty())
+    return false;
+
+  const u64 texture_hash = GetSelectedTextureHash();
+  if (texture_hash == 0)
+    return false;
+
+  auto overrides = LoadOverridesFromINI(game_id);
+  TextureElementOverride entry;
+  entry.name = fmt::format("Texture {:016x}", texture_hash);
+  entry.handling = handling;
+  entry.texture_hashes.push_back(texture_hash);
+  if (handling == HandlingType::UnitsPerMeter)
+    entry.units_per_meter = g_Config.vr_units_per_meter;
+
+  overrides.push_back(std::move(entry));
+  SaveOverridesToINI(game_id, overrides);
+  LoadOverrides(game_id);
+  return true;
 }
 
 void TextureElementManager::SetPreviewTextures(const std::vector<u64>& hashes)

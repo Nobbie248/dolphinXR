@@ -105,6 +105,7 @@ public:
   void SetDefaultGame(QString path);
   void RefreshGameList();
   void NotifyShaderOverridesChanged();
+  void NotifyTextureElementOverridesChanged();
   void NotifyRefreshGameListStarted();
   void NotifyRefreshGameListComplete();
   void NotifyMetadataRefreshComplete();
@@ -202,6 +203,7 @@ signals:
   void MetadataRefreshRequested();
   void MetadataRefreshCompleted();
   void ShaderOverridesChanged();
+  void TextureElementOverridesChanged();
   void AutoRefreshToggled(bool enabled);
   void CursorVisibilityChanged();
   void LockCursorChanged();

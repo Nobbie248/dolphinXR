@@ -484,6 +484,11 @@ void Settings::NotifyShaderOverridesChanged()
   emit ShaderOverridesChanged();
 }
 
+void Settings::NotifyTextureElementOverridesChanged()
+{
+  emit TextureElementOverridesChanged();
+}
+
 void Settings::NotifyRefreshGameListStarted()
 {
   emit GameListRefreshStarted();

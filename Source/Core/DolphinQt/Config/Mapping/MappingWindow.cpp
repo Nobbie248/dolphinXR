@@ -622,7 +622,8 @@ void MappingWindow::SetMappingType(MappingWindow::Type type)
     AddWidget(tr("Wii and Wii Remote"), new HotkeyWii(this));
     AddWidget(tr("Controller Profile"), new HotkeyControllerProfile(this));
     AddWidget(tr("Graphics"), new HotkeyGraphics(this));
-    AddWidget(tr("VR"), new HotkeyVR(this));
+    AddWidget(tr("VR"), new HotkeyVR(this, HotkeyVR::Page::VR));
+    AddWidget(tr("VR Overrides"), new HotkeyVR(this, HotkeyVR::Page::Overrides));
     AddWidget(tr("USB Emulation"), new HotkeyUSBEmu(this));
     // i18n: Stereoscopic 3D
     AddWidget(tr("3D"), new Hotkey3D(this));

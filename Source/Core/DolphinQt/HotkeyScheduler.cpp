@@ -43,6 +43,7 @@
 
 #include "VideoCommon/OnScreenDisplay.h"
 #include "VideoCommon/ShaderHunter.h"
+#include "VideoCommon/TextureElementManager.h"
 #include "VideoCommon/VideoConfig.h"
 #ifdef ENABLE_VR
 #include "VideoCommon/VR/OpenXRManager.h"
@@ -654,6 +655,12 @@ void HotkeyScheduler::Run()
       if (IsHotkey(HK_VR_TOGGLE_REMOVE_CINEMATIC_BARS))
         ToggleVRSetting(Config::GFX_VR_REMOVE_BARS, "Remove Cinematic Bars");
 
+      if (IsHotkey(HK_VR_TOGGLE_CAMERA_ANCHOR))
+        ToggleVRSetting(Config::GFX_VR_ENABLE_CAMERA_ANCHOR, "Camera Anchor");
+
+      if (IsHotkey(HK_VR_TOGGLE_CONTROLLER_ANCHOR))
+        ToggleVRSetting(Config::GFX_VR_ENABLE_CONTROLLER_ANCHOR, "Controller Anchor");
+
       // VR Shader Hunting
       auto& shader_hunter = ShaderHunter::GetInstance();
       static ShaderHunter::HandlingType shader_hotkey_handling = ShaderHunter::HandlingType::Skip;
@@ -689,6 +696,10 @@ void HotkeyScheduler::Run()
           return "Units Per Meter";
         case ShaderHunter::HandlingType::Passthrough:
           return "Passthrough";
+        case ShaderHunter::HandlingType::CameraAnchor:
+          return "Camera Anchor";
+        case ShaderHunter::HandlingType::ControllerAnchor:
+          return "Controller Anchor";
         default:
           return "Unknown";
         }
@@ -763,6 +774,12 @@ void HotkeyScheduler::Run()
           shader_hotkey_handling = ShaderHunter::HandlingType::Passthrough;
           break;
         case ShaderHunter::HandlingType::Passthrough:
+          shader_hotkey_handling = ShaderHunter::HandlingType::CameraAnchor;
+          break;
+        case ShaderHunter::HandlingType::CameraAnchor:
+          shader_hotkey_handling = ShaderHunter::HandlingType::ControllerAnchor;
+          break;
+        case ShaderHunter::HandlingType::ControllerAnchor:
         default:
           shader_hotkey_handling = ShaderHunter::HandlingType::Skip;
           break;
@@ -835,6 +852,99 @@ void HotkeyScheduler::Run()
         else
         {
           OSD::AddMessage("Save Shader Override: no shader selected");
+        }
+      }
+
+      // VR Texture Hunting
+      auto& texture_hunter = TextureElementManager::GetInstance();
+      static TextureElementManager::HandlingType texture_hotkey_handling =
+          TextureElementManager::HandlingType::Skip;
+
+      if (IsHotkey(HK_VR_TEXTURE_TOGGLE_HUNTING))
+      {
+        const bool enabled = !texture_hunter.IsHunterActive();
+        texture_hunter.SetHunterActive(enabled);
+        OSD::AddMessage(fmt::format("Texture Hunting: {}", enabled ? "Enabled" : "Disabled"));
+      }
+
+      if (IsHotkey(HK_VR_TEXTURE_CYCLE_HUNTING_OPTION))
+      {
+        const bool pink = !texture_hunter.IsPreviewPink();
+        texture_hunter.SetPreviewPink(pink);
+        OSD::AddMessage(fmt::format("Texture Hunting Option: {}", pink ? "Pink" : "Skip"));
+      }
+
+      if (IsHotkey(HK_VR_TEXTURE_CYCLE_HANDLING))
+      {
+        switch (texture_hotkey_handling)
+        {
+        case TextureElementManager::HandlingType::Skip:
+          texture_hotkey_handling = TextureElementManager::HandlingType::Screen;
+          break;
+        case TextureElementManager::HandlingType::Screen:
+          texture_hotkey_handling = TextureElementManager::HandlingType::HeadLocked;
+          break;
+        case TextureElementManager::HandlingType::HeadLocked:
+          texture_hotkey_handling = TextureElementManager::HandlingType::Fullscreen;
+          break;
+        case TextureElementManager::HandlingType::Fullscreen:
+        case TextureElementManager::HandlingType::FullscreenMono:
+          texture_hotkey_handling = TextureElementManager::HandlingType::UnitsPerMeter;
+          break;
+        case TextureElementManager::HandlingType::UnitsPerMeter:
+          texture_hotkey_handling = TextureElementManager::HandlingType::Passthrough;
+          break;
+        case TextureElementManager::HandlingType::Passthrough:
+          texture_hotkey_handling = TextureElementManager::HandlingType::CameraAnchor;
+          break;
+        case TextureElementManager::HandlingType::CameraAnchor:
+          texture_hotkey_handling = TextureElementManager::HandlingType::ControllerAnchor;
+          break;
+        case TextureElementManager::HandlingType::ControllerAnchor:
+        case TextureElementManager::HandlingType::Flag:
+        default:
+          texture_hotkey_handling = TextureElementManager::HandlingType::Skip;
+          break;
+        }
+        OSD::AddMessage(fmt::format("Texture Override Handling: {}",
+                                    HandlingTypeLabel(texture_hotkey_handling)));
+      }
+
+      const auto ShowSelectedTexture = [&texture_hunter]() {
+        const u64 hash = texture_hunter.GetSelectedTextureHash();
+        if (hash == 0)
+          OSD::AddMessage("Texture: (none)");
+        else
+          OSD::AddMessage(fmt::format("Texture: {:016x}", static_cast<unsigned long long>(hash)));
+      };
+
+      if (IsHotkey(HK_VR_TEXTURE_PREV))
+      {
+        texture_hunter.PrevTexture();
+        ShowSelectedTexture();
+      }
+      if (IsHotkey(HK_VR_TEXTURE_NEXT))
+      {
+        texture_hunter.NextTexture();
+        ShowSelectedTexture();
+      }
+
+      if (IsHotkey(HK_VR_TEXTURE_SAVE_OVERRIDE))
+      {
+        const std::string game_id = SConfig::GetInstance().GetGameID();
+        if (game_id.empty())
+        {
+          OSD::AddMessage("Save Texture Override: no game is running");
+        }
+        else if (texture_hunter.SaveSelectedTextureOverride(game_id, texture_hotkey_handling))
+        {
+          Settings::Instance().NotifyTextureElementOverridesChanged();
+          OSD::AddMessage(fmt::format("Saved {} texture override to {}.ini",
+                                      HandlingTypeLabel(texture_hotkey_handling), game_id));
+        }
+        else
+        {
+          OSD::AddMessage("Save Texture Override: no texture selected");
         }
       }
 

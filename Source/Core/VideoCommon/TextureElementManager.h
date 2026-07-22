@@ -102,6 +102,10 @@ public:
                            const std::array<std::string, 8>& names);
   void OnFrameEnd();
   std::vector<TextureUsage> GetCurrentTextures() const;
+  void PrevTexture();
+  void NextTexture();
+  u64 GetSelectedTextureHash() const;
+  bool SaveSelectedTextureOverride(const std::string& game_id, HandlingType handling);
 
   // --- Live preview (Texture Hunter browser open) ---
   // Draws binding a preview texture are skipped or pink-highlighted in-game without being saved,
@@ -139,6 +143,7 @@ private:
   std::atomic_bool m_hunter_active = false;
   std::unordered_map<u64, std::string> m_textures_collecting;
   std::unordered_map<u64, std::string> m_textures_display;
+  u64 m_selected_texture_hash = 0;
 
   // Live preview: textures checked in the browser (mutex-guarded; gated by m_has_preview).
   std::atomic_bool m_has_preview = false;

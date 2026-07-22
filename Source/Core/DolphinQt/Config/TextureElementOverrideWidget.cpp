@@ -105,6 +105,8 @@ void TextureElementOverrideWidget::ConnectWidgets()
   // Refresh the warning when Dump Textures (or any other setting) is toggled elsewhere.
   connect(&Settings::Instance(), &Settings::ConfigChanged, this,
           &TextureElementOverrideWidget::UpdateDumpWarning);
+  connect(&Settings::Instance(), &Settings::TextureElementOverridesChanged, this,
+          &TextureElementOverrideWidget::LoadOverrides);
 }
 
 void TextureElementOverrideWidget::LoadOverrides()
