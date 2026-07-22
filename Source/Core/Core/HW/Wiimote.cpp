@@ -81,8 +81,15 @@ struct OpenXRWiimoteState
 };
 
 // How far past the screen edge (in screen half-extents) the pointer stays tracked before
-// the emulated IR camera "loses" it. A real wiimote keeps its dots slightly past the edge.
-constexpr float OPENXR_IR_HIDE_MARGIN = 1.25f;
+// the emulated IR camera "loses" it, matching real hardware: the wiimote camera FOV
+// (42°x31.5°) extends well past the cursor's Total Yaw/Pitch range (25°/20°), so real
+// dots survive to roughly these excursions.
+constexpr float OPENXR_IR_HIDE_MARGIN_U = 1.9f;
+constexpr float OPENXR_IR_HIDE_MARGIN_V = 1.5f;
+// An off-screen excursion must persist this many input snapshots (~100ms at 72-90Hz)
+// before the pointer is hidden. Runtime pose spikes during fast controller motion produce
+// brief excursions; without the debounce every spike dropped IR tracking entirely.
+constexpr int OPENXR_IR_HIDE_DELAY_SNAPSHOTS = 9;
 
 // Nanosecond timestamp used for velocity differentiation: the XR pose sample time when
 // available (jitter-free), wall clock otherwise.
@@ -198,11 +205,10 @@ OpenXRWiimoteState BuildOpenXRState(const Common::VR::OpenXRControllerState& con
   // IR pointer: absolute mapping from the aim ray's intersection with the virtual screen,
   // computed by OpenXRManager with the renderer's own screen placement. Aiming at a point
   // on the 2D screen puts the Wii pointer at that point — no reference capture, no
-  // recentering. Past the hide margin (or aiming away from the screen plane) the pointer
-  // is lost exactly like a real wiimote leaving sensor-bar view.
+  // recentering. Raw values are stored here; the off-screen hide decision (margins +
+  // debounce) lives in the override function, which keeps state across snapshots.
   const Common::VR::OpenXRScreenHit& hit = controller.screen_hit;
-  if (hit.valid && std::abs(hit.u) <= OPENXR_IR_HIDE_MARGIN &&
-      std::abs(hit.v) <= OPENXR_IR_HIDE_MARGIN)
+  if (hit.valid)
   {
     out.ir_x = hit.u;
     out.ir_y = hit.v;
@@ -221,10 +227,15 @@ ControllerEmu::InputOverrideFunction CreateOpenXRInputOverrideFunction(unsigned 
   OpenXRWiimoteState cached_state;
   OpenXRVelocityHistory left_velocity_history;
   OpenXRVelocityHistory right_velocity_history;
+  int offscreen_snapshots = 0;
+  float held_ir_x = std::numeric_limits<float>::quiet_NaN();
+  float held_ir_y = 0.0f;
+  float held_ir_z = 0.0f;
 
   return [wiimote_index, prefer_left_hand, cached_state, left_velocity_history,
-          right_velocity_history](std::string_view group_name, std::string_view control_name,
-                                  ControlState) mutable -> std::optional<ControlState> {
+          right_velocity_history, offscreen_snapshots, held_ir_x, held_ir_y,
+          held_ir_z](std::string_view group_name, std::string_view control_name,
+                     ControlState) mutable -> std::optional<ControlState> {
     if (s_wiimote_sources[wiimote_index].load() != WiimoteSource::OpenXR)
       return std::nullopt;
 
@@ -247,6 +258,37 @@ ControllerEmu::InputOverrideFunction CreateOpenXRInputOverrideFunction(unsigned 
         cached_state = BuildOpenXRState(left, &left_velocity_history, sample_time_ns);
       else
         cached_state = {};
+
+      // Off-screen debounce: a real wiimote's camera keeps tracking well past the screen
+      // edge, and a runtime pose spike during fast motion must not drop the pointer.
+      // Brief excursions keep reporting (the cursor pins at the screen edge, invalid-hit
+      // blips hold the last good position); only a sustained one hides the pointer like
+      // a real wiimote losing the sensor bar.
+      const bool on_screen = !std::isnan(cached_state.ir_x) &&
+                             std::abs(cached_state.ir_x) <= OPENXR_IR_HIDE_MARGIN_U &&
+                             std::abs(cached_state.ir_y) <= OPENXR_IR_HIDE_MARGIN_V;
+      if (on_screen)
+      {
+        offscreen_snapshots = 0;
+        held_ir_x = cached_state.ir_x;
+        held_ir_y = cached_state.ir_y;
+        held_ir_z = cached_state.ir_z;
+      }
+      else if (++offscreen_snapshots < OPENXR_IR_HIDE_DELAY_SNAPSHOTS)
+      {
+        if (std::isnan(cached_state.ir_x))
+        {
+          cached_state.ir_x = held_ir_x;
+          cached_state.ir_y = held_ir_y;
+          cached_state.ir_z = held_ir_z;
+        }
+      }
+      else
+      {
+        cached_state.ir_x = std::numeric_limits<float>::quiet_NaN();
+        cached_state.ir_y = 0.0f;
+        cached_state.ir_z = 0.0f;
+      }
 
       cached_state.generation = snapshot.generation;
     }

@@ -9,6 +9,23 @@
 #ifndef XR_USE_PLATFORM_ANDROID
 #define XR_USE_PLATFORM_ANDROID
 #endif
+#ifndef XR_USE_TIMESPEC
+#define XR_USE_TIMESPEC
+#endif
+#include <ctime>
+#include <openxr/openxr_platform.h>
+#elif defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <Windows.h>
+#include <unknwn.h>
+#ifndef XR_USE_PLATFORM_WIN32
+#define XR_USE_PLATFORM_WIN32
+#endif
 #include <openxr/openxr_platform.h>
 #endif
 
@@ -513,6 +530,17 @@ bool OpenXRManager::CreateInstance(const std::vector<const char*>& extra_extensi
       }) != extra_extensions.end();
   if (is_vulkan_binding && runtime_has(XR_FB_PASSTHROUGH_EXTENSION_NAME))
     enabled_extensions.push_back(XR_FB_PASSTHROUGH_EXTENSION_NAME);
+#endif
+
+  // Time-domain conversion: lets input sampling locate controller poses at measured "now"
+  // instead of the predicted display time. Prediction extrapolates fast-moving controllers
+  // several frames ahead, which sprays the aim ray during fast wrist motion.
+#if defined(_WIN32)
+  if (runtime_has(XR_KHR_WIN32_CONVERT_PERFORMANCE_COUNTER_TIME_EXTENSION_NAME))
+    enabled_extensions.push_back(XR_KHR_WIN32_CONVERT_PERFORMANCE_COUNTER_TIME_EXTENSION_NAME);
+#elif defined(ANDROID)
+  if (runtime_has(XR_KHR_CONVERT_TIMESPEC_TIME_EXTENSION_NAME))
+    enabled_extensions.push_back(XR_KHR_CONVERT_TIMESPEC_TIME_EXTENSION_NAME);
 #endif
 
   XrVersion requested_api_version = XR_CURRENT_API_VERSION;
@@ -1858,6 +1886,53 @@ void OpenXRManager::UpdateHaptics()
   }
 }
 
+XrTime OpenXRManager::GetInputSampleTime()
+{
+  const XrTime display_time = m_frame_state.predictedDisplayTime;
+#if defined(_WIN32)
+  if (!IsExtensionEnabled(XR_KHR_WIN32_CONVERT_PERFORMANCE_COUNTER_TIME_EXTENSION_NAME))
+    return display_time;
+  if (!m_pfn_convert_now_to_time)
+  {
+    xrGetInstanceProcAddr(m_instance, "xrConvertWin32PerformanceCounterToTimeKHR",
+                          &m_pfn_convert_now_to_time);
+  }
+  if (m_pfn_convert_now_to_time)
+  {
+    LARGE_INTEGER qpc{};
+    QueryPerformanceCounter(&qpc);
+    XrTime now_time = 0;
+    if (XR_SUCCEEDED(reinterpret_cast<PFN_xrConvertWin32PerformanceCounterToTimeKHR>(
+            m_pfn_convert_now_to_time)(m_instance, &qpc, &now_time)) &&
+        now_time > 0)
+    {
+      return std::min(display_time, now_time);
+    }
+  }
+#elif defined(ANDROID)
+  if (!IsExtensionEnabled(XR_KHR_CONVERT_TIMESPEC_TIME_EXTENSION_NAME))
+    return display_time;
+  if (!m_pfn_convert_now_to_time)
+  {
+    xrGetInstanceProcAddr(m_instance, "xrConvertTimespecTimeToTimeKHR",
+                          &m_pfn_convert_now_to_time);
+  }
+  if (m_pfn_convert_now_to_time)
+  {
+    timespec ts{};
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    XrTime now_time = 0;
+    if (XR_SUCCEEDED(reinterpret_cast<PFN_xrConvertTimespecTimeToTimeKHR>(
+            m_pfn_convert_now_to_time)(m_instance, &ts, &now_time)) &&
+        now_time > 0)
+    {
+      return std::min(display_time, now_time);
+    }
+  }
+#endif
+  return display_time;
+}
+
 void OpenXRManager::UpdateInputActions()
 {
   if (!m_session_running || m_session == XR_NULL_HANDLE || m_input_action_set == XR_NULL_HANDLE)
@@ -1885,7 +1960,14 @@ void OpenXRManager::UpdateInputActions()
 
   std::array<Common::VR::OpenXRControllerState, 2> controllers{};
 
-  const auto locate_space_state = [this](XrSpace space, Common::VR::OpenXRPoseState* pose_state,
+  // Rendering-coupled consumers (Controller Anchor) need poses at the predicted display
+  // time so anchored elements stay glued to the rendered frame; pure input consumers (the
+  // Wii pointer, motion) want measured poses at "now" — prediction extrapolates fast
+  // controller motion several frames ahead and sprays the aim ray.
+  const XrTime input_time = GetInputSampleTime();
+
+  const auto locate_space_state = [this](XrSpace space, XrTime time,
+                                         Common::VR::OpenXRPoseState* pose_state,
                                          Common::VR::OpenXRVelocityState* velocity_state) {
     if (space == XR_NULL_HANDLE || m_reference_space == XR_NULL_HANDLE)
       return;
@@ -1894,8 +1976,7 @@ void OpenXRManager::UpdateInputActions()
     XrSpaceLocation location{XR_TYPE_SPACE_LOCATION};
     location.next = &velocity;
 
-    if (XR_FAILED(
-            xrLocateSpace(space, m_reference_space, m_frame_state.predictedDisplayTime, &location)))
+    if (XR_FAILED(xrLocateSpace(space, m_reference_space, time, &location)))
     {
       return;
     }
@@ -1986,12 +2067,19 @@ void OpenXRManager::UpdateInputActions()
     controller.thumbstick_x = std::clamp(get_float(m_action_thumbstick_x), -1.0f, 1.0f);
     controller.thumbstick_y = std::clamp(get_float(m_action_thumbstick_y), -1.0f, 1.0f);
 
-    locate_space_state(m_aim_spaces[hand], &controller.aim_pose, nullptr);
-    locate_space_state(m_grip_spaces[hand], &controller.grip_pose, &controller.grip_velocity);
+    locate_space_state(m_aim_spaces[hand], m_frame_state.predictedDisplayTime,
+                       &controller.aim_pose, nullptr);
+    locate_space_state(m_grip_spaces[hand], input_time, &controller.grip_pose,
+                       &controller.grip_velocity);
 
     // Absolute pointing target for the emulated Wii Remote IR: where the aim ray meets
-    // the virtual screen the renderer is actually displaying.
-    ComputeVirtualScreenHit(&controller);
+    // the virtual screen the renderer is actually displaying. Uses a dedicated measured
+    // "now" locate of the aim pose — the display-time aim above stays reserved for the
+    // Controller Anchor, which must match the rendered frame.
+    Common::VR::OpenXRPoseState input_aim;
+    locate_space_state(m_aim_spaces[hand], input_time, &input_aim, nullptr);
+    ComputeVirtualScreenHit(input_aim.valid ? input_aim : controller.aim_pose,
+                            &controller.screen_hit);
 
     controller.trigger_button = trigger_click || controller.trigger_value > 0.5f;
     controller.squeeze_button =
@@ -2031,7 +2119,7 @@ void OpenXRManager::UpdateInputActions()
 
   Common::VR::OpenXRInputState::SetControllers(controllers, true, head_pose,
                                                profile_strings, m_session_focused,
-                                               m_frame_state.predictedDisplayTime);
+                                               input_time);
 
   UpdateHaptics();
 }
@@ -3019,10 +3107,10 @@ bool OpenXRManager::MapAimPoseToGameView(const Common::VR::OpenXRPoseState& aim,
   return true;
 }
 
-void OpenXRManager::ComputeVirtualScreenHit(Common::VR::OpenXRControllerState* controller) const
+void OpenXRManager::ComputeVirtualScreenHit(const Common::VR::OpenXRPoseState& aim,
+                                            Common::VR::OpenXRScreenHit* out_hit) const
 {
-  controller->screen_hit = {};
-  const Common::VR::OpenXRPoseState& aim = controller->aim_pose;
+  *out_hit = {};
   if (!aim.valid)
     return;
 
@@ -3058,10 +3146,12 @@ void OpenXRManager::ComputeVirtualScreenHit(Common::VR::OpenXRControllerState* c
     const float half_h = std::max(g_ActiveConfig.vr_screen_size * 0.5f, 1e-4f);
     const float aspect = m_flat_screen_aspect > 0.0f ? m_flat_screen_aspect : (16.0f / 9.0f);
     const float half_w = half_h * aspect;
-    controller->screen_hit.valid = true;
-    controller->screen_hit.u = (p[0] + t * d[0]) / half_w;
-    controller->screen_hit.v = (p[1] + t * d[1]) / half_h;
-    controller->screen_hit.distance_m = t;
+    out_hit->valid = true;
+    out_hit->u = (p[0] + t * d[0]) / half_w;
+    out_hit->v = (p[1] + t * d[1]) / half_h;
+    // Perpendicular distance, not ray length: rotating the controller must not change
+    // the emulated sensor-bar distance (ray length grows toward the screen corners).
+    out_hit->distance_m = p[2];
     return;
   }
 
@@ -3087,10 +3177,11 @@ void OpenXRManager::ComputeVirtualScreenHit(Common::VR::OpenXRControllerState* c
   if (t <= 0.0f)
     return;
 
-  controller->screen_hit.valid = true;
-  controller->screen_hit.u = (pos[0] + t * dx) / half_w;
-  controller->screen_hit.v = (pos[1] + t * dy) / half_h;
-  controller->screen_hit.distance_m = t / upm;
+  out_hit->valid = true;
+  out_hit->u = (pos[0] + t * dx) / half_w;
+  out_hit->v = (pos[1] + t * dy) / half_h;
+  // Perpendicular distance to the screen plane (see the flat-mode note above).
+  out_hit->distance_m = (pos[2] + dist) / upm;
 }
 
 void OpenXRManager::InvalidateControllerAnchorCache()

@@ -435,10 +435,15 @@ private:
   bool MapAimPoseToGameView(const Common::VR::OpenXRPoseState& aim, float units_per_meter,
                             std::array<float, 3>* out_position,
                             std::array<float, 9>* out_rotation) const;
-  // Fills controller.screen_hit: intersection of the aim ray with the virtual screen
-  // (flat panel quad in flat-screen mode, ortho virtual screen otherwise), using the
-  // same transform chain the renderer uses to place that screen.
-  void ComputeVirtualScreenHit(Common::VR::OpenXRControllerState* controller) const;
+  // Computes the intersection of the aim ray with the virtual screen (flat panel quad in
+  // flat-screen mode, ortho virtual screen otherwise), using the same transform chain the
+  // renderer uses to place that screen.
+  void ComputeVirtualScreenHit(const Common::VR::OpenXRPoseState& aim,
+                               Common::VR::OpenXRScreenHit* out_hit) const;
+  // XrTime of "now" via the platform time-conversion extension; falls back to the
+  // predicted display time when unavailable. Input wants measured poses — locating at the
+  // predicted display time extrapolates fast controller motion several frames ahead.
+  XrTime GetInputSampleTime();
   void EnsureHomePositionFromCurrentViews() const;
   std::array<XREyeView, 2> GetTrackingAdjustedEyeViews() const;
   void ResetInputActionsState();
@@ -510,6 +515,10 @@ private:
   float m_camera_anchor_pending_upm = 0.0f;
   float m_camera_anchor_target_upm = 0.0f;
   float m_camera_anchor_upm = 0.0f;
+
+  // Cached xrGetInstanceProcAddr result for the platform time-conversion function
+  // (xrConvertWin32PerformanceCounterToTimeKHR / xrConvertTimespecTimeToTimeKHR).
+  PFN_xrVoidFunction m_pfn_convert_now_to_time = nullptr;
 
   // Controller Anchor per-frame cache (video-thread only). Under the head-pose lock a
   // valid entry is reused until InvalidateControllerAnchorCache() so all draws of a game
