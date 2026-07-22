@@ -23,6 +23,7 @@
 #include "VideoCommon/VideoCommon.h"
 #include "VideoCommon/ShaderHunter.h"
 #include "VideoCommon/VideoConfig.h"
+#include "VideoCommon/VR/VRFrameRegion.h"
 #include "VideoCommon/XFMemory.h"
 
 namespace BPFunctions
@@ -32,10 +33,12 @@ namespace BPFunctions
 // Reference: Yet Another GameCube Documentation
 // ----------------------------------------------
 
-// VR: real active frame height, captured from the full-width EFB clear.
-// The 3D scene's own viewport can't tell us this (Metroid Prime Trilogy clears 640x480 but then
-// renders the scene into a 640x448 viewport, leaving a permanent 32-line bottom bar), so we read
-// it from the frame clear instead.
+// VR (LEGACY path, "Frame Size from XFB Copy" OFF): real active frame height, captured from the
+// full-width EFB clear. The 3D scene's own viewport can't tell us this (Metroid Prime Trilogy
+// clears 640x480 but then renders the scene into a 640x448 viewport, leaving a permanent 32-line
+// bottom bar), so we read it from the frame clear instead.
+// Known flaw (why the XFB-copy path superseded it): many games clear MORE EFB lines than they
+// scan out (Mario Galaxy), so the clear height wrongly triggers expansion during normal gameplay.
 static int s_vr_frame_active_height = 0;
 
 void FlushPipeline()
@@ -195,47 +198,104 @@ void SetScissorAndViewport(FramebufferManager* frame_buffer_manager, ScissorPos 
   // color (not geometry), Shader Hunter can't find them. In VR, the restricted scissor also
   // clips the GS-reprojected VR geometry. Fix: expand to full range for perspective draws.
   if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
-      g_ActiveConfig.vr_remove_bars &&
       xfmem.projection.type == ProjectionType::Perspective)
   {
     const int x_off = scissor_offset.x << 1;
     const int y_off = scissor_offset.y << 1;
-    const int efb_top = static_cast<int>(scissor_top_left.y) - y_off;
-    const int efb_bot = static_cast<int>(scissor_bottom_right.y) - y_off;
+    const VR::VRFrameRegion frame = VR::GetVRFrameRegion();
+    const VR::VRViewportClass vp_class = VR::ClassifyVRViewport(viewport, x_off, y_off);
 
-    // Derive the game's active area from the viewport center: the viewport origin sits at
-    // the center of the active area, so active extent = 2 * center.
-    // This avoids using EFB_HEIGHT (528) when the game only uses 448 active lines.
-    const float center_x = viewport.xOrig - static_cast<float>(x_off);
-    const float center_y = viewport.yOrig - static_cast<float>(y_off);
-    const int active_width = static_cast<int>(center_x * 2.0f);
-    int active_height = static_cast<int>(center_y * 2.0f);
-
-    // Gate: only touch the main full-width scene draw. Perspective EFB-effect passes
-    // (shadow/env/reflection maps) use smaller viewports and must be left untouched or they
-    // distort under head tracking.
-    const bool is_main_scene = active_width >= static_cast<int>(EFB_WIDTH) * 9 / 10;
-
-    // The scene viewport only knows its own (possibly short) height — Metroid Prime Trilogy
-    // renders into 448 lines of a 480-line frame, so "448 already full" is wrong. Use the real
-    // frame height captured from the full-screen clear to detect that case.
-    if (is_main_scene && s_vr_frame_active_height > active_height)
-      active_height = s_vr_frame_active_height;
-
-    // Expand if the scissor Y doesn't cover the full active area (any trimming at all)
-    if (is_main_scene && active_height > 0 && (efb_top > 0 || efb_bot < active_height - 1))
+    if (g_ActiveConfig.vr_panes_on_screen && g_ActiveConfig.vr_virtual_screen && frame.valid &&
+        vp_class == VR::VRViewportClass::HudElement)
     {
-      // Expand scissor Y to cover the full active area
-      scissor_top_left.y = static_cast<u32>(y_off);
-      scissor_bottom_right.y = static_cast<u32>(y_off + active_height - 1);
+      // Sub-screen 3D pane (e.g. MKDD character select boxes): GeometryShaderManager routes
+      // this draw onto the virtual screen with a pane->frame NDC remap, so its output spans
+      // the whole frame. The game's pane-local viewport/scissor would squeeze and clip the
+      // reprojected content — replace both with the full displayed frame region.
+      scissor_top_left.x = static_cast<u32>(x_off + frame.left);
+      scissor_top_left.y = static_cast<u32>(y_off + frame.top);
+      scissor_bottom_right.x = static_cast<u32>(x_off + frame.left + frame.width - 1);
+      scissor_bottom_right.y = static_cast<u32>(y_off + frame.top + frame.height - 1);
+      // Standard GX orientation (wd > 0, ht < 0) — any pane flip is encoded in the remap.
+      viewport.xOrig = static_cast<float>(x_off + frame.left) + frame.width * 0.5f;
+      viewport.yOrig = static_cast<float>(y_off + frame.top) + frame.height * 0.5f;
+      viewport.wd = frame.width * 0.5f;
+      viewport.ht = -frame.height * 0.5f;
+    }
+    else if (g_ActiveConfig.vr_remove_bars && g_ActiveConfig.vr_frame_size_from_xfb)
+    {
+      // XFB-copy path: the displayed frame region comes from the EFB->XFB copy rect, so
+      // expansion only ever targets lines that really reach the TV. Only the main scene
+      // (full-width, top-left-anchored viewport) is touched; panes, split-screen and
+      // render-to-texture passes are excluded by the classifier.
+      if (frame.valid && (vp_class == VR::VRViewportClass::MainScene ||
+                          vp_class == VR::VRViewportClass::Letterboxed))
+      {
+        const int efb_top = static_cast<int>(scissor_top_left.y) - y_off;
+        const int efb_bot = static_cast<int>(scissor_bottom_right.y) - y_off;
+        const int frame_top = frame.top;
+        const int frame_bot = frame.top + frame.height - 1;
+        const float vp_min_y = viewport.yOrig - std::fabs(viewport.ht) - y_off;
+        const float vp_max_y = viewport.yOrig + std::fabs(viewport.ht) - y_off;
 
-      // Expand the viewport DOWNWARD only: keep the top edge fixed where the game put it and
-      // extend the bottom to the real frame height. Re-centering on the old origin would shift
-      // the horizon and vertically stretch the scene.
-      const float new_half = static_cast<float>(active_height) * 0.5f;
-      const float sign = (viewport.ht < 0) ? -1.0f : 1.0f;
-      viewport.yOrig = static_cast<float>(y_off) + new_half;
-      viewport.ht = sign * new_half;
+        const bool scissor_trims = efb_top > frame_top || efb_bot < frame_bot;
+        const bool viewport_short = vp_min_y > static_cast<float>(frame_top) + 0.5f ||
+                                    vp_max_y < static_cast<float>(frame_bot) + 0.5f;
+
+        if (scissor_trims || viewport_short)
+        {
+          scissor_top_left.y = static_cast<u32>(y_off + frame_top);
+          scissor_bottom_right.y = static_cast<u32>(y_off + frame_bot);
+
+          // Map NDC [-1,+1] onto the full frame region (Trilogy: top stays at 0, the
+          // bottom extends from 448 to 480 — no horizon shift, no vertical stretch).
+          const float new_half = static_cast<float>(frame.height) * 0.5f;
+          const float sign = (viewport.ht < 0) ? -1.0f : 1.0f;
+          viewport.yOrig = static_cast<float>(y_off + frame_top) + new_half;
+          viewport.ht = sign * new_half;
+        }
+      }
+    }
+    else if (g_ActiveConfig.vr_remove_bars)
+    {
+      // LEGACY path ("Frame Size from XFB Copy" OFF) — kept verbatim for A/B testing.
+      const int efb_top = static_cast<int>(scissor_top_left.y) - y_off;
+      const int efb_bot = static_cast<int>(scissor_bottom_right.y) - y_off;
+
+      // Derive the game's active area from the viewport center: the viewport origin sits at
+      // the center of the active area, so active extent = 2 * center.
+      // This avoids using EFB_HEIGHT (528) when the game only uses 448 active lines.
+      const float center_x = viewport.xOrig - static_cast<float>(x_off);
+      const float center_y = viewport.yOrig - static_cast<float>(y_off);
+      const int active_width = static_cast<int>(center_x * 2.0f);
+      int active_height = static_cast<int>(center_y * 2.0f);
+
+      // Gate: only touch the main full-width scene draw. Perspective EFB-effect passes
+      // (shadow/env/reflection maps) use smaller viewports and must be left untouched or they
+      // distort under head tracking.
+      const bool is_main_scene = active_width >= static_cast<int>(EFB_WIDTH) * 9 / 10;
+
+      // The scene viewport only knows its own (possibly short) height — Metroid Prime Trilogy
+      // renders into 448 lines of a 480-line frame, so "448 already full" is wrong. Use the real
+      // frame height captured from the full-screen clear to detect that case.
+      if (is_main_scene && s_vr_frame_active_height > active_height)
+        active_height = s_vr_frame_active_height;
+
+      // Expand if the scissor Y doesn't cover the full active area (any trimming at all)
+      if (is_main_scene && active_height > 0 && (efb_top > 0 || efb_bot < active_height - 1))
+      {
+        // Expand scissor Y to cover the full active area
+        scissor_top_left.y = static_cast<u32>(y_off);
+        scissor_bottom_right.y = static_cast<u32>(y_off + active_height - 1);
+
+        // Expand the viewport DOWNWARD only: keep the top edge fixed where the game put it and
+        // extend the bottom to the real frame height. Re-centering on the old origin would shift
+        // the horizon and vertically stretch the scene.
+        const float new_half = static_cast<float>(active_height) * 0.5f;
+        const float sign = (viewport.ht < 0) ? -1.0f : 1.0f;
+        viewport.yOrig = static_cast<float>(y_off) + new_half;
+        viewport.ht = sign * new_half;
+      }
     }
   }
   // VR: Expand scissor for orthographic VR draws.
@@ -249,12 +309,23 @@ void SetScissorAndViewport(FramebufferManager* frame_buffer_manager, ScissorPos 
   {
     const int x_off = scissor_offset.x << 1;
     const int y_off = scissor_offset.y << 1;
+
+    // Ortho render-to-texture / offscreen passes keep the game's own scissor — their output
+    // is read back as a texture, not shown on the virtual screen.
+    const bool rtt_exempt = [&] {
+      if (!g_ActiveConfig.vr_detect_render_targets)
+        return false;
+      const VR::VRViewportClass vp_class = VR::ClassifyVRViewport(viewport, x_off, y_off);
+      return vp_class == VR::VRViewportClass::RenderToTexture ||
+             vp_class == VR::VRViewportClass::Offscreen;
+    }();
+
     const float center_x = viewport.xOrig - static_cast<float>(x_off);
     const float center_y = viewport.yOrig - static_cast<float>(y_off);
     const int active_width = static_cast<int>(center_x * 2.0f);
     const int active_height = static_cast<int>(center_y * 2.0f);
 
-    if (active_width > 0 && active_height > 0)
+    if (!rtt_exempt && active_width > 0 && active_height > 0)
     {
       scissor_top_left.x = static_cast<u32>(x_off);
       scissor_top_left.y = static_cast<u32>(y_off);
@@ -407,11 +478,12 @@ bool ClearScreen(FramebufferManager* frame_buffer_manager, const MathUtil::Recta
                  u32 clear_color_ar, u32 clear_color_gb, u32 clear_z_value,
                  bool frame_just_rendered)
 {
-  // VR: capture the real frame height for the cinematic-bar fix. Only trust clears that span
-  // (nearly) the full EFB width and start at the top — those are frame clears, not small
-  // EFB-effect clears. The last such clear each frame wins, which is correct because the frame
-  // clear precedes the scene draws.
+  // VR LEGACY capture ("Frame Size from XFB Copy" OFF): the real frame height for the
+  // cinematic-bar fix. Only trust clears that span (nearly) the full EFB width and start at the
+  // top — those are frame clears, not small EFB-effect clears. The last such clear each frame
+  // wins, which is correct because the frame clear precedes the scene draws.
   if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR && g_ActiveConfig.vr_remove_bars &&
+      !g_ActiveConfig.vr_frame_size_from_xfb &&
       rc.left == 0 && rc.top == 0 && rc.GetWidth() >= static_cast<int>(EFB_WIDTH) * 9 / 10 &&
       rc.GetHeight() > 0 && rc.GetHeight() <= static_cast<int>(EFB_HEIGHT))
   {

@@ -435,6 +435,11 @@ ShaderCode GenerateGeometryShaderCode(APIType api_type, const ShaderHostConfig& 
         out.Write("\t\tfloat ndc_y = f.pos.y / f.pos.w;\n");
         out.Write("\t\tfloat ndc_z = f.pos.z / f.pos.w;\n");
       }
+      // Pane->frame remap: sub-screen 3D viewports (MKDD character select boxes) have NDC
+      // spanning only their pane; map it to the pane's place on the full screen. Identity
+      // {1,1,0,0} for normal fullscreen draws.
+      out.Write("\t\tndc_x = ndc_x * " I_VR_PANE_REMAP ".x + " I_VR_PANE_REMAP ".z;\n");
+      out.Write("\t\tndc_y = ndc_y * " I_VR_PANE_REMAP ".y + " I_VR_PANE_REMAP ".w;\n");
       out.Write("\t\tfloat ndc_z_clamped = clamp(ndc_z, -1.0, 1.0);\n");
       // cvr_screen = {half_w, half_h, distance, ortho_layer}
       out.Write("\t\tfloat4 screenPos = float4(\n");

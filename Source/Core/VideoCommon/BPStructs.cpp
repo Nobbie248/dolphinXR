@@ -40,6 +40,7 @@
 #include "VideoCommon/VideoCommon.h"
 #include "VideoCommon/VideoConfig.h"
 #include "VideoCommon/VideoEvents.h"
+#include "VideoCommon/VR/VRFrameRegion.h"
 #include "VideoCommon/XFStateManager.h"
 
 #ifdef ENABLE_VR
@@ -339,6 +340,14 @@ static void BPWritten(PixelShaderManager& pixel_shader_manager, XFStateManager& 
                     bpmem.copyTexSrcWH.x + 1, destStride, height, yScale);
 
       bool is_depth_copy = bpmem.zcontrol.pixel_format == PixelFormat::Z24;
+
+      // VR: the XFB copy source rect IS the displayed frame region (what the TV scans out).
+      // Latch it for the cinematic-bar fix and the viewport classifier.
+      if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR)
+      {
+        VR::NotifyVRXFBCopyRegion(srcRect.left, srcRect.top, srcRect.right, srcRect.bottom);
+      }
+
       g_texture_cache->CopyRenderTargetToTexture(
           destAddr, EFBCopyFormat::XFB, copy_width, height, destStride, is_depth_copy, srcRect,
           false, false, yScale, s_gammaLUT[PE_copy.gamma], bpmem.triggerEFBCopy.clamp_top,

@@ -247,6 +247,9 @@ const Info<bool> GFX_VR_AUTO_NATIVE_EFB_EFFECTS{{System::GFX, "VR", "AutoNativeE
                                                 true};
 const Info<float> GFX_VR_HUD_THICKNESS{{System::GFX, "VR", "HudThickness"}, 0.0f};
 const Info<bool> GFX_VR_REMOVE_BARS{{System::GFX, "VR", "RemoveCinematicBars"}, true};
+const Info<bool> GFX_VR_FRAME_SIZE_FROM_XFB{{System::GFX, "VR", "FrameSizeFromXFB"}, true};
+const Info<bool> GFX_VR_PANES_ON_SCREEN{{System::GFX, "VR", "SmallViewportsOnScreen"}, true};
+const Info<bool> GFX_VR_DETECT_RENDER_TARGETS{{System::GFX, "VR", "DetectRenderTargets"}, false};
 const Info<bool> GFX_VR_ORTHO_SCISSOR_FIX{{System::GFX, "VR", "OrthoScissorFix"}, true};
 const Info<bool> GFX_VR_DETECT_SKYBOX{{System::GFX, "VR", "DetectSkybox"}, false};
 const Info<bool> GFX_VR_METROID_THERMAL_VISOR_FIX{

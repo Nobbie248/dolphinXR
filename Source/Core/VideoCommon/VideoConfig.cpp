@@ -233,6 +233,9 @@ void VideoConfig::Refresh()
   vr_exact_screen_depth = Config::Get(Config::GFX_VR_EXACT_SCREEN_DEPTH);
   vr_auto_native_efb_effects = Config::Get(Config::GFX_VR_AUTO_NATIVE_EFB_EFFECTS);
   vr_remove_bars = Config::Get(Config::GFX_VR_REMOVE_BARS);
+  vr_frame_size_from_xfb = Config::Get(Config::GFX_VR_FRAME_SIZE_FROM_XFB);
+  vr_panes_on_screen = Config::Get(Config::GFX_VR_PANES_ON_SCREEN);
+  vr_detect_render_targets = Config::Get(Config::GFX_VR_DETECT_RENDER_TARGETS);
   vr_ortho_scissor_fix = Config::Get(Config::GFX_VR_ORTHO_SCISSOR_FIX);
   vr_detect_skybox = Config::Get(Config::GFX_VR_DETECT_SKYBOX);
   vr_metroid_thermal_visor_fix = Config::Get(Config::GFX_VR_METROID_THERMAL_VISOR_FIX);

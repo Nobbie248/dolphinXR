@@ -396,6 +396,12 @@ void VRConfigWidget::CreateWidgets()
       make_bool(tr("Disable CPU Culling in VR"), Config::GFX_VR_DISABLE_CPU_CULL));
   hacks_group_layout->addWidget(make_bool(tr("Remove Cinematic Bars"), Config::GFX_VR_REMOVE_BARS));
   hacks_group_layout->addWidget(
+      make_bool(tr("Frame Size from XFB Copy"), Config::GFX_VR_FRAME_SIZE_FROM_XFB));
+  hacks_group_layout->addWidget(
+      make_bool(tr("Small 3D Viewports on Screen"), Config::GFX_VR_PANES_ON_SCREEN));
+  hacks_group_layout->addWidget(
+      make_bool(tr("Detect Render-to-Texture Viewports"), Config::GFX_VR_DETECT_RENDER_TARGETS));
+  hacks_group_layout->addWidget(
       make_bool(tr("Ortho Scissor Fix"), Config::GFX_VR_ORTHO_SCISSOR_FIX));
   hacks_group_layout->addWidget(make_bool(tr("Detect Skybox"), Config::GFX_VR_DETECT_SKYBOX));
   hacks_group_layout->addWidget(

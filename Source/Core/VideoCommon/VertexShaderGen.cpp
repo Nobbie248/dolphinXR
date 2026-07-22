@@ -500,6 +500,11 @@ void GenerateVRMultiviewVSProjection(ShaderCode& out, APIType api_type,
     out.Write("\t\tfloat ndc_y = o.pos.y / o.pos.w;\n");
     out.Write("\t\tfloat ndc_z = o.pos.z / o.pos.w;\n");
   }
+  // Pane->frame remap: sub-screen 3D viewports (MKDD character select boxes) have NDC
+  // spanning only their pane; map it to the pane's place on the full screen. Identity
+  // {1,1,0,0} for normal fullscreen draws. Mirrors the GS Screen branch.
+  out.Write("\t\tndc_x = ndc_x * " I_VR_PANE_REMAP ".x + " I_VR_PANE_REMAP ".z;\n");
+  out.Write("\t\tndc_y = ndc_y * " I_VR_PANE_REMAP ".y + " I_VR_PANE_REMAP ".w;\n");
   out.Write("\t\tfloat ndc_z_clamped = clamp(ndc_z, -1.0, 1.0);\n");
   out.Write("\t\tfloat4 screenPos = float4(\n");
   out.Write("\t\t\tndc_x * " I_VR_SCREEN ".x,\n");

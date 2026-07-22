@@ -394,6 +394,9 @@ struct VideoConfig final
   bool vr_use_xr_pacing_thread = true;  // Dedicated xrWaitFrame/Begin/EndFrame thread + heartbeat
   bool vr_eager_heartbeat = false;  // Fill every HMD slot (standalone) vs pace to game (PC SSW/ASW)
   bool vr_remove_bars = true;       // Expand scissor/viewport to remove cinematic letterbox bars
+  bool vr_frame_size_from_xfb = true;  // Frame size from the XFB copy rect (off = legacy clears)
+  bool vr_panes_on_screen = true;   // Route sub-screen 3D viewports (menu panes) to the screen
+  bool vr_detect_render_targets = false;  // Exempt square render-to-texture passes from VR
   bool vr_ortho_scissor_fix = true;  // Expand scissor for orthographic VR draws
   bool vr_detect_skybox = false;     // Treat objects drawn at camera origin (0,0,0) as skyboxes
   bool vr_metroid_thermal_visor_fix = false;  // Preserve thermal EFB copy layers for MP1 Vulkan

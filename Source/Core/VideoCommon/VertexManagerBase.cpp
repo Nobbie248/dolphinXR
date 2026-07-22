@@ -46,6 +46,7 @@
 #include "VideoCommon/VideoCommon.h"
 #include "VideoCommon/VR/OpenXRManager.h"
 #include "VideoCommon/VideoConfig.h"
+#include "VideoCommon/VR/VRFrameRegion.h"
 #include "VideoCommon/XFMemory.h"
 #include "VideoCommon/CullingCodeFinder.h"
 #include "VideoCommon/HideObjectEngine.h"
@@ -1703,7 +1704,16 @@ void VertexManagerBase::Flush()
           const bool natural_ortho = std::isnan(stereo_ovr) &&
                                      xfmem.projection.type != ProjectionType::Perspective &&
                                      g_ActiveConfig.vr_virtual_screen;
-          if (forced_screen || natural_ortho)
+          // Sub-screen 3D panes auto-routed to the virtual screen (see GeometryShaderManager)
+          // land there too and need the same exact-depth PS export.
+          const bool auto_pane =
+              std::isnan(stereo_ovr) && g_ActiveConfig.vr_panes_on_screen &&
+              g_ActiveConfig.vr_virtual_screen &&
+              xfmem.projection.type == ProjectionType::Perspective &&
+              VR::ClassifyVRViewport(xfmem.viewport, bpmem.scissorOffset.x << 1,
+                                     bpmem.scissorOffset.y << 1) ==
+                  VR::VRViewportClass::HudElement;
+          if (forced_screen || natural_ortho || auto_pane)
           {
             auto* const ps_uid_data = m_current_pipeline_config.ps_uid.GetUidData();
             auto* const uber_ps_uid_data = m_current_uber_pipeline_config.ps_uid.GetUidData();

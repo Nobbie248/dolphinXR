@@ -185,6 +185,9 @@ static void ClearAppliedVRSettings()
   ClearAppliedVRSetting("AutoNativeEfbEffects", Config::GFX_VR_AUTO_NATIVE_EFB_EFFECTS);
   ClearAppliedVRSetting("HudThickness", Config::GFX_VR_HUD_THICKNESS);
   ClearAppliedVRSetting("RemoveCinematicBars", Config::GFX_VR_REMOVE_BARS);
+  ClearAppliedVRSetting("FrameSizeFromXFB", Config::GFX_VR_FRAME_SIZE_FROM_XFB);
+  ClearAppliedVRSetting("SmallViewportsOnScreen", Config::GFX_VR_PANES_ON_SCREEN);
+  ClearAppliedVRSetting("DetectRenderTargets", Config::GFX_VR_DETECT_RENDER_TARGETS);
   ClearAppliedVRSetting("OrthoScissorFix", Config::GFX_VR_ORTHO_SCISSOR_FIX);
   ClearAppliedVRSetting("DetectSkybox", Config::GFX_VR_DETECT_SKYBOX);
   ClearAppliedVRSetting("MetroidThermalVisorFix", Config::GFX_VR_METROID_THERMAL_VISOR_FIX);
@@ -262,6 +265,9 @@ static void ApplyGameVRConfigOverrides(std::string_view game_id, std::optional<u
   ApplyVRSetting(values, "AutoNativeEfbEffects", Config::GFX_VR_AUTO_NATIVE_EFB_EFFECTS);
   ApplyVRSetting(values, "HudThickness", Config::GFX_VR_HUD_THICKNESS);
   ApplyVRSetting(values, "RemoveCinematicBars", Config::GFX_VR_REMOVE_BARS);
+  ApplyVRSetting(values, "FrameSizeFromXFB", Config::GFX_VR_FRAME_SIZE_FROM_XFB);
+  ApplyVRSetting(values, "SmallViewportsOnScreen", Config::GFX_VR_PANES_ON_SCREEN);
+  ApplyVRSetting(values, "DetectRenderTargets", Config::GFX_VR_DETECT_RENDER_TARGETS);
   ApplyVRSetting(values, "OrthoScissorFix", Config::GFX_VR_ORTHO_SCISSOR_FIX);
   ApplyVRSetting(values, "DetectSkybox", Config::GFX_VR_DETECT_SKYBOX);
   const bool has_d3d_thermal_palette_fix =

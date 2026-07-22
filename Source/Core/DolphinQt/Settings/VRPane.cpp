@@ -427,6 +427,24 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   m_disable_cpu_cull =
       new ConfigBool(tr("Disable CPU Culling in VR"), Config::GFX_VR_DISABLE_CPU_CULL);
   m_remove_bars = new ConfigBool(tr("Remove Cinematic Bars"), Config::GFX_VR_REMOVE_BARS);
+  m_frame_size_from_xfb =
+      new ConfigBool(tr("Frame Size from XFB Copy"), Config::GFX_VR_FRAME_SIZE_FROM_XFB);
+  m_frame_size_from_xfb->setToolTip(
+      tr("Measure the displayed frame from the EFB-to-XFB copy instead of full-screen clears.\n"
+         "Fixes gameplay distortion with Remove Cinematic Bars in Mario Galaxy / Mario Golf\n"
+         "while keeping the Metroid Prime Trilogy black-bar fix. Turn off for the legacy\n"
+         "clear-based behavior."));
+  m_panes_on_screen =
+      new ConfigBool(tr("Small 3D Viewports on Screen"), Config::GFX_VR_PANES_ON_SCREEN);
+  m_panes_on_screen->setToolTip(
+      tr("Draw 3D models rendered into small menu panes (e.g. the Mario Kart: Double Dash!!\n"
+         "character select boxes) on the 2D virtual screen instead of head-tracking them.\n"
+         "Stops them swaying and stretching when you move your head."));
+  m_detect_render_targets =
+      new ConfigBool(tr("Detect Render-to-Texture Viewports"), Config::GFX_VR_DETECT_RENDER_TARGETS);
+  m_detect_render_targets->setToolTip(
+      tr("Exclude square render-to-texture passes (shadow/environment maps) from VR\n"
+         "reprojection so their output textures don't bake in the head pose. Experimental."));
   m_ortho_scissor_fix =
       new ConfigBool(tr("Ortho Scissor Fix"), Config::GFX_VR_ORTHO_SCISSOR_FIX);
   m_detect_skybox = new ConfigBool(tr("Detect Skybox"), Config::GFX_VR_DETECT_SKYBOX);
@@ -447,6 +465,9 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   hacks_group_layout->addWidget(m_dont_clear_screen);
   hacks_group_layout->addWidget(m_disable_cpu_cull);
   hacks_group_layout->addWidget(m_remove_bars);
+  hacks_group_layout->addWidget(m_frame_size_from_xfb);
+  hacks_group_layout->addWidget(m_panes_on_screen);
+  hacks_group_layout->addWidget(m_detect_render_targets);
   hacks_group_layout->addWidget(m_ortho_scissor_fix);
   hacks_group_layout->addWidget(m_detect_skybox);
   hacks_group_layout->addWidget(m_layered_palette_conversion_path);

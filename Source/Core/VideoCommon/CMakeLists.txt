@@ -240,6 +240,8 @@ add_library(videocommon
   VideoConfig.h
   VideoState.cpp
   VideoState.h
+  VR/VRFrameRegion.cpp
+  VR/VRFrameRegion.h
   Widescreen.cpp
   Widescreen.h
   XFMemory.cpp

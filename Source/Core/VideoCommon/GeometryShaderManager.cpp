@@ -17,6 +17,7 @@
 #include "VideoCommon/RenderState.h"
 #include "VideoCommon/VertexShaderManager.h"
 #include "VideoCommon/VideoConfig.h"
+#include "VideoCommon/VR/VRFrameRegion.h"
 #include "VideoCommon/XFMemory.h"
 
 #ifdef ENABLE_VR
@@ -175,6 +176,8 @@ PerspectiveHudTransform CalculatePerspectiveHudTransform(const Projection::Raw& 
 void GeometryShaderManager::Init()
 {
   constants = {};
+  // New game boot: forget the previous game's XFB display region.
+  VR::ResetVRFrameRegion();
   m_vr_hud_shared_reference_valid = false;
   m_vr_hud_shared_reference_context = 0;
   m_vr_hud_stable_reference_valid = false;
@@ -238,6 +241,7 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
         constants.head_projection = {};
         constants.head_locked_params = {};
         constants.pixel_center_correction = {};
+        constants.vr_pane_remap = {1.0f, 1.0f, 0.0f, 0.0f};
         const float upm_override = vr_units_per_meter_override;
         vr_units_per_meter_override = -1.0f;  // consume
         const float headlocked_projection_scale_x = vr_headlocked_projection_scale_x;
@@ -399,11 +403,69 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
               }
             }
             constants.stereoparams[2] = is_skybox ? 0.0f : 1.0f;
+
+            // Hydra-style viewport classification (measured against the XFB display region):
+            // perspective draws in sub-screen panes (MKDD character select) must NOT be
+            // head-tracked — they'd sway inside their fixed pane. Route them to the virtual
+            // screen instead, with a pane->frame NDC remap so they keep their on-screen place
+            // and size. Render-to-texture / offscreen passes get no VR transform at all.
+            // BPFunctions::SetScissorAndViewport applies the matching viewport/scissor
+            // replacement — both sides classify identically from the same latched region.
+            if (g_ActiveConfig.vr_panes_on_screen || g_ActiveConfig.vr_detect_render_targets)
+            {
+              const int pane_x_off = bpmem.scissorOffset.x << 1;
+              const int pane_y_off = bpmem.scissorOffset.y << 1;
+              const VR::VRFrameRegion frame = VR::GetVRFrameRegion();
+              const VR::VRViewportClass vp_class =
+                  VR::ClassifyVRViewport(xfmem.viewport, pane_x_off, pane_y_off);
+              if (g_ActiveConfig.vr_panes_on_screen && g_ActiveConfig.vr_virtual_screen &&
+                  frame.valid && vp_class == VR::VRViewportClass::HudElement)
+              {
+                constants.stereoparams[3] = -1.0f;  // virtual-screen (Screen) route
+                // ndc_frame = ndc_pane * scale + offset, derived from the game's viewport
+                // transform (screen = orig + extent * ndc) re-expressed in frame NDC
+                // (y up, so the y terms are negated).
+                const float pane_half_w = static_cast<float>(frame.width) * 0.5f;
+                const float pane_half_h = static_cast<float>(frame.height) * 0.5f;
+                const float frame_cx = static_cast<float>(frame.left) + pane_half_w;
+                const float frame_cy = static_cast<float>(frame.top) + pane_half_h;
+                const float vp_cx = xfmem.viewport.xOrig - static_cast<float>(pane_x_off);
+                const float vp_cy = xfmem.viewport.yOrig - static_cast<float>(pane_y_off);
+                constants.vr_pane_remap[0] = xfmem.viewport.wd / pane_half_w;
+                constants.vr_pane_remap[1] = -xfmem.viewport.ht / pane_half_h;
+                constants.vr_pane_remap[2] = (vp_cx - frame_cx) / pane_half_w;
+                constants.vr_pane_remap[3] = -(vp_cy - frame_cy) / pane_half_h;
+              }
+              else if (g_ActiveConfig.vr_detect_render_targets &&
+                       (vp_class == VR::VRViewportClass::RenderToTexture ||
+                        vp_class == VR::VRViewportClass::Offscreen))
+              {
+                // Shadow/env-map pass (or draw outside the display region): keep the game's
+                // own projection untouched — the result is sampled as a texture, so any VR
+                // reprojection would bake head pose into it.
+                constants.stereoparams[3] = 0.0f;
+              }
+            }
           }
           else if (g_ActiveConfig.vr_virtual_screen)
           {
             // Orthographic VR flag — signals GS to use virtual screen path.
             constants.stereoparams[3] = -1.0f;
+
+            // Ortho render-to-texture / offscreen passes (see the perspective branch above):
+            // keep the game's projection; their output is read back, not shown on screen.
+            if (g_ActiveConfig.vr_detect_render_targets)
+            {
+              const int pane_x_off = bpmem.scissorOffset.x << 1;
+              const int pane_y_off = bpmem.scissorOffset.y << 1;
+              const VR::VRViewportClass vp_class =
+                  VR::ClassifyVRViewport(xfmem.viewport, pane_x_off, pane_y_off);
+              if (vp_class == VR::VRViewportClass::RenderToTexture ||
+                  vp_class == VR::VRViewportClass::Offscreen)
+              {
+                constants.stereoparams[3] = 0.0f;
+              }
+            }
           }
 
         }

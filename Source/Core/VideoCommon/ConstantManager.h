@@ -157,4 +157,8 @@ struct alignas(16) GeometryShaderConstants
   float4 head_locked_params{};
   // Copy of the VS viewport-sign and pixel-center correction for GS-built VR positions.
   float4 pixel_center_correction{};
+  // Pane->frame NDC remap for sub-screen 3D viewports routed to the virtual screen
+  // (cvr_pane_remap in shaders): ndc_frame = ndc_pane * xy + zw.
+  // Identity {1,1,0,0} for every draw whose NDC already spans the full screen.
+  float4 vr_pane_remap{1.0f, 1.0f, 0.0f, 0.0f};
 };

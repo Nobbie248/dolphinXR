@@ -68,6 +68,9 @@ private:
   ConfigSlider* m_clear_efb_slider = nullptr;
   QLabel* m_clear_efb_value = nullptr;
   ConfigBool* m_remove_bars = nullptr;
+  ConfigBool* m_frame_size_from_xfb = nullptr;
+  ConfigBool* m_panes_on_screen = nullptr;
+  ConfigBool* m_detect_render_targets = nullptr;
   ConfigBool* m_detect_skybox = nullptr;
   ConfigBool* m_use_vulkan_multiview = nullptr;
   ConfigBool* m_passthrough = nullptr;
