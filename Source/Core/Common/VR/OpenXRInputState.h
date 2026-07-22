@@ -27,6 +27,18 @@ struct OpenXRVelocityState
   std::array<float, 3> angular{};
 };
 
+// Where the controller's aim ray intersects the VR virtual screen (the ortho 2D screen in
+// immersive mode, or the flat panel quad in flat-screen mode). Computed by OpenXRManager on
+// the frame thread with the exact same transform chain the renderer uses to place the screen,
+// so u/v are an absolute "what the user is aiming at" — the Wii IR pointer maps to it 1:1.
+struct OpenXRScreenHit
+{
+  bool valid = false;      // Aim ray hits the screen plane in front of the controller
+  float u = 0.0f;          // -1..+1 across the screen width, +right (may exceed ±1 off-screen)
+  float v = 0.0f;          // -1..+1 across the screen height, +up
+  float distance_m = 0.0f; // Controller-to-screen distance along the aim ray, in meters
+};
+
 struct OpenXRControllerState
 {
   bool connected = false;
@@ -44,6 +56,7 @@ struct OpenXRControllerState
   OpenXRPoseState aim_pose;
   OpenXRPoseState grip_pose;
   OpenXRVelocityState grip_velocity;
+  OpenXRScreenHit screen_hit;
 };
 
 struct OpenXRInputSnapshot
@@ -54,6 +67,9 @@ struct OpenXRInputSnapshot
   uint64_t generation = 0;
   std::array<std::string, 2> interaction_profiles;  // Active profile path per hand
   bool session_focused = false;
+  // XrTime (nanoseconds) the poses/velocities were sampled at. Consumers differentiating
+  // velocities should use deltas of this instead of wall-clock time. 0 when unavailable.
+  int64_t sample_time_ns = 0;
 };
 
 struct OpenXRHapticsState
@@ -85,7 +101,8 @@ public:
                              bool runtime_active,
                              const OpenXRPoseState& head_pose,
                              const std::array<std::string, 2>& profiles,
-                             bool focused)
+                             bool focused,
+                             int64_t sample_time_ns = 0)
   {
     std::lock_guard lk(s_state_mutex);
     s_state.controllers = controllers;
@@ -93,6 +110,7 @@ public:
     s_state.runtime_active = runtime_active;
     s_state.interaction_profiles = profiles;
     s_state.session_focused = focused;
+    s_state.sample_time_ns = sample_time_ns;
     ++s_state.generation;
   }
 

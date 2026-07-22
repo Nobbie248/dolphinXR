@@ -1989,6 +1989,10 @@ void OpenXRManager::UpdateInputActions()
     locate_space_state(m_aim_spaces[hand], &controller.aim_pose, nullptr);
     locate_space_state(m_grip_spaces[hand], &controller.grip_pose, &controller.grip_velocity);
 
+    // Absolute pointing target for the emulated Wii Remote IR: where the aim ray meets
+    // the virtual screen the renderer is actually displaying.
+    ComputeVirtualScreenHit(&controller);
+
     controller.trigger_button = trigger_click || controller.trigger_value > 0.5f;
     controller.squeeze_button =
         squeeze_click || std::max(controller.squeeze_value, controller.squeeze_force) > 0.5f;
@@ -2026,7 +2030,8 @@ void OpenXRManager::UpdateInputActions()
     profile_strings[hand] = PathToString(m_instance, m_logged_interaction_profiles[hand]);
 
   Common::VR::OpenXRInputState::SetControllers(controllers, true, head_pose,
-                                               profile_strings, m_session_focused);
+                                               profile_strings, m_session_focused,
+                                               m_frame_state.predictedDisplayTime);
 
   UpdateHaptics();
 }
@@ -2919,7 +2924,28 @@ bool OpenXRManager::GetControllerAnchorViewPose(int hand, float units_per_meter,
 
   const Common::VR::OpenXRInputSnapshot snapshot = Common::VR::OpenXRInputState::GetSnapshot();
   const Common::VR::OpenXRPoseState& aim = snapshot.controllers[hand].aim_pose;
-  if (!aim.valid)
+  std::array<float, 9> rot{};
+  if (!MapAimPoseToGameView(aim, units_per_meter, out_position, &rot))
+    return false;
+  if (out_rotation)
+    *out_rotation = rot;
+
+  if (lock)
+  {
+    m_controller_anchor_cache_valid[hand] = true;
+    m_controller_anchor_cache[hand] = *out_position;
+    m_controller_anchor_cache_rot[hand] = rot;
+    m_controller_anchor_cache_upm[hand] = units_per_meter;
+  }
+  return true;
+}
+
+bool OpenXRManager::MapAimPoseToGameView(const Common::VR::OpenXRPoseState& aim,
+                                         float units_per_meter,
+                                         std::array<float, 3>* out_position,
+                                         std::array<float, 9>* out_rotation) const
+{
+  if (!aim.valid || !out_position)
     return false;
 
   // Tracking-mode adjustment via the eye-center delta: adjusted_center + (raw − raw_center)
@@ -2990,14 +3016,81 @@ bool OpenXRManager::GetControllerAnchorViewPose(int hand, float units_per_meter,
   *out_position = {px, py, pz};
   if (out_rotation)
     *out_rotation = rot;
-  if (lock)
-  {
-    m_controller_anchor_cache_valid[hand] = true;
-    m_controller_anchor_cache[hand] = *out_position;
-    m_controller_anchor_cache_rot[hand] = rot;
-    m_controller_anchor_cache_upm[hand] = units_per_meter;
-  }
   return true;
+}
+
+void OpenXRManager::ComputeVirtualScreenHit(Common::VR::OpenXRControllerState* controller) const
+{
+  controller->screen_hit = {};
+  const Common::VR::OpenXRPoseState& aim = controller->aim_pose;
+  if (!aim.valid)
+    return;
+
+  if (g_ActiveConfig.vr_flat_screen)
+  {
+    // Flat panel: a world-locked quad in reference space (meters), yaw-only orientation.
+    // Bring the aim ray into quad-local space (quad plane is z=0, +z toward the viewer).
+    const XrPosef quad = GetFlatScreenPose();
+    const float yaw = 2.0f * std::atan2(quad.orientation.y, quad.orientation.w);
+    const float cy = std::cos(yaw), sy = std::sin(yaw);
+    const auto to_quad_local = [&](float x, float y, float z) -> std::array<float, 3> {
+      // Inverse yaw rotation about Y.
+      return {cy * x - sy * z, y, sy * x + cy * z};
+    };
+
+    const std::array<float, 3> p = to_quad_local(aim.position[0] - quad.position.x,
+                                                 aim.position[1] - quad.position.y,
+                                                 aim.position[2] - quad.position.z);
+    // Aim forward = orientation * (0,0,-1).
+    const float qx = aim.orientation[0], qy = aim.orientation[1];
+    const float qz = aim.orientation[2], qw = aim.orientation[3];
+    const float fx = -(2.0f * (qx * qz + qw * qy));
+    const float fy = -(2.0f * (qy * qz - qw * qx));
+    const float fz = -(1.0f - 2.0f * (qx * qx + qy * qy));
+    const std::array<float, 3> d = to_quad_local(fx, fy, fz);
+
+    if (std::abs(d[2]) < 1e-6f)
+      return;
+    const float t = -p[2] / d[2];
+    if (t <= 0.0f)
+      return;
+
+    const float half_h = std::max(g_ActiveConfig.vr_screen_size * 0.5f, 1e-4f);
+    const float aspect = m_flat_screen_aspect > 0.0f ? m_flat_screen_aspect : (16.0f / 9.0f);
+    const float half_w = half_h * aspect;
+    controller->screen_hit.valid = true;
+    controller->screen_hit.u = (p[0] + t * d[0]) / half_w;
+    controller->screen_hit.v = (p[1] + t * d[1]) / half_h;
+    controller->screen_hit.distance_m = t;
+    return;
+  }
+
+  // Immersive mode: the ortho virtual screen lives in game view space at z = -distance,
+  // extents {half_h * 16/9, half_h} (see GeometryShaderManager's cvr_screen constants).
+  // Map the aim pose through the same chain the eye takes so the hit matches what is drawn.
+  const float upm = std::max(GetEffectiveUnitsPerMeter(), 0.0001f);
+  std::array<float, 3> pos{};
+  std::array<float, 9> rot{};
+  if (!MapAimPoseToGameView(aim, upm, &pos, &rot))
+    return;
+
+  // Aim forward in view space = -third column of the rotation.
+  const float dx = -rot[2], dy = -rot[5], dz = -rot[8];
+  if (std::abs(dz) < 1e-6f)
+    return;
+
+  const float dist = upm * g_ActiveConfig.vr_screen_distance;
+  const float half_h = std::max(upm * g_ActiveConfig.vr_screen_size * 0.5f, 1e-4f);
+  const float half_w = half_h * (16.0f / 9.0f);
+
+  const float t = (-dist - pos[2]) / dz;
+  if (t <= 0.0f)
+    return;
+
+  controller->screen_hit.valid = true;
+  controller->screen_hit.u = (pos[0] + t * dx) / half_w;
+  controller->screen_hit.v = (pos[1] + t * dy) / half_h;
+  controller->screen_hit.distance_m = t / upm;
 }
 
 void OpenXRManager::InvalidateControllerAnchorCache()

@@ -67,7 +67,7 @@ struct OpenXRVelocityHistory
   bool has_velocity_sample = false;
   Common::Vec3 previous_position{};
   Common::Vec3 previous_velocity{};
-  std::chrono::steady_clock::time_point previous_time{};
+  s64 previous_time_ns = 0;
 };
 
 struct OpenXRWiimoteState
@@ -78,54 +78,25 @@ struct OpenXRWiimoteState
   float ir_x = std::numeric_limits<float>::quiet_NaN();
   float ir_y = 0.0f;
   float ir_z = 0.0f;  // Forward/backward distance offset (-1 to +1)
-  // Raw aim orientation for reference-based IR computation in ApplyOpenXRIRCenter
-  Common::Quaternion aim_orientation{1.0f, 0.0f, 0.0f, 0.0f};
-  Common::Vec3 aim_position{};  // Aim pose world position for Z computation
-  bool has_aim = false;
 };
 
-struct OpenXRIRCenter
+// How far past the screen edge (in screen half-extents) the pointer stays tracked before
+// the emulated IR camera "loses" it. A real wiimote keeps its dots slightly past the edge.
+constexpr float OPENXR_IR_HIDE_MARGIN = 1.25f;
+
+// Nanosecond timestamp used for velocity differentiation: the XR pose sample time when
+// available (jitter-free), wall clock otherwise.
+s64 OpenXRSampleTimeNs(const Common::VR::OpenXRInputSnapshot& snapshot)
 {
-  bool initialized = false;
-  // Reference orientation from the HMD — "where the user is looking" becomes cursor center.
-  // Controller aim deviation from this direction maps to cursor position.
-  Common::Quaternion reference_orientation;
-  Common::Vec3 reference_position{};  // Controller reference position for forward/backward
-};
-
-struct OpenXRCursorRanges
-{
-  float yaw_half_range = float(MathUtil::PI * 25.0 / 180.0 / 2.0);
-  float pitch_half_range = float(MathUtil::PI * 20.0 / 180.0 / 2.0);
-};
-
-OpenXRCursorRanges GetOpenXRCursorRanges(unsigned int wiimote_index)
-{
-  OpenXRCursorRanges ranges;
-
-  if (wiimote_index >= MAX_WIIMOTES)
-    return ranges;
-
-  auto* config = ::Wiimote::GetConfig();
-  if (!config)
-    return ranges;
-
-  auto* wiimote = static_cast<WiimoteEmu::Wiimote*>(config->GetController(wiimote_index));
-  if (!wiimote)
-    return ranges;
-
-  auto* ir_group = static_cast<ControllerEmu::Cursor*>(
-      wiimote->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::Point));
-  if (!ir_group)
-    return ranges;
-
-  ranges.yaw_half_range = std::max(static_cast<float>(ir_group->GetTotalYaw() / 2), 0.001f);
-  ranges.pitch_half_range = std::max(static_cast<float>(ir_group->GetTotalPitch() / 2), 0.001f);
-  return ranges;
+  if (snapshot.sample_time_ns != 0)
+    return snapshot.sample_time_ns;
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(
+             std::chrono::steady_clock::now().time_since_epoch())
+      .count();
 }
 
 OpenXRWiimoteState BuildOpenXRState(const Common::VR::OpenXRControllerState& controller,
-                                    OpenXRVelocityHistory* velocity_history)
+                                    OpenXRVelocityHistory* velocity_history, s64 sample_time_ns)
 {
   OpenXRWiimoteState out;
 
@@ -147,13 +118,10 @@ OpenXRWiimoteState BuildOpenXRState(const Common::VR::OpenXRControllerState& con
   const auto get_matrix = [&world_to_local](int row, int col) { return world_to_local.data[row * 3 + col]; };
 
   Common::Vec3 relative_acceleration{};
-  const auto now = std::chrono::steady_clock::now();
   const float dt =
-      velocity_history->has_pose_sample
-          ? std::chrono::duration_cast<std::chrono::duration<float>>(now -
-                                                                      velocity_history->previous_time)
-                .count()
-          : 0.0f;
+      velocity_history->has_pose_sample ?
+          float(sample_time_ns - velocity_history->previous_time_ns) * 1e-9f :
+          0.0f;
 
   Common::Vec3 current_position{};
   std::optional<Common::Vec3> pose_velocity;
@@ -187,7 +155,7 @@ OpenXRWiimoteState BuildOpenXRState(const Common::VR::OpenXRControllerState& con
   if (has_grip_pose)
   {
     velocity_history->previous_position = current_position;
-    velocity_history->previous_time = now;
+    velocity_history->previous_time_ns = sample_time_ns;
     velocity_history->has_pose_sample = true;
   }
   else
@@ -220,91 +188,31 @@ OpenXRWiimoteState BuildOpenXRState(const Common::VR::OpenXRControllerState& con
   {
     const Common::Vec3 world_angular_velocity = ToVec3(controller.grip_velocity.angular);
     const Common::Vec3 local_angular_velocity = world_to_local * world_angular_velocity;
-    out.angular_velocity =
-        Common::Vec3(local_angular_velocity.x, local_angular_velocity.z, local_angular_velocity.y);
+    // Aim-local (X=right, Y=up, Z=back) to Dolphin's gyro convention
+    // (+x = pitch down, +y = roll left, +z = yaw left), a proper rotation:
+    // pitch up is +x in aim-local but -x for the wiimote.
+    out.angular_velocity = Common::Vec3(-local_angular_velocity.x, local_angular_velocity.z,
+                                        local_angular_velocity.y);
   }
 
-  // Store raw aim orientation and position — IR angles and distance are computed
-  // in ApplyOpenXRIRCenter relative to the captured reference, making the mapping
-  // headset-independent.
-  if (has_aim_pose)
+  // IR pointer: absolute mapping from the aim ray's intersection with the virtual screen,
+  // computed by OpenXRManager with the renderer's own screen placement. Aiming at a point
+  // on the 2D screen puts the Wii pointer at that point — no reference capture, no
+  // recentering. Past the hide margin (or aiming away from the screen plane) the pointer
+  // is lost exactly like a real wiimote leaving sensor-bar view.
+  const Common::VR::OpenXRScreenHit& hit = controller.screen_hit;
+  if (hit.valid && std::abs(hit.u) <= OPENXR_IR_HIDE_MARGIN &&
+      std::abs(hit.v) <= OPENXR_IR_HIDE_MARGIN)
   {
-    out.aim_orientation = ToQuaternion(controller.aim_pose.orientation).Normalized();
-    out.aim_position = ToVec3(controller.aim_pose.position);
-    out.has_aim = true;
-  }
-  else
-  {
-    out.aim_orientation = reference_orientation;
-    out.has_aim = false;
+    out.ir_x = hit.u;
+    out.ir_y = hit.v;
+    // Emulated sensor-bar distance: EmulatePoint uses NEUTRAL_DISTANCE(2m) + ir_z.
+    // Feed the real controller-to-screen distance so leaning in/out changes the
+    // virtual IR dot spacing physically.
+    out.ir_z = std::clamp(hit.distance_m - 2.0f, -1.0f, 1.0f);
   }
 
-  // IR x/y/z left as NaN/0/0 — will be filled by ApplyOpenXRIRCenter
   return out;
-}
-
-std::array<OpenXRIRCenter, MAX_BBMOTES> s_openxr_ir_centers{};
-
-void ApplyOpenXRIRCenter(unsigned int wiimote_index, OpenXRWiimoteState* state,
-                         const Common::VR::OpenXRPoseState& head_pose)
-{
-  if (wiimote_index >= MAX_BBMOTES || !state->has_aim)
-    return;
-
-  auto& center = s_openxr_ir_centers[wiimote_index];
-
-  // On first valid frame or after recenter, capture the HMD forward direction as reference.
-  // The cursor center corresponds to where the user is looking, and controller aim
-  // deviation from that direction moves the cursor.
-  if (!center.initialized)
-  {
-    if (head_pose.valid)
-      center.reference_orientation = ToQuaternion(head_pose.orientation).Normalized();
-    else
-      center.reference_orientation = state->aim_orientation;
-    center.reference_position = state->aim_position;
-    center.initialized = true;
-  }
-
-  // Compute the relative rotation: how much the controller aim deviates from the
-  // HMD forward direction. conjugate(reference) * current_aim
-  const Common::Quaternion relative =
-      center.reference_orientation.Conjugate() * state->aim_orientation;
-
-  // Transform the forward vector (-Z) by the relative rotation to get the
-  // local-frame pointing direction
-  const Common::Vec3 local_forward = relative * Common::Vec3{0.0f, 0.0f, -1.0f};
-
-  // Extract yaw and pitch from the local forward vector
-  // In OpenXR space: X=right, Y=up, Z=back (right-handed)
-  // local_forward.x = left/right deviation (yaw)
-  // local_forward.y = up/down deviation (pitch)
-  // local_forward.z = forward component (should be near -1 when pointing straight)
-  const float forward_len =
-      std::sqrt(local_forward.x * local_forward.x + local_forward.z * local_forward.z);
-  const float yaw = std::atan2(local_forward.x, -local_forward.z);
-  const float pitch = std::atan2(local_forward.y, std::max(forward_len, 0.001f));
-
-  // Get per-wiimote cursor ranges for normalization
-  const OpenXRCursorRanges ranges = GetOpenXRCursorRanges(wiimote_index);
-
-  // Normalize to [-1, 1] range based on configured total yaw/pitch
-  // Positive yaw = pointing right = positive ir_x (moves cursor right)
-  // Positive pitch = pointing up = positive ir_y (moves cursor up)
-  state->ir_x = yaw / std::max(ranges.yaw_half_range, 0.001f);
-  state->ir_y = pitch / std::max(ranges.pitch_half_range, 0.001f);
-
-  // Compute forward/backward distance (ir_z) from position delta projected onto
-  // the reference aim direction. This changes the spacing between the two virtual
-  // IR sensor bar dots — closer = dots farther apart, farther = dots closer together.
-  // Scale: 0.3m of forward movement = ir_z of -1 (moves 1m closer to sensor bar).
-  // Matches the old Hydra behavior (300mm per unit for Z axis).
-  constexpr float Z_METERS_PER_UNIT = 0.3f;
-  const Common::Vec3 ref_forward =
-      center.reference_orientation * Common::Vec3{0.0f, 0.0f, -1.0f};
-  const Common::Vec3 pos_delta = state->aim_position - center.reference_position;
-  const float forward_displacement = pos_delta.Dot(ref_forward);
-  state->ir_z = std::clamp(-forward_displacement / Z_METERS_PER_UNIT, -1.0f, 1.0f);
 }
 
 ControllerEmu::InputOverrideFunction CreateOpenXRInputOverrideFunction(unsigned int wiimote_index,
@@ -332,22 +240,13 @@ ControllerEmu::InputOverrideFunction CreateOpenXRInputOverrideFunction(unsigned 
       const auto right_valid = right.grip_pose.valid || right.aim_pose.valid;
       const auto left_valid = left.grip_pose.valid || left.aim_pose.valid;
 
+      const s64 sample_time_ns = OpenXRSampleTimeNs(snapshot);
       if (!prefer_left_hand && right_valid)
-      {
-        cached_state =
-            BuildOpenXRState(right, &right_velocity_history);
-        ApplyOpenXRIRCenter(wiimote_index, &cached_state, snapshot.head_pose);
-      }
+        cached_state = BuildOpenXRState(right, &right_velocity_history, sample_time_ns);
       else if (left_valid)
-      {
-        cached_state =
-            BuildOpenXRState(left, &left_velocity_history);
-        ApplyOpenXRIRCenter(wiimote_index, &cached_state, snapshot.head_pose);
-      }
+        cached_state = BuildOpenXRState(left, &left_velocity_history, sample_time_ns);
       else
-      {
         cached_state = {};
-      }
 
       cached_state.generation = snapshot.generation;
     }
@@ -372,16 +271,13 @@ ControllerEmu::InputOverrideFunction CreateOpenXRInputOverrideFunction(unsigned 
     }
     else if (group_name == WiimoteEmu::Wiimote::IR_GROUP)
     {
-      // Handle recenter signal from EmulatePoint — reset the reference orientation
-      // so the current aim direction becomes the new center.
+      // The pointer mapping is absolute (aim ray vs. virtual screen) — there is no
+      // reference to reset, so EmulatePoint's "Recenter" signal is a no-op.
       if (control_name == "Recenter")
-      {
-        if (wiimote_index < MAX_BBMOTES)
-          s_openxr_ir_centers[wiimote_index].initialized = false;
         return std::nullopt;
-      }
+      // NaN = pointer not on screen; the cursor hides like a real wiimote losing the bar.
       if (control_name == ControllerEmu::ReshapableInput::X_INPUT_OVERRIDE)
-        return std::isnan(cached_state.ir_x) ? 0.0 : cached_state.ir_x;
+        return static_cast<double>(cached_state.ir_x);
       if (control_name == ControllerEmu::ReshapableInput::Y_INPUT_OVERRIDE)
         return static_cast<double>(cached_state.ir_y);
       if (control_name == ControllerEmu::ReshapableInput::Z_INPUT_OVERRIDE)
@@ -424,7 +320,6 @@ void UpdateOpenXRInputOverride(unsigned int index, WiimoteSource source)
     const bool prefer_left_hand =
         Config::Get(Config::Info<bool>{{Config::System::Main, "Android", "QuestLeftHanded"},
                                        false});
-    s_openxr_ir_centers[index] = {};
     wiimote->SetInputOverrideFunction(
         CreateOpenXRInputOverrideFunction(index, prefer_left_hand));
     apply_to_attachments(CreateOpenXRInputOverrideFunction(index, !prefer_left_hand));
@@ -432,7 +327,6 @@ void UpdateOpenXRInputOverride(unsigned int index, WiimoteSource source)
   }
   else if (s_openxr_overrides_enabled[index])
   {
-    s_openxr_ir_centers[index] = {};
     wiimote->ClearInputOverrideFunction();
     apply_to_attachments({});
     s_openxr_overrides_enabled[index] = false;
@@ -557,9 +451,7 @@ std::optional<OpenXRWiiRemoteState> GetOpenXRHandState(bool left_hand)
 
   OpenXRVelocityHistory throwaway_velocity_history;
   OpenXRWiimoteState state =
-      BuildOpenXRState(controller, &throwaway_velocity_history);
-  // This path doesn't have a wiimote index, use 0 for reference-based IR
-  ApplyOpenXRIRCenter(0, &state, snapshot.head_pose);
+      BuildOpenXRState(controller, &throwaway_velocity_history, OpenXRSampleTimeNs(snapshot));
 
   OpenXRWiiRemoteState out;
   out.acceleration = {state.acceleration.x, state.acceleration.y, state.acceleration.z};
@@ -716,14 +608,6 @@ void DoState(PointerWrap& p)
         WiimoteCommon::UpdateSource(i);
     }
   }
-}
-
-void RecenterOpenXRPointer(unsigned int wiimote_index)
-{
-#ifdef ENABLE_VR
-  if (wiimote_index < MAX_BBMOTES)
-    s_openxr_ir_centers[wiimote_index].initialized = false;
-#endif
 }
 
 }  // namespace Wiimote

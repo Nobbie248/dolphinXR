@@ -95,7 +95,6 @@ void Pause();
 std::optional<OpenXRWiiRemoteState> GetOpenXRWiiRemoteState(unsigned int index);
 std::optional<OpenXRWiiRemoteState> GetOpenXRHandState(bool left_hand);
 
-void RecenterOpenXRPointer(unsigned int wiimote_index);
 void DoState(PointerWrap& p);
 InputConfig* GetConfig();
 ControllerEmu::ControlGroup* GetWiimoteGroup(int number, WiimoteEmu::WiimoteGroup group);

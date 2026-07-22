@@ -395,9 +395,9 @@ private:
       switch (m_control)
       {
       case MotionControl::AccelUp:
-        return motion.acceleration_valid ? normalize(-motion.acceleration.z, accel_scale) : 0.0;
-      case MotionControl::AccelDown:
         return motion.acceleration_valid ? normalize(motion.acceleration.z, accel_scale) : 0.0;
+      case MotionControl::AccelDown:
+        return motion.acceleration_valid ? normalize(-motion.acceleration.z, accel_scale) : 0.0;
       case MotionControl::AccelLeft:
         return motion.acceleration_valid ? normalize(motion.acceleration.x, accel_scale) : 0.0;
       case MotionControl::AccelRight:
@@ -411,9 +411,9 @@ private:
       case MotionControl::GyroPitchDown:
         return motion.gyroscope_valid ? normalize(-motion.gyroscope.x, gyro_scale) : 0.0;
       case MotionControl::GyroRollLeft:
-        return motion.gyroscope_valid ? normalize(-motion.gyroscope.y, gyro_scale) : 0.0;
-      case MotionControl::GyroRollRight:
         return motion.gyroscope_valid ? normalize(motion.gyroscope.y, gyro_scale) : 0.0;
+      case MotionControl::GyroRollRight:
+        return motion.gyroscope_valid ? normalize(-motion.gyroscope.y, gyro_scale) : 0.0;
       case MotionControl::GyroYawLeft:
         return motion.gyroscope_valid ? normalize(motion.gyroscope.z, gyro_scale) : 0.0;
       case MotionControl::GyroYawRight:

@@ -24,6 +24,7 @@
 #endif
 
 #include "Common/Matrix.h"
+#include "Common/VR/OpenXRInputState.h"
 #include "VideoCommon/AbstractFramebuffer.h"
 
 // OpenXRManager owns the XrInstance, XrSystemId, XrSession, and reference XrSpace.
@@ -429,6 +430,15 @@ private:
   void DestroyInputActions();
   void UpdateInputActions();
   void UpdateHaptics();
+  // Core of GetControllerAnchorViewPose without the per-frame cache: maps an aim pose
+  // (reference space) into game view space. Frame/video-thread only.
+  bool MapAimPoseToGameView(const Common::VR::OpenXRPoseState& aim, float units_per_meter,
+                            std::array<float, 3>* out_position,
+                            std::array<float, 9>* out_rotation) const;
+  // Fills controller.screen_hit: intersection of the aim ray with the virtual screen
+  // (flat panel quad in flat-screen mode, ortho virtual screen otherwise), using the
+  // same transform chain the renderer uses to place that screen.
+  void ComputeVirtualScreenHit(Common::VR::OpenXRControllerState* controller) const;
   void EnsureHomePositionFromCurrentViews() const;
   std::array<XREyeView, 2> GetTrackingAdjustedEyeViews() const;
   void ResetInputActionsState();
