@@ -339,15 +339,6 @@
         <item>3</item>
     </integer-array>
 
-    <string-array name="questControllerPresetEntries">
-        <item>@string/quest_controller_preset_gamecube</item>
-        <item>@string/quest_controller_preset_wiimote</item>
-    </string-array>
-    <integer-array name="questControllerPresetValues">
-        <item>0</item>
-        <item>1</item>
-    </integer-array>
-
     <string-array name="questFoveationLevelEntries">
         <item>@string/off</item>
         <item>@string/quest_foveation_low</item>

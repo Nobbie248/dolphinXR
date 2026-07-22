@@ -1225,7 +1225,7 @@ class EmulationActivity : AppCompatActivity(), ThemeProvider {
             val settings = Settings()
             settings.loadSettings()
             try {
-                QuestVrSettings.prepareLaunchSettings(settings, launchSystemMenu)
+                QuestVrSettings.prepareLaunchSettings(settings)
                 settings.saveSettings()
             } finally {
                 settings.close()

@@ -2982,16 +2982,6 @@ class SettingsFragmentPresenter(
 
         sl.add(HeaderSetting(context, R.string.quest_vr_presets, 0))
         sl.add(
-            SingleChoiceSetting(
-                context,
-                QuestVrSettings.controllerPresetSetting(),
-                R.string.quest_controller_preset,
-                R.string.quest_controller_preset_description,
-                R.array.questControllerPresetEntries,
-                R.array.questControllerPresetValues
-            )
-        )
-        sl.add(
             RunRunnable(
                 context,
                 R.string.quest_apply_controller_preset,
@@ -3001,7 +2991,7 @@ class SettingsFragmentPresenter(
                 false
             ) {
                 runQuestSettingsMutation { settings ->
-                    QuestVrSettings.applySelectedControllerPreset(settings)
+                    QuestVrSettings.applyDefaultControllerSetup(settings)
                 }
             }
         )

@@ -7,11 +7,11 @@ import org.dolphinemu.dolphinemu.features.input.model.controlleremu.EmulatedCont
 
 object QuestVrSettings {
     const val STEREO_MODE_OPENXR = 6
-    const val CONTROLLER_PRESET_GAMECUBE = 0
-    const val CONTROLLER_PRESET_WII_REMOTE = 1
 
     private const val GC_PROFILE_NAME = "Quest Touch GameCube.ini"
     private const val WIIMOTE_PROFILE_NAME = "OpenXR Wii Remote.ini"
+    private const val HOTKEY_PROFILE_NAME = "Quest.ini"
+    private const val OPENXR_DEVICE = "OpenXR/0/OpenXR Controller"
     private const val VR_SECTION = "VR"
 
     private fun androidBooleanSetting(key: String, defaultValue: Boolean) =
@@ -42,9 +42,6 @@ object QuestVrSettings {
     fun leftHandedSetting() = androidBooleanSetting("QuestLeftHanded", false)
 
     fun showMirrorSurfaceSetting() = androidBooleanSetting("QuestShowMirrorSurface", false)
-
-    fun controllerPresetSetting() =
-        androidIntSetting("QuestControllerPreset", CONTROLLER_PRESET_GAMECUBE)
 
     fun autoVbiFromHmdSetting() = vrBooleanSetting("AutoVBIFromHMD", false)
 
@@ -114,8 +111,8 @@ object QuestVrSettings {
     private fun backendMultithreadingReenabledSetting() =
         androidBooleanSetting("QuestBackendMultithreadingReenabled", false)
 
-    private fun controllerProfilesAppliedSetting() =
-        androidBooleanSetting("QuestControllerProfilesApplied", false)
+    private fun controllerSetupAskedSetting() =
+        androidBooleanSetting("QuestControllerSetupAsked", false)
 
     fun shouldShowMirrorSurface(): Boolean {
         if (!BuildConfig.IS_QUEST) {
@@ -158,11 +155,48 @@ object QuestVrSettings {
         backendMultithreadingReenabledSetting().setBoolean(settings, true)
     }
 
-    fun applySelectedControllerPreset(settings: Settings) {
-        applyControllerPreset(settings, controllerPresetSetting().int)
+    fun shouldAskAboutControllerSetup(): Boolean {
+        return BuildConfig.IS_QUEST && !controllerSetupAskedSetting().boolean
     }
 
-    fun prepareLaunchSettings(settings: Settings, launchSystemMenu: Boolean) {
+    fun recordControllerSetupChoice(settings: Settings, applyDefaults: Boolean) {
+        if (!BuildConfig.IS_QUEST) {
+            return
+        }
+
+        if (applyDefaults) {
+            applyDefaultControllerSetup(settings)
+        }
+        controllerSetupAskedSetting().setBoolean(settings, true)
+    }
+
+    /**
+     * Installs the stock Quest mappings without making the user choose between Wii and GameCube.
+     * The appropriate controller will be used automatically for each emulated console.
+     */
+    fun applyDefaultControllerSetup(settings: Settings) {
+        if (!BuildConfig.IS_QUEST) {
+            return
+        }
+
+        val gcPad = EmulatedController.getGcPad(0)
+        gcPad.loadProfile(gcPad.getSysProfileDirectoryPath() + GC_PROFILE_NAME)
+        gcPad.setDefaultDevice(OPENXR_DEVICE)
+
+        val wiimote = EmulatedController.getWiimote(0)
+        wiimote.loadProfile(wiimote.getSysProfileDirectoryPath() + WIIMOTE_PROFILE_NAME)
+        wiimote.setDefaultDevice(OPENXR_DEVICE)
+
+        val hotkeys = EmulatedController.getHotkeys()
+        hotkeys.loadProfile(hotkeys.getSysProfileDirectoryPath() + HOTKEY_PROFILE_NAME)
+        hotkeys.setDefaultDevice(OPENXR_DEVICE)
+
+        // 6 is an emulated Standard Controller and 3 is an OpenXR Wii Remote.
+        IntSetting.MAIN_SI_DEVICE_0.setInt(settings, 6)
+        IntSetting.WIIMOTE_1_SOURCE.setInt(settings, 3)
+    }
+
+    fun prepareLaunchSettings(settings: Settings) {
         if (!BuildConfig.IS_QUEST) {
             return
         }
@@ -200,40 +234,7 @@ object QuestVrSettings {
             }
         }
 
-        if (launchSystemMenu) {
-            applyControllerPreset(settings, CONTROLLER_PRESET_WII_REMOTE)
-        } else {
-            applySelectedControllerPreset(settings)
-        }
-    }
-
-    fun applyControllerPreset(settings: Settings, preset: Int) {
-        if (!BuildConfig.IS_QUEST) {
-            return
-        }
-
-        if (!controllerProfilesAppliedSetting().boolean) {
-            EmulatedController.getGcPad(0).loadProfile(
-                EmulatedController.getGcPad(0).getSysProfileDirectoryPath() + GC_PROFILE_NAME
-            )
-            EmulatedController.getWiimote(0).loadProfile(
-                EmulatedController.getWiimote(0).getSysProfileDirectoryPath() + WIIMOTE_PROFILE_NAME
-            )
-            controllerProfilesAppliedSetting().setBoolean(settings, true)
-        }
-
-        when (preset) {
-            CONTROLLER_PRESET_WII_REMOTE -> applyWiiRemoteSource(settings)
-            else -> applyGameCubeSource(settings)
-        }
-    }
-
-    private fun applyGameCubeSource(settings: Settings) {
-        IntSetting.MAIN_SI_DEVICE_0.setInt(settings, 6)
-        IntSetting.WIIMOTE_1_SOURCE.setInt(settings, 0)
-    }
-
-    private fun applyWiiRemoteSource(settings: Settings) {
-        IntSetting.WIIMOTE_1_SOURCE.setInt(settings, 3)
+        // Controller profiles are configured explicitly by the first-launch prompt or settings UI.
+        // Do not overwrite a user's controller selection whenever a game starts.
     }
 }

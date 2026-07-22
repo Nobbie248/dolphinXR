@@ -28,8 +28,8 @@ public final class StartupHandler
 
   public static void HandleInit(FragmentActivity parent)
   {
-    // Ask the user if he wants to enable analytics if we haven't yet.
-    Analytics.checkAnalyticsInit(parent);
+    // Show first-launch questions one at a time. Quest controller setup is offered before analytics.
+    FirstLaunchDialogs.checkInit(parent);
 
     // Set up and/or sync Android TV channels
     if (TvUtil.isLeanback(parent))
