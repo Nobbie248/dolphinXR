@@ -524,6 +524,9 @@ void HotkeyManager::LoadDefaults(const ControllerInterface& ciface)
   set_key_expression(HK_SKYLANDERS_PORTAL, hotkey_string({"Ctrl", "P"}));
   set_key_expression(HK_INFINITY_BASE, hotkey_string({"Ctrl", "I"}));
 
+  // VR
+  set_key_expression(HK_VR_RESET_POSITION, hotkey_string({"Shift", "R"}));
+
 #ifdef ANDROID
   // Default the "Return to Main Menu" hotkey to the left controller's Menu button.
   // The expression must be held for 3 s by HotkeyDispatcher before it fires.
