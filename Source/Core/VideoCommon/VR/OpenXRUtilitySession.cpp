@@ -479,8 +479,7 @@ private:
           ImGui::PushStyleColor(ImGuiCol_Button, {0.18f, 0.48f, 0.68f, 1.0f});
           ImGui::PushStyleColor(ImGuiCol_ButtonHovered, {0.25f, 0.62f, 0.82f, 1.0f});
         }
-        const std::string label = fmt::format("({})", control.control_name);
-        if (ImGui::Button(label.c_str(), {220.0f, 34.0f}))
+        if (ImGui::Button(control.control_name.c_str(), {220.0f, 34.0f}))
           BeginDetection(index);
         if (selected)
           ImGui::PopStyleColor(2);
@@ -975,6 +974,8 @@ struct OpenXRUtilitySession::Impl
     style.FrameRounding = 10.0f;
     style.FramePadding = {18.0f, 14.0f};
     style.ItemSpacing = {18.0f, 18.0f};
+    style.ScrollbarSize = 24.0f;
+    style.ScrollbarRounding = 10.0f;
     style.Colors[ImGuiCol_WindowBg] = {0.035f, 0.045f, 0.06f, 0.97f};
     return true;
   }
