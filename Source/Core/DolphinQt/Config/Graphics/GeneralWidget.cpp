@@ -32,19 +32,6 @@
 #include "VideoCommon/VideoBackendBase.h"
 #include "VideoCommon/VideoConfig.h"
 
-namespace
-{
-QString GetBackendDisplayNameForUI(std::string_view backend_name)
-{
-  if (backend_name == "Direct3D 11")
-    return QObject::tr("Direct3D 11 (VR)");
-  if (backend_name == "Vulkan")
-    return QObject::tr("Vulkan (VR)");
-
-  return QObject::tr(backend_name.data());
-}
-}  // namespace
-
 GeneralWidget::GeneralWidget(GraphicsPane* gfx_pane) : m_game_layer{gfx_pane->GetConfigLayer()}
 {
   CreateWidgets();
@@ -69,7 +56,7 @@ void GeneralWidget::CreateWidgets()
   std::vector<std::pair<QString, QString>> options;
   for (auto& backend : VideoBackendBase::GetAvailableBackends())
   {
-    options.push_back(std::make_pair(GetBackendDisplayNameForUI(backend->GetDisplayName()),
+    options.push_back(std::make_pair(tr(backend->GetDisplayName().data()),
                                      QString::fromStdString(backend->GetConfigName())));
   }
   m_backend_combo = new ConfigStringChoice(options, Config::MAIN_GFX_BACKEND, m_game_layer);
@@ -305,7 +292,7 @@ void GeneralWidget::AddDescriptions()
   m_backend_combo->SetTitle(tr("Backend"));
   m_backend_combo->SetDescription(
       tr(TR_BACKEND_DESCRIPTION)
-          .arg(GetBackendDisplayNameForUI(VideoBackendBase::GetDefaultBackendDisplayName())));
+          .arg(tr(VideoBackendBase::GetDefaultBackendDisplayName().data())));
 
   m_adapter_combo->SetTitle(tr("Adapter"));
 
