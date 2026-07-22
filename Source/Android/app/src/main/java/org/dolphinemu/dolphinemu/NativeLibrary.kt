@@ -371,7 +371,7 @@ object NativeLibrary {
 
     @JvmStatic
     external fun RequestOpenXRRecenter()
-    external fun StartOpenXRControllerMapper(activity: Activity, wiimotePort: Int): Boolean
+    external fun StartOpenXRControllerMapper(activity: Activity, controllerPort: Int, targetType: Int): Boolean
     external fun GetOpenXRControllerMapperState(): Int
     external fun GetOpenXRControllerMapperFailure(): String
     external fun ApplyOpenXRControllerMapper(): Boolean

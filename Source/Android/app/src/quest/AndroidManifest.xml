@@ -61,11 +61,18 @@
         <activity
             android:name=".activities.OpenXRControllerMapperActivity"
             android:theme="@style/Theme.Dolphin.EmulationVR"
+            android:taskAffinity="${applicationId}.openxr_mapper"
+            android:launchMode="singleTask"
             android:resizeableActivity="false"
-            android:exported="false">
+            android:exported="true">
             <property
                 android:name="android.window.PROPERTY_XR_ACTIVITY_START_MODE"
                 android:value="XR_ACTIVITY_START_MODE_FULL_SPACE_UNMANAGED" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="com.oculus.intent.category.VR" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
         </activity>
     </application>
 

@@ -225,7 +225,9 @@ struct MappableGroup
 
 void AddMappableControls(ControllerEmu::ControlGroupContainer& container,
                          std::vector<MappableControl>* controls, std::string_view prefix = {},
-                         const ControllerEmu::ControlGroup* excluded_group = nullptr)
+                         const ControllerEmu::ControlGroup* excluded_group = nullptr,
+                         const ControllerEmu::ControlGroup* renamed_group = nullptr,
+                         const char* renamed_group_name = nullptr)
 {
   for (const auto& group : container.groups)
   {
@@ -235,6 +237,8 @@ void AddMappableControls(ControllerEmu::ControlGroupContainer& container,
       continue;
 
     std::string group_name = Common::GetStringT(group->ui_name.c_str());
+    if (group.get() == renamed_group && renamed_group_name)
+      group_name = renamed_group_name;
     if (!prefix.empty())
       group_name = fmt::format("{} - {}", prefix, group_name);
     for (const auto& control : group->controls)
@@ -267,15 +271,22 @@ public:
       config = HotkeyManagerEmu::GetConfig();
       break;
     }
-    m_controller = config ? config->GetController(target.port) : nullptr;
+    m_controller = config && target.port >= 0 && target.port < config->GetControllerCount() ?
+                       config->GetController(target.port) :
+                       nullptr;
     if (!m_controller)
       return;
 
-    const ControllerEmu::ControlGroup* excluded_group =
+    const ControllerEmu::ControlGroup* android_hotkey_group =
         target.type == OpenXRUtilitySessionTargetType::Hotkeys ?
             HotkeyManagerEmu::GetHotkeyGroup(HKGP_ANDROID) :
             nullptr;
-    AddMappableControls(*m_controller, &m_controls, {}, excluded_group);
+#if defined(ANDROID)
+    AddMappableControls(*m_controller, &m_controls, {}, nullptr, android_hotkey_group,
+                        "Android / Quest");
+#else
+    AddMappableControls(*m_controller, &m_controls, {}, android_hotkey_group);
+#endif
     if (target.type == OpenXRUtilitySessionTargetType::WiiRemote)
     {
       for (const auto& group : m_controller->groups)

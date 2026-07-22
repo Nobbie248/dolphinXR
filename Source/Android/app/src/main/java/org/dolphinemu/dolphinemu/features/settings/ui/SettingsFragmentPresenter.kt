@@ -3124,6 +3124,35 @@ class SettingsFragmentPresenter(
         fragmentView.adapter?.notifyAllSettingsChanged()
     }
 
+    private fun addOpenXRControllerMapperSetting(
+        sl: ArrayList<SettingsItem>,
+        controllerPort: Int,
+        targetType: Int
+    ) {
+        sl.add(
+            RunRunnable(
+                context,
+                R.string.openxr_controller_mapper,
+                R.string.openxr_controller_mapper_description,
+                0,
+                0,
+                true
+            ) {
+                context.startActivity(
+                    Intent(context, OpenXRControllerMapperActivity::class.java)
+                        .setAction(Intent.ACTION_MAIN)
+                        .addCategory("com.oculus.intent.category.VR")
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        .putExtra(
+                            OpenXRControllerMapperActivity.EXTRA_CONTROLLER_PORT,
+                            controllerPort
+                        )
+                        .putExtra(OpenXRControllerMapperActivity.EXTRA_TARGET_TYPE, targetType)
+                )
+            }
+        )
+    }
+
     private fun addGcPadSubSettings(sl: ArrayList<SettingsItem>, gcPadNumber: Int, gcPadType: Int) {
         when (gcPadType) {
             6, 8, 9, 10, 11 -> {
@@ -3134,6 +3163,13 @@ class SettingsFragmentPresenter(
                     addControllerPerGameSettings(sl, gcPad, gcPadNumber)
                 } else {
                     addControllerMetaSettings(sl, gcPad)
+                    if (BuildConfig.IS_QUEST && gcPad.getDefaultDevice() == OPENXR_CONTROLLER_DEVICE) {
+                        addOpenXRControllerMapperSetting(
+                            sl,
+                            gcPadNumber,
+                            OpenXRControllerMapperActivity.TARGET_GAMECUBE_CONTROLLER
+                        )
+                    }
                     addControllerMappingSettings(sl, gcPad, null)
                 }
             }
@@ -3185,25 +3221,12 @@ class SettingsFragmentPresenter(
                 2 -> IntSetting.WIIMOTE_3_SOURCE
                 else -> IntSetting.WIIMOTE_4_SOURCE
             }
-            if (BuildConfig.IS_QUEST && sourceSetting.int == 3) {
-                sl.add(
-                    RunRunnable(
-                        context,
-                        R.string.openxr_controller_mapper,
-                        R.string.openxr_controller_mapper_description,
-                        0,
-                        0,
-                        true
-                    ) {
-                        context.startActivity(
-                            Intent(context, OpenXRControllerMapperActivity::class.java).putExtra(
-                                OpenXRControllerMapperActivity.EXTRA_WIIMOTE_PORT,
-                                wiimoteNumber
-                            )
-                        )
-                    }
+            if (BuildConfig.IS_QUEST && sourceSetting.int == 3)
+                addOpenXRControllerMapperSetting(
+                    sl,
+                    wiimoteNumber,
+                    OpenXRControllerMapperActivity.TARGET_WII_REMOTE
                 )
-            }
 
             sl.add(HeaderSetting(context, R.string.wiimote, 0))
             sl.add(
@@ -3329,6 +3352,13 @@ class SettingsFragmentPresenter(
     private fun addHotkeySettings(sl: ArrayList<SettingsItem>) {
         val hotkeys = EmulatedController.getHotkeys()
         addControllerMetaSettings(sl, hotkeys)
+        if (BuildConfig.IS_QUEST && hotkeys.getDefaultDevice() == OPENXR_CONTROLLER_DEVICE) {
+            addOpenXRControllerMapperSetting(
+                sl,
+                0,
+                OpenXRControllerMapperActivity.TARGET_HOTKEYS
+            )
+        }
 
         sl.add(HeaderSetting(context, R.string.hotkey_categories, 0))
         sl.add(SubmenuSetting(context, R.string.hotkey_android, MenuTag.HOTKEYS_ANDROID))
@@ -3653,6 +3683,7 @@ class SettingsFragmentPresenter(
         const val ARG_CONTROLLER_TYPE = "controller_type"
         const val ARG_SERIALPORT1_TYPE = "serialport1_type"
         const val ARG_REVISION = "revision"
+        private const val OPENXR_CONTROLLER_DEVICE = "OpenXR/0/OpenXR Controller"
 
         // Value obtained from LogLevel in Common/Logging/Log.h
         private fun getLogVerbosityEntries(): Int {

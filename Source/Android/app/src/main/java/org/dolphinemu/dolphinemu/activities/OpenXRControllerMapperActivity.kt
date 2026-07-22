@@ -55,8 +55,9 @@ class OpenXRControllerMapperActivity : Activity() {
                 View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
         setContentView(View(this).apply { setBackgroundColor(Color.BLACK) })
 
-        val port = intent.getIntExtra(EXTRA_WIIMOTE_PORT, -1)
-        if (!NativeLibrary.StartOpenXRControllerMapper(this, port)) {
+        val port = intent.getIntExtra(EXTRA_CONTROLLER_PORT, -1)
+        val targetType = intent.getIntExtra(EXTRA_TARGET_TYPE, TARGET_WII_REMOTE)
+        if (!NativeLibrary.StartOpenXRControllerMapper(this, port, targetType)) {
             Toast.makeText(this, NativeLibrary.GetOpenXRControllerMapperFailure(), Toast.LENGTH_LONG)
                 .show()
             finish()
@@ -72,7 +73,11 @@ class OpenXRControllerMapperActivity : Activity() {
     }
 
     companion object {
-        const val EXTRA_WIIMOTE_PORT = "wiimote_port"
+        const val EXTRA_CONTROLLER_PORT = "controller_port"
+        const val EXTRA_TARGET_TYPE = "target_type"
+        const val TARGET_WII_REMOTE = 0
+        const val TARGET_GAMECUBE_CONTROLLER = 1
+        const val TARGET_HOTKEYS = 2
         private const val POLL_INTERVAL_MS = 100L
         private const val STATE_APPLY_PENDING = 3
         private const val STATE_APPLIED = 4

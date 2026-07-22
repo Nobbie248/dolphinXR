@@ -43,8 +43,10 @@
 #include "Core/Core.h"
 #include "Core/DolphinAnalytics.h"
 #include "Core/HW/DVD/DVDInterface.h"
+#include "Core/HW/GCPad.h"
 #include "Core/HW/Wiimote.h"
 #include "Core/HW/WiimoteReal/WiimoteReal.h"
+#include "Core/HotkeyManager.h"
 #include "Core/Host.h"
 #include "Core/PowerPC/JitInterface.h"
 #include "Core/PowerPC/PowerPC.h"
@@ -297,25 +299,42 @@ JNIEXPORT void JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_RequestOpenX
 }
 
 JNIEXPORT jboolean JNICALL Java_org_dolphinemu_dolphinemu_NativeLibrary_StartOpenXRControllerMapper(
-    JNIEnv* env, jclass, jobject activity, jint wiimote_port)
+    JNIEnv* env, jclass, jobject activity, jint controller_port, jint target_type)
 {
 #if defined(ENABLE_VR) && defined(HAS_VULKAN)
   std::lock_guard lock(s_openxr_mapper_mutex);
   if (s_openxr_mapper)
     return JNI_FALSE;
 
+  VR::OpenXRUtilitySessionTargetType target;
+  switch (target_type)
+  {
+  case 0:
+    target = VR::OpenXRUtilitySessionTargetType::WiiRemote;
+    break;
+  case 1:
+    target = VR::OpenXRUtilitySessionTargetType::GameCubeController;
+    break;
+  case 2:
+    target = VR::OpenXRUtilitySessionTargetType::Hotkeys;
+    break;
+  default:
+    return JNI_FALSE;
+  }
+
   s_openxr_mapper = std::make_unique<VR::OpenXRUtilitySession>();
-  if (wiimote_port < 0 || wiimote_port >= 4 ||
+  const VR::OpenXRUtilitySessionTarget mapper_target{target, controller_port};
+  if (controller_port < 0 || controller_port >= 4 ||
       Core::GetState(Core::System::GetInstance()) != Core::State::Uninitialized || VR::g_openxr)
   {
-    return static_cast<jboolean>(s_openxr_mapper->Start(wiimote_port));
+    return static_cast<jboolean>(s_openxr_mapper->Start(mapper_target));
   }
 
   JavaVM* vm = nullptr;
   env->GetJavaVM(&vm);
   VR::OpenXRManager::SetAndroidAppInfo(vm, env, activity);
   s_openxr_mapper_owns_android_app_info = true;
-  return static_cast<jboolean>(s_openxr_mapper->Start(wiimote_port));
+  return static_cast<jboolean>(s_openxr_mapper->Start(mapper_target));
 #else
   return JNI_FALSE;
 #endif
@@ -356,10 +375,25 @@ Java_org_dolphinemu_dolphinemu_NativeLibrary_ApplyOpenXRControllerMapper(JNIEnv*
   }
 
   VR::OpenXRPendingBindings pending = s_openxr_mapper->TakePendingBindings();
-  if (pending.target.type != VR::OpenXRUtilitySessionTargetType::WiiRemote)
+  InputConfig* config = nullptr;
+  switch (pending.target.type)
+  {
+  case VR::OpenXRUtilitySessionTargetType::WiiRemote:
+    config = Wiimote::GetConfig();
+    break;
+  case VR::OpenXRUtilitySessionTargetType::GameCubeController:
+    config = Pad::GetConfig();
+    break;
+  case VR::OpenXRUtilitySessionTargetType::Hotkeys:
+    config = HotkeyManagerEmu::GetConfig();
+    break;
+  default:
     return JNI_FALSE;
-  InputConfig* config = Wiimote::GetConfig();
-  auto* controller = config ? config->GetController(pending.target.port) : nullptr;
+  }
+  auto* controller = config && pending.target.port >= 0 &&
+                             pending.target.port < config->GetControllerCount() ?
+                         config->GetController(pending.target.port) :
+                         nullptr;
   if (!controller)
     return JNI_FALSE;
 
