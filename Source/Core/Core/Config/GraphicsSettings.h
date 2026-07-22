@@ -224,7 +224,6 @@ extern const Info<bool> GFX_VR_EXACT_SCREEN_DEPTH;
 // Auto-detect ortho draws sampling EFB copies (bloom, motion blur, post-processing) and render
 // them natively over each eye instead of capturing them onto the 2D Virtual Screen.
 extern const Info<bool> GFX_VR_AUTO_NATIVE_EFB_EFFECTS;
-extern const Info<float> GFX_VR_ELEMENT_DEPTH;
 extern const Info<float> GFX_VR_HUD_THICKNESS;
 extern const Info<bool> GFX_VR_REMOVE_BARS;
 extern const Info<bool> GFX_VR_ORTHO_SCISSOR_FIX;
@@ -271,9 +270,6 @@ static constexpr int GFX_VR_FORCED_VBI_FREQUENCY_OFF = 0;
 static constexpr int GFX_VR_FORCED_VBI_FREQUENCY_72 = 72;
 static constexpr int GFX_VR_FORCED_VBI_FREQUENCY_90 = 90;
 static constexpr int GFX_VR_FORCED_VBI_FREQUENCY_120 = 120;
-static constexpr float GFX_VR_ELEMENT_DEPTH_MIN = 0.0f;
-static constexpr float GFX_VR_ELEMENT_DEPTH_MAX = 10.0f;
-static constexpr float GFX_VR_ELEMENT_DEPTH_STEP = 0.0001f;
 static constexpr float GFX_VR_HUD_THICKNESS_MIN = 0.0f;
 static constexpr float GFX_VR_HUD_THICKNESS_MAX = 1.0f;
 static constexpr float GFX_VR_HUD_THICKNESS_STEP = 0.02f;

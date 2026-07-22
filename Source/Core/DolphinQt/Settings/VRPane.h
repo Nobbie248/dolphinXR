@@ -86,8 +86,6 @@ private:
   ConfigBool* m_eager_heartbeat = nullptr;
   ConfigBool* m_exact_screen_depth = nullptr;
   ConfigBool* m_auto_native_efb_effects = nullptr;
-  ConfigFloatSlider* m_element_depth = nullptr;
-  QLabel* m_element_depth_value = nullptr;
   ConfigFloatSlider* m_hud_thickness = nullptr;
   QLabel* m_hud_thickness_value = nullptr;
   QPushButton* m_reset_general_settings = nullptr;

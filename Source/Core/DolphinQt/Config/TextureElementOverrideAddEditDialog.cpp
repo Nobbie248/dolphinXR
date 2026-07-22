@@ -111,10 +111,11 @@ TextureElementOverrideAddEditDialog::TextureElementOverrideAddEditDialog(
   m_element_depth_spin->setRange(-1.0, 0.01);
   m_element_depth_spin->setDecimals(4);
   m_element_depth_spin->setSingleStep(0.0001);
-  m_element_depth_spin->setSpecialValueText(tr("Global"));
+  m_element_depth_spin->setSpecialValueText(tr("Default"));
   m_element_depth_spin->setValue(-1.0);
-  m_element_depth_spin->setToolTip(tr("Within-element depth range for these textures.\n"
-                                      "-1 (Global) = use the global Element Depth setting."));
+  m_element_depth_spin->setToolTip(tr("Within-element depth range for these textures (legacy "
+                                      "fallback when Exact Screen Depth is off).\n"
+                                      "-1 (Default) = use the built-in default."));
 
   m_units_per_meter_label = new QLabel(tr("Units per Meter:"));
   m_units_per_meter_spin = new QDoubleSpinBox;

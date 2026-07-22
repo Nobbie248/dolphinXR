@@ -165,19 +165,6 @@ void VRConfigWidget::CreateWidgets()
   head_locked_curvature_layout->addWidget(m_override_head_locked_curvature);
   head_locked_curvature_layout->addWidget(m_head_locked_curvature, 1);
 
-  auto* element_depth_row = new QWidget;
-  auto* element_depth_layout = new QHBoxLayout;
-  element_depth_layout->setContentsMargins(0, 0, 0, 0);
-  element_depth_row->setLayout(element_depth_layout);
-
-  m_override_element_depth = new QCheckBox(tr("Override"));
-  m_element_depth = new QDoubleSpinBox;
-  m_element_depth->setRange(Config::GFX_VR_ELEMENT_DEPTH_MIN, Config::GFX_VR_ELEMENT_DEPTH_MAX);
-  m_element_depth->setSingleStep(Config::GFX_VR_ELEMENT_DEPTH_STEP);
-  m_element_depth->setDecimals(4);
-  element_depth_layout->addWidget(m_override_element_depth);
-  element_depth_layout->addWidget(m_element_depth, 1);
-
   m_virtual_screen_mode = new QComboBox;
   m_dont_clear_screen_mode = new QComboBox;
   m_detect_skybox_mode = new QComboBox;
@@ -192,7 +179,6 @@ void VRConfigWidget::CreateWidgets()
   form->addRow(tr("Camera Forward"), camera_forward_row);
   form->addRow(tr("Camera Height"), camera_height_row);
   form->addRow(tr("Head Locked Curvature"), head_locked_curvature_row);
-  form->addRow(tr("Element Depth"), element_depth_row);
   form->addRow(tr("Virtual Screen"), m_virtual_screen_mode);
   form->addRow(tr("Don't Clear Screen"), m_dont_clear_screen_mode);
   form->addRow(tr("Detect Skybox"), m_detect_skybox_mode);
@@ -266,12 +252,6 @@ void VRConfigWidget::CreateWidgets()
     SaveToFile();
   });
   connect(m_head_locked_curvature, &QDoubleSpinBox::valueChanged, this,
-          [this](double) { SaveToFile(); });
-  connect(m_override_element_depth, &QCheckBox::toggled, this, [this](bool checked) {
-    m_element_depth->setEnabled(checked);
-    SaveToFile();
-  });
-  connect(m_element_depth, &QDoubleSpinBox::valueChanged, this,
           [this](double) { SaveToFile(); });
   connect(m_virtual_screen_mode, &QComboBox::currentIndexChanged, this,
           [this](int) { SaveToFile(); });
@@ -391,23 +371,6 @@ void VRConfigWidget::LoadFromFile()
                  static_cast<double>(Config::GFX_VR_HEAD_LOCKED_CURVATURE_MAX));
   m_head_locked_curvature->setValue(head_locked_curvature);
 
-  const auto element_depth_it = values.find("ElementDepth");
-  const bool element_depth_overridden = element_depth_it != values.end();
-  m_override_element_depth->setChecked(element_depth_overridden);
-  m_element_depth->setEnabled(element_depth_overridden);
-
-  double element_depth = Config::GetBase(Config::GFX_VR_ELEMENT_DEPTH);
-  if (element_depth_overridden)
-  {
-    double parsed = element_depth;
-    if (TryParse(element_depth_it->second, &parsed))
-      element_depth = parsed;
-  }
-  element_depth =
-      std::clamp(element_depth, static_cast<double>(Config::GFX_VR_ELEMENT_DEPTH_MIN),
-                 static_cast<double>(Config::GFX_VR_ELEMENT_DEPTH_MAX));
-  m_element_depth->setValue(element_depth);
-
   SetBoolMode(m_virtual_screen_mode, ParseBoolMode(values, "VirtualScreen"));
   SetBoolMode(m_dont_clear_screen_mode, ParseBoolMode(values, "DontClearScreen"));
   SetBoolMode(m_detect_skybox_mode, ParseBoolMode(values, "DetectSkybox"));
@@ -447,12 +410,6 @@ void VRConfigWidget::SaveToFile()
     entries.emplace_back("HeadLockedCurvature",
                          QString::number(m_head_locked_curvature->value(), 'f', 2).toStdString());
   }
-  if (m_override_element_depth->isChecked())
-  {
-    entries.emplace_back("ElementDepth",
-                         QString::number(m_element_depth->value(), 'f', 4).toStdString());
-  }
-
   const auto append_bool = [&entries](const char* key, BoolMode mode) {
     if (mode == BoolMode::Inherit)
       return;

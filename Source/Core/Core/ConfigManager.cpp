@@ -176,7 +176,6 @@ static void ClearAppliedVRSettings()
   ClearAppliedVRSetting("AutoVBIFromHMD", Config::GFX_VR_AUTO_VBI_FROM_HMD);
   ClearAppliedVRSetting("ExactScreenDepth", Config::GFX_VR_EXACT_SCREEN_DEPTH);
   ClearAppliedVRSetting("AutoNativeEfbEffects", Config::GFX_VR_AUTO_NATIVE_EFB_EFFECTS);
-  ClearAppliedVRSetting("ElementDepth", Config::GFX_VR_ELEMENT_DEPTH);
   ClearAppliedVRSetting("OrthoScissorFix", Config::GFX_VR_ORTHO_SCISSOR_FIX);
   ClearAppliedVRSetting("DetectSkybox", Config::GFX_VR_DETECT_SKYBOX);
   ClearAppliedVRSetting("ClearEFBCopies", Config::GFX_VR_CLEAR_EFB_COPIES);
@@ -238,7 +237,6 @@ static void ApplyGameVRConfigOverrides(std::string_view game_id, std::optional<u
     ApplyVRSetting(values, "AutoVBIFromHMD", Config::GFX_VR_AUTO_VBI_FROM_HMD);
   ApplyVRSetting(values, "ExactScreenDepth", Config::GFX_VR_EXACT_SCREEN_DEPTH);
   ApplyVRSetting(values, "AutoNativeEfbEffects", Config::GFX_VR_AUTO_NATIVE_EFB_EFFECTS);
-  ApplyVRSetting(values, "ElementDepth", Config::GFX_VR_ELEMENT_DEPTH);
   ApplyVRSetting(values, "OrthoScissorFix", Config::GFX_VR_ORTHO_SCISSOR_FIX);
   ApplyVRSetting(values, "DetectSkybox", Config::GFX_VR_DETECT_SKYBOX);
   ApplyVRSetting(values, "ClearEFBCopies", Config::GFX_VR_CLEAR_EFB_COPIES);

@@ -78,8 +78,6 @@ private:
   QDoubleSpinBox* m_camera_height = nullptr;
   QCheckBox* m_override_head_locked_curvature = nullptr;
   QDoubleSpinBox* m_head_locked_curvature = nullptr;
-  QCheckBox* m_override_element_depth = nullptr;
-  QDoubleSpinBox* m_element_depth = nullptr;
   QComboBox* m_virtual_screen_mode = nullptr;
   QComboBox* m_dont_clear_screen_mode = nullptr;
   QComboBox* m_detect_skybox_mode = nullptr;

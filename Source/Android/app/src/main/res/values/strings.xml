@@ -836,8 +836,6 @@ It can efficiently compress both junk data and encrypted Wii data.
     <string name="quest_head_locked_curvature_description">Curves head-locked virtual screens so they wrap more around the viewer.</string>
     <string name="quest_exact_screen_depth">Exact Screen Depth</string>
     <string name="quest_exact_screen_depth_description">Writes the game\'s original depth values on the 2D Virtual Screen, eliminating Z-fighting between menu elements.</string>
-    <string name="quest_element_depth">Element Depth</string>
-    <string name="quest_element_depth_description">Controls the depth range within individual 2D elements on the virtual screen.</string>
     <string name="quest_controller_preset">Default controller preset</string>
     <string name="quest_controller_preset_description">Selects which stock Quest controller mapping Dolphin reapplies before launch.</string>
     <string name="quest_controller_preset_gamecube">GameCube pad</string>

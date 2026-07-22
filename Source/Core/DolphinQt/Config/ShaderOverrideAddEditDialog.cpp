@@ -107,10 +107,11 @@ ShaderOverrideAddEditDialog::ShaderOverrideAddEditDialog(
   m_element_depth_spin->setRange(-1.0, 0.01);
   m_element_depth_spin->setDecimals(4);
   m_element_depth_spin->setSingleStep(0.0001);
-  m_element_depth_spin->setSpecialValueText(tr("Global"));
+  m_element_depth_spin->setSpecialValueText(tr("Default"));
   m_element_depth_spin->setValue(-1.0);
-  m_element_depth_spin->setToolTip(tr("Within-element depth range for this shader.\n"
-                                       "-1 (Global) = use the global Element Depth setting.\n"
+  m_element_depth_spin->setToolTip(tr("Within-element depth range for this shader (legacy fallback "
+                                       "when Exact Screen Depth is off).\n"
+                                       "-1 (Default) = use the built-in default.\n"
                                        "Higher values fix Z-fighting inside the element."));
 
   m_units_per_meter_label = new QLabel(tr("Units per Meter:"));

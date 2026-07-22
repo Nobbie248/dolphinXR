@@ -245,7 +245,6 @@ const Info<bool> GFX_VR_AUTO_VBI_FROM_HMD{{System::GFX, "VR", "AutoVBIFromHMD"},
 const Info<bool> GFX_VR_EXACT_SCREEN_DEPTH{{System::GFX, "VR", "ExactScreenDepth"}, true};
 const Info<bool> GFX_VR_AUTO_NATIVE_EFB_EFFECTS{{System::GFX, "VR", "AutoNativeEfbEffects"},
                                                 true};
-const Info<float> GFX_VR_ELEMENT_DEPTH{{System::GFX, "VR", "ElementDepth"}, 0.001f};
 const Info<float> GFX_VR_HUD_THICKNESS{{System::GFX, "VR", "HudThickness"}, 0.0f};
 const Info<bool> GFX_VR_REMOVE_BARS{{System::GFX, "VR", "RemoveCinematicBars"}, true};
 const Info<bool> GFX_VR_ORTHO_SCISSOR_FIX{{System::GFX, "VR", "OrthoScissorFix"}, true};

@@ -520,10 +520,13 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
         // .z = HUD thickness in game units (world-space depth spread across the layer's ortho-Z)
         if (constants.stereoparams[3] < -0.5f)
         {
-          // Per-override element depth if set, otherwise global
+          // Per-override element depth if set, otherwise the baked-in default. Element Depth is
+          // no longer user-configurable (Exact Screen Depth superseded it); this fixed value is
+          // the old slider default, kept only so the legacy fallback path still spreads elements.
+          constexpr float kDefaultElementDepth = 0.001f;
           constants.depth_params[1] = (vr_element_depth_override >= 0.0f)
                                           ? vr_element_depth_override
-                                          : g_ActiveConfig.vr_element_depth;
+                                          : kDefaultElementDepth;
           vr_element_depth_override = -1.0f;  // consume
           // Gives a 2D layer (HUD/menu) real 3D depth: ortho-Z elements spread across this
           // many game units of world-space thickness (Hydra "HudThickness").  0 = flat.

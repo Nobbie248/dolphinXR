@@ -239,17 +239,17 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   m_head_locked_curvature_value = new QLabel();
 
   virtual_screen_layout->addWidget(
-      new ConfigFloatLabel(tr("Screen Distance (m):"), m_screen_distance), 1, 0);
-  virtual_screen_layout->addWidget(m_screen_distance, 1, 1);
-  virtual_screen_layout->addWidget(m_screen_distance_value, 1, 2);
-  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("Screen Size (m):"), m_screen_size), 2,
+      new ConfigFloatLabel(tr("Screen Distance (m):"), m_screen_distance), 3, 0);
+  virtual_screen_layout->addWidget(m_screen_distance, 3, 1);
+  virtual_screen_layout->addWidget(m_screen_distance_value, 3, 2);
+  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("Screen Size (m):"), m_screen_size), 4,
                                    0);
-  virtual_screen_layout->addWidget(m_screen_size, 2, 1);
-  virtual_screen_layout->addWidget(m_screen_size_value, 2, 2);
+  virtual_screen_layout->addWidget(m_screen_size, 4, 1);
+  virtual_screen_layout->addWidget(m_screen_size_value, 4, 2);
   virtual_screen_layout->addWidget(
-      new ConfigFloatLabel(tr("Head Locked Curvature:"), m_head_locked_curvature), 3, 0);
-  virtual_screen_layout->addWidget(m_head_locked_curvature, 3, 1);
-  virtual_screen_layout->addWidget(m_head_locked_curvature_value, 3, 2);
+      new ConfigFloatLabel(tr("Head Locked Curvature:"), m_head_locked_curvature), 5, 0);
+  virtual_screen_layout->addWidget(m_head_locked_curvature, 5, 1);
+  virtual_screen_layout->addWidget(m_head_locked_curvature_value, 5, 2);
 
   m_screen_distance_value->setText(QString::asprintf("%.1f", m_screen_distance->GetValue()));
   connect(m_screen_distance, &ConfigFloatSlider::valueChanged, this, [this] {
@@ -373,7 +373,7 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
          "enabled, Auto Layer Spread / Layer Offset / Element Depth are no longer needed for "
          "correctness.<br><br>"
          "Disable only to fall back to the legacy layer system for troubleshooting."));
-  virtual_screen_layout->addWidget(m_exact_screen_depth, 4, 0, 1, 3);
+  virtual_screen_layout->addWidget(m_exact_screen_depth, 1, 0, 1, 3);
 
   // Auto-Exclude EFB Effects
   m_auto_native_efb_effects =
@@ -388,32 +388,17 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
          "Genuine 2D content that samples a frame copy opaquely (e.g. a frozen pause-menu "
          "background) stays on the virtual screen. Disable this if a game's 2D element is "
          "misdetected and leaves the screen."));
-  virtual_screen_layout->addWidget(m_auto_native_efb_effects, 5, 0, 1, 3);
-
-  m_element_depth = new ConfigFloatSlider(Config::GFX_VR_ELEMENT_DEPTH_MIN,
-                                           Config::GFX_VR_ELEMENT_DEPTH_MAX,
-                                           Config::GFX_VR_ELEMENT_DEPTH,
-                                           Config::GFX_VR_ELEMENT_DEPTH_STEP);
-  m_element_depth_value = new QLabel();
-  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("Element Depth:"), m_element_depth), 6,
-                                   0);
-  virtual_screen_layout->addWidget(m_element_depth, 6, 1);
-  virtual_screen_layout->addWidget(m_element_depth_value, 6, 2);
-
-  m_element_depth_value->setText(QString::asprintf("%.4f", m_element_depth->GetValue()));
-  connect(m_element_depth, &ConfigFloatSlider::valueChanged, this, [this] {
-    m_element_depth_value->setText(QString::asprintf("%.4f", m_element_depth->GetValue()));
-  });
+  virtual_screen_layout->addWidget(m_auto_native_efb_effects, 2, 0, 1, 3);
 
   m_hud_thickness = new ConfigFloatSlider(Config::GFX_VR_HUD_THICKNESS_MIN,
                                           Config::GFX_VR_HUD_THICKNESS_MAX,
                                           Config::GFX_VR_HUD_THICKNESS,
                                           Config::GFX_VR_HUD_THICKNESS_STEP);
   m_hud_thickness_value = new QLabel();
-  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("HUD Thickness:"), m_hud_thickness), 7,
+  virtual_screen_layout->addWidget(new ConfigFloatLabel(tr("HUD Thickness:"), m_hud_thickness), 6,
                                    0);
-  virtual_screen_layout->addWidget(m_hud_thickness, 7, 1);
-  virtual_screen_layout->addWidget(m_hud_thickness_value, 7, 2);
+  virtual_screen_layout->addWidget(m_hud_thickness, 6, 1);
+  virtual_screen_layout->addWidget(m_hud_thickness_value, 6, 2);
 
   auto update_hud_thickness_label = [this] {
     const float val = m_hud_thickness->GetValue();
@@ -685,12 +670,6 @@ void VRPane::AddDescriptions()
       "the closest supported value: 72, 90, or 120 Hz."
       "<br><br>This overrides the Advanced tab's VBI percentage during VR sessions."
       "<br><br><dolphin_emphasis>If unsure, leave this set to Off.</dolphin_emphasis>");
-  static constexpr char TR_ELEMENT_DEPTH_DESCRIPTION[] = QT_TR_NOOP(
-      "Controls the depth range within individual 2D elements on the virtual screen."
-      "<br><br>Only used when Exact Screen Depth is disabled. Higher values give more depth "
-      "separation within each element, fixing Z-fighting that appears as flickering inside UI "
-      "elements. Set to 0 to flatten elements completely."
-      "<br><br>Default: 0.0010");
   static constexpr char TR_HUD_THICKNESS_DESCRIPTION[] = QT_TR_NOOP(
       "Gives 2D HUD/menu layers real 3D depth in VR by spreading their elements across this "
       "much world-space thickness (in metres), instead of drawing them flat on a single plane."
@@ -813,7 +792,6 @@ void VRPane::AddDescriptions()
   m_layered_palette_conversion_path->SetDescription(
       tr(TR_LAYERED_PALETTE_CONVERSION_PATH_DESCRIPTION));
   m_vr_gamma->SetDescription(tr(TR_VR_GAMMA_DESCRIPTION));
-  m_element_depth->SetDescription(tr(TR_ELEMENT_DEPTH_DESCRIPTION));
   m_hud_thickness->SetDescription(tr(TR_HUD_THICKNESS_DESCRIPTION));
   m_load_custom_shaders->SetDescription(tr(TR_LOAD_CUSTOM_SHADERS_DESCRIPTION));
   m_passthrough->SetDescription(tr(TR_PASSTHROUGH_DESCRIPTION));
@@ -885,8 +863,6 @@ void VRPane::ResetGeneralSettings()
                            Config::GFX_VR_EXACT_SCREEN_DEPTH.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_AUTO_NATIVE_EFB_EFFECTS,
                            Config::GFX_VR_AUTO_NATIVE_EFB_EFFECTS.GetDefaultValue());
-  Config::SetBaseOrCurrent(Config::GFX_VR_ELEMENT_DEPTH,
-                           Config::GFX_VR_ELEMENT_DEPTH.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_HUD_THICKNESS,
                            Config::GFX_VR_HUD_THICKNESS.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::GFX_VR_METROID_THERMAL_VISOR_FIX,

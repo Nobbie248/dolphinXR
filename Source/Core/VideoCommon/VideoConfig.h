@@ -411,7 +411,6 @@ struct VideoConfig final
   VRPassthroughCoverageMode vr_passthrough_coverage_mode =
       VRPassthroughCoverageMode::Exact;
   float vr_gamma = 1.0f;  // Gamma for VR eye output (1.0=off, 2.2=sRGB, adjustable per headset)
-  float vr_element_depth = 0.001f;
   int vr_clear_efb_min_width = 0;  // 0=disabled, >0=clear EFB copies wider than this
   bool vr_use_vulkan_multiview = true;  // Render OpenXR stereo via VK_KHR_multiview (Quest perf path)
   bool vr_android_direct_to_hmd = false;  // Android OpenXR shortcut that skips backbuffer present

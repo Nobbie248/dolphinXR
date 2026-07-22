@@ -2650,15 +2650,6 @@ class SettingsFragmentPresenter(
             R.string.quest_exact_screen_depth,
             R.string.quest_exact_screen_depth_description
         )
-        addFloat(
-            "ElementDepth",
-            0.001f,
-            R.string.quest_element_depth,
-            R.string.quest_element_depth_description,
-            0.0f,
-            0.1f,
-            0.0001f
-        )
         addIntSlider(
             "ClearEFBCopies",
             0,
@@ -2986,19 +2977,6 @@ class SettingsFragmentPresenter(
                 QuestVrSettings.exactScreenDepthSetting(),
                 R.string.quest_exact_screen_depth,
                 R.string.quest_exact_screen_depth_description
-            )
-        )
-        sl.add(
-            FloatSliderSetting(
-                context,
-                QuestVrSettings.elementDepthSetting(),
-                R.string.quest_element_depth,
-                R.string.quest_element_depth_description,
-                0.0f,
-                0.1f,
-                "",
-                0.0001f,
-                true
             )
         )
 

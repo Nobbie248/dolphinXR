@@ -72,8 +72,6 @@ object QuestVrSettings {
 
     fun exactScreenDepthSetting() = vrBooleanSetting("ExactScreenDepth", true)
 
-    fun elementDepthSetting() = vrFloatSetting("ElementDepth", 0.001f)
-
     fun removeBarsSetting() = vrBooleanSetting("RemoveCinematicBars", true)
 
     fun useVulkanMultiviewSetting() = vrBooleanSetting("UseVulkanMultiview", true)
