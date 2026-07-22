@@ -26,7 +26,8 @@ public:
   };
 
   ConfigFloatSlider(float minimum, float maximum, const Config::Info<float>& setting, float step,
-                    Config::Layer* layer = nullptr, ScaleMode scale = ScaleMode::Linear);
+                    Config::Layer* layer = nullptr, ScaleMode scale = ScaleMode::Linear,
+                    Config::Layer* fallback_layer = nullptr);
   void Update(int value);
 
   // Returns the adjusted float value

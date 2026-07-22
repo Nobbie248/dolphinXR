@@ -3,19 +3,20 @@
 
 #pragma once
 
-#include <map>
+#include <memory>
 #include <optional>
 #include <string>
 
 #include <QWidget>
 
 #include "Common/CommonTypes.h"
-#include "Common/StringUtil.h"
 
-class QCheckBox;
-class QComboBox;
-class QDoubleSpinBox;
 class QTabWidget;
+
+namespace Config
+{
+class Layer;
+}
 
 class VRConfigWidget final : public QWidget
 {
@@ -24,64 +25,22 @@ class VRConfigWidget final : public QWidget
 public:
   explicit VRConfigWidget(std::string game_id, std::optional<u16> revision = std::nullopt,
                           QWidget* parent = nullptr);
+  ~VRConfigWidget() override;
 
 private:
-  enum class BoolMode
-  {
-    Inherit = 0,
-    Enabled = 1,
-    Disabled = 2,
-  };
-
-  enum class ForcedVBIFrequencyMode
-  {
-    Inherit = -1,
-    Auto = -2,
-    Off = 0,
-    Hz72 = 72,
-    Hz90 = 90,
-    Hz120 = 120,
-  };
-
-  using ValueMap = std::map<std::string, std::string, Common::CaseInsensitiveLess>;
-
   void CreateWidgets();
-  void LoadFromFile();
-  void SaveToFile();
+  void SaveSettings();
+  void ReloadSettings();
   void RefreshEditorTabs();
 
   std::string GetLocalINIPath() const;
-  ValueMap ReadMergedVRSectionValues() const;
-  static bool IsVRSectionHeader(std::string_view line);
-  static std::string ReadFileWithoutVRSection(const std::string& path);
-  static ValueMap ReadVRSectionValues(const std::string& path);
-  static BoolMode ParseBoolMode(const ValueMap& values, const char* key);
-  static void SetBoolMode(QComboBox* combo, BoolMode mode);
-  static BoolMode GetBoolMode(const QComboBox* combo);
-  static void PopulateBoolModeCombo(QComboBox* combo);
-  static ForcedVBIFrequencyMode ParseForcedVBIFrequencyMode(const ValueMap& values);
-  static void SetForcedVBIFrequencyMode(QComboBox* combo, ForcedVBIFrequencyMode mode);
-  static ForcedVBIFrequencyMode GetForcedVBIFrequencyMode(const QComboBox* combo);
-  static void PopulateForcedVBIFrequencyModeCombo(QComboBox* combo);
+  std::string GetLayerState() const;
 
   const std::string m_game_id;
   const std::optional<u16> m_revision;
-  bool m_updating = false;
-
-  QCheckBox* m_override_units_per_meter = nullptr;
-  QDoubleSpinBox* m_units_per_meter = nullptr;
-  QCheckBox* m_override_lean_back_angle = nullptr;
-  QDoubleSpinBox* m_lean_back_angle = nullptr;
-  QCheckBox* m_override_camera_forward = nullptr;
-  QDoubleSpinBox* m_camera_forward = nullptr;
-  QCheckBox* m_override_camera_height = nullptr;
-  QDoubleSpinBox* m_camera_height = nullptr;
-  QCheckBox* m_override_head_locked_curvature = nullptr;
-  QDoubleSpinBox* m_head_locked_curvature = nullptr;
-  QComboBox* m_virtual_screen_mode = nullptr;
-  QComboBox* m_dont_clear_screen_mode = nullptr;
-  QComboBox* m_detect_skybox_mode = nullptr;
-  QComboBox* m_forced_vbi_frequency_mode = nullptr;
+  std::unique_ptr<Config::Layer> m_layer;
+  std::unique_ptr<Config::Layer> m_global_layer;
+  std::string m_saved_layer_state;
 
   QTabWidget* m_default_tab = nullptr;
   QTabWidget* m_local_tab = nullptr;

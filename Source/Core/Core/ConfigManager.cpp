@@ -157,11 +157,16 @@ static void ClearAppliedVRSetting(const char* key, const Config::Info<T>& info)
 static void ClearAppliedVRSettings()
 {
   ClearAppliedVRSetting("EnableOpenXR", Config::GFX_VR_ENABLE_OPENXR);
+  ClearAppliedVRSetting("FlatScreen", Config::GFX_VR_FLAT_SCREEN);
   ClearAppliedVRSetting("UnitsPerMeter", Config::GFX_VR_UNITS_PER_METER);
   ClearAppliedVRSetting("LeanBackAngle", Config::GFX_VR_LEAN_BACK_ANGLE);
+  ClearAppliedVRSetting("EnableCameraForward", Config::GFX_VR_ENABLE_CAMERA_FORWARD);
   ClearAppliedVRSetting("CameraForward", Config::GFX_VR_CAMERA_FORWARD);
+  ClearAppliedVRSetting("EnableCameraHeight", Config::GFX_VR_ENABLE_CAMERA_HEIGHT);
   ClearAppliedVRSetting("CameraHeight", Config::GFX_VR_CAMERA_HEIGHT);
+  ClearAppliedVRSetting("EnableCameraAnchor", Config::GFX_VR_ENABLE_CAMERA_ANCHOR);
   ClearAppliedVRSetting("CameraAnchorSmoothing", Config::GFX_VR_CAMERA_ANCHOR_SMOOTHING);
+  ClearAppliedVRSetting("EnableControllerAnchor", Config::GFX_VR_ENABLE_CONTROLLER_ANCHOR);
   ClearAppliedVRSetting("VirtualScreen", Config::GFX_VR_VIRTUAL_SCREEN);
   ClearAppliedVRSetting("ScreenDistance", Config::GFX_VR_SCREEN_DISTANCE);
   ClearAppliedVRSetting("ScreenSize", Config::GFX_VR_SCREEN_SIZE);
@@ -169,18 +174,30 @@ static void ClearAppliedVRSettings()
   ClearAppliedVRSetting("DontClearScreen", Config::GFX_VR_DONT_CLEAR_SCREEN);
   ClearAppliedVRSetting("LoadCustomShaders", Config::GFX_VR_LOAD_CUSTOM_SHADERS);
   ClearAppliedVRSetting("DisableCPUCull", Config::GFX_VR_DISABLE_CPU_CULL);
+  ClearAppliedVRSetting("MirrorView", Config::GFX_VR_MIRROR_VIEW);
   ClearAppliedVRSetting("ReferenceSpaceMode", Config::GFX_VR_REFERENCE_SPACE_MODE);
   ClearAppliedVRSetting("TrackingMode", Config::GFX_VR_TRACKING_MODE);
   ClearAppliedVRSetting("UseOpenXRPlaySpaceCenter", Config::GFX_VR_USE_OPENXR_PLAY_SPACE_CENTER);
+  ClearAppliedVRSetting("EagerHeartbeat", Config::GFX_VR_EAGER_HEARTBEAT);
   ClearAppliedVRSetting("ForcedVBIFrequency", Config::GFX_VR_FORCED_VBI_FREQUENCY);
   ClearAppliedVRSetting("AutoVBIFromHMD", Config::GFX_VR_AUTO_VBI_FROM_HMD);
   ClearAppliedVRSetting("ExactScreenDepth", Config::GFX_VR_EXACT_SCREEN_DEPTH);
   ClearAppliedVRSetting("AutoNativeEfbEffects", Config::GFX_VR_AUTO_NATIVE_EFB_EFFECTS);
+  ClearAppliedVRSetting("HudThickness", Config::GFX_VR_HUD_THICKNESS);
+  ClearAppliedVRSetting("RemoveCinematicBars", Config::GFX_VR_REMOVE_BARS);
   ClearAppliedVRSetting("OrthoScissorFix", Config::GFX_VR_ORTHO_SCISSOR_FIX);
   ClearAppliedVRSetting("DetectSkybox", Config::GFX_VR_DETECT_SKYBOX);
+  ClearAppliedVRSetting("MetroidThermalVisorFix", Config::GFX_VR_METROID_THERMAL_VISOR_FIX);
+  ClearAppliedVRSetting("MetroidD3DThermalPaletteFix",
+                        Config::GFX_VR_METROID_D3D_THERMAL_PALETTE_FIX);
   ClearAppliedVRSetting("ClearEFBCopies", Config::GFX_VR_CLEAR_EFB_COPIES);
+  ClearAppliedVRSetting("Gamma", Config::GFX_VR_GAMMA);
   ClearAppliedVRSetting("UseVulkanMultiview", Config::GFX_VR_USE_VULKAN_MULTIVIEW);
   ClearAppliedVRSetting("AndroidDirectToHMD", Config::GFX_VR_ANDROID_DIRECT_TO_HMD);
+  ClearAppliedVRSetting("ResolutionScale", Config::GFX_VR_RESOLUTION_SCALE);
+  ClearAppliedVRSetting("FoveationLevel", Config::GFX_VR_FOVEATION_LEVEL);
+  ClearAppliedVRSetting("DynamicFoveation", Config::GFX_VR_FOVEATION_DYNAMIC);
+  ClearAppliedVRSetting("FoveateEFB", Config::GFX_VR_EFB_FOVEATION);
   ClearAppliedVRSetting("Passthrough", Config::GFX_VR_PASSTHROUGH);
   ClearAppliedVRSetting("ARMode", Config::GFX_VR_PASSTHROUGH);
   ClearAppliedVRSetting("PassthroughRemoveBlackBackground",
@@ -188,8 +205,7 @@ static void ClearAppliedVRSettings()
   ClearAppliedVRSetting("PassthroughRemoveBlackEFBClears",
                         Config::GFX_VR_PASSTHROUGH_REMOVE_BLACK_CLEARS);
   ClearAppliedVRSetting("PassthroughSceneOpacity", Config::GFX_VR_PASSTHROUGH_SCENE_OPACITY);
-  ClearAppliedVRSetting("PassthroughCoverageMode",
-                        Config::GFX_VR_PASSTHROUGH_COVERAGE_MODE);
+  ClearAppliedVRSetting("PassthroughCoverageMode", Config::GFX_VR_PASSTHROUGH_COVERAGE_MODE);
 }
 
 template <typename T>
@@ -216,11 +232,16 @@ static void ApplyGameVRConfigOverrides(std::string_view game_id, std::optional<u
   const VRSettingMap values = LoadVRSettingsFromINI(game_id, revision);
 
   ApplyVRSetting(values, "EnableOpenXR", Config::GFX_VR_ENABLE_OPENXR);
+  ApplyVRSetting(values, "FlatScreen", Config::GFX_VR_FLAT_SCREEN);
   ApplyVRSetting(values, "UnitsPerMeter", Config::GFX_VR_UNITS_PER_METER);
   ApplyVRSetting(values, "LeanBackAngle", Config::GFX_VR_LEAN_BACK_ANGLE);
+  ApplyVRSetting(values, "EnableCameraForward", Config::GFX_VR_ENABLE_CAMERA_FORWARD);
   ApplyVRSetting(values, "CameraForward", Config::GFX_VR_CAMERA_FORWARD);
+  ApplyVRSetting(values, "EnableCameraHeight", Config::GFX_VR_ENABLE_CAMERA_HEIGHT);
   ApplyVRSetting(values, "CameraHeight", Config::GFX_VR_CAMERA_HEIGHT);
+  ApplyVRSetting(values, "EnableCameraAnchor", Config::GFX_VR_ENABLE_CAMERA_ANCHOR);
   ApplyVRSetting(values, "CameraAnchorSmoothing", Config::GFX_VR_CAMERA_ANCHOR_SMOOTHING);
+  ApplyVRSetting(values, "EnableControllerAnchor", Config::GFX_VR_ENABLE_CONTROLLER_ANCHOR);
   ApplyVRSetting(values, "VirtualScreen", Config::GFX_VR_VIRTUAL_SCREEN);
   ApplyVRSetting(values, "ScreenDistance", Config::GFX_VR_SCREEN_DISTANCE);
   ApplyVRSetting(values, "ScreenSize", Config::GFX_VR_SCREEN_SIZE);
@@ -228,20 +249,44 @@ static void ApplyGameVRConfigOverrides(std::string_view game_id, std::optional<u
   ApplyVRSetting(values, "DontClearScreen", Config::GFX_VR_DONT_CLEAR_SCREEN);
   ApplyVRSetting(values, "LoadCustomShaders", Config::GFX_VR_LOAD_CUSTOM_SHADERS);
   ApplyVRSetting(values, "DisableCPUCull", Config::GFX_VR_DISABLE_CPU_CULL);
+  ApplyVRSetting(values, "MirrorView", Config::GFX_VR_MIRROR_VIEW);
   ApplyVRSetting(values, "ReferenceSpaceMode", Config::GFX_VR_REFERENCE_SPACE_MODE);
   ApplyVRSetting(values, "TrackingMode", Config::GFX_VR_TRACKING_MODE);
   ApplyVRSetting(values, "UseOpenXRPlaySpaceCenter", Config::GFX_VR_USE_OPENXR_PLAY_SPACE_CENTER);
+  ApplyVRSetting(values, "EagerHeartbeat", Config::GFX_VR_EAGER_HEARTBEAT);
   const bool has_forced_vbi_frequency = values.find("ForcedVBIFrequency") != values.end();
   ApplyVRSetting(values, "ForcedVBIFrequency", Config::GFX_VR_FORCED_VBI_FREQUENCY);
   if (!has_forced_vbi_frequency)
     ApplyVRSetting(values, "AutoVBIFromHMD", Config::GFX_VR_AUTO_VBI_FROM_HMD);
   ApplyVRSetting(values, "ExactScreenDepth", Config::GFX_VR_EXACT_SCREEN_DEPTH);
   ApplyVRSetting(values, "AutoNativeEfbEffects", Config::GFX_VR_AUTO_NATIVE_EFB_EFFECTS);
+  ApplyVRSetting(values, "HudThickness", Config::GFX_VR_HUD_THICKNESS);
+  ApplyVRSetting(values, "RemoveCinematicBars", Config::GFX_VR_REMOVE_BARS);
   ApplyVRSetting(values, "OrthoScissorFix", Config::GFX_VR_ORTHO_SCISSOR_FIX);
   ApplyVRSetting(values, "DetectSkybox", Config::GFX_VR_DETECT_SKYBOX);
+  const bool has_d3d_thermal_palette_fix =
+      values.find("MetroidD3DThermalPaletteFix") != values.end();
+  ApplyVRSetting(values, "MetroidThermalVisorFix", Config::GFX_VR_METROID_THERMAL_VISOR_FIX);
+  ApplyVRSetting(values, "MetroidD3DThermalPaletteFix",
+                 Config::GFX_VR_METROID_D3D_THERMAL_PALETTE_FIX);
+  if (!has_d3d_thermal_palette_fix)
+  {
+    const auto thermal_fix = values.find("MetroidThermalVisorFix");
+    bool enabled = false;
+    if (thermal_fix != values.end() && TryParse(thermal_fix->second, &enabled))
+    {
+      Config::SetCurrent(Config::GFX_VR_METROID_D3D_THERMAL_PALETTE_FIX, enabled);
+      s_applied_vr_settings.insert("MetroidD3DThermalPaletteFix");
+    }
+  }
   ApplyVRSetting(values, "ClearEFBCopies", Config::GFX_VR_CLEAR_EFB_COPIES);
+  ApplyVRSetting(values, "Gamma", Config::GFX_VR_GAMMA);
   ApplyVRSetting(values, "UseVulkanMultiview", Config::GFX_VR_USE_VULKAN_MULTIVIEW);
   ApplyVRSetting(values, "AndroidDirectToHMD", Config::GFX_VR_ANDROID_DIRECT_TO_HMD);
+  ApplyVRSetting(values, "ResolutionScale", Config::GFX_VR_RESOLUTION_SCALE);
+  ApplyVRSetting(values, "FoveationLevel", Config::GFX_VR_FOVEATION_LEVEL);
+  ApplyVRSetting(values, "DynamicFoveation", Config::GFX_VR_FOVEATION_DYNAMIC);
+  ApplyVRSetting(values, "FoveateEFB", Config::GFX_VR_EFB_FOVEATION);
   const bool has_passthrough = values.find("Passthrough") != values.end();
   ApplyVRSetting(values, "Passthrough", Config::GFX_VR_PASSTHROUGH);
   // Legacy key from before the XR_FB_passthrough rework.
@@ -252,8 +297,7 @@ static void ApplyGameVRConfigOverrides(std::string_view game_id, std::optional<u
   ApplyVRSetting(values, "PassthroughRemoveBlackEFBClears",
                  Config::GFX_VR_PASSTHROUGH_REMOVE_BLACK_CLEARS);
   ApplyVRSetting(values, "PassthroughSceneOpacity", Config::GFX_VR_PASSTHROUGH_SCENE_OPACITY);
-  ApplyVRSetting(values, "PassthroughCoverageMode",
-                 Config::GFX_VR_PASSTHROUGH_COVERAGE_MODE);
+  ApplyVRSetting(values, "PassthroughCoverageMode", Config::GFX_VR_PASSTHROUGH_COVERAGE_MODE);
 }
 }  // namespace
 
@@ -302,12 +346,10 @@ void SConfig::LoadSettings()
   }
 
   // Migrate the legacy boolean VR VBI override to the new explicit frequency setting.
-  if (Config::Get(Config::GFX_VR_FORCED_VBI_FREQUENCY) ==
-          Config::GFX_VR_FORCED_VBI_FREQUENCY_OFF &&
+  if (Config::Get(Config::GFX_VR_FORCED_VBI_FREQUENCY) == Config::GFX_VR_FORCED_VBI_FREQUENCY_OFF &&
       Config::Get(Config::GFX_VR_AUTO_VBI_FROM_HMD))
   {
-    Config::SetBase(Config::GFX_VR_FORCED_VBI_FREQUENCY,
-                    Config::GFX_VR_FORCED_VBI_FREQUENCY_90);
+    Config::SetBase(Config::GFX_VR_FORCED_VBI_FREQUENCY, Config::GFX_VR_FORCED_VBI_FREQUENCY_90);
     Config::SetBase(Config::GFX_VR_AUTO_VBI_FROM_HMD, false);
   }
 }
@@ -479,7 +521,8 @@ void SConfig::SetRunningGameMetadata(const std::string& game_id, const std::stri
 void SConfig::ReloadGameVRConfigOverrides()
 {
   std::lock_guard<std::recursive_mutex> lock(m_metadata_lock);
-  ApplyGameVRConfigOverrides(m_game_id, m_revision == 0 ? std::nullopt : std::make_optional(m_revision));
+  ApplyGameVRConfigOverrides(m_game_id,
+                             m_revision == 0 ? std::nullopt : std::make_optional(m_revision));
 }
 
 void SConfig::OnESTitleChanged()

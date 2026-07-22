@@ -9,8 +9,9 @@ ConfigBool::ConfigBool(const QString& label, const Config::Info<bool>& setting, 
 }
 
 ConfigBool::ConfigBool(const QString& label, const Config::Info<bool>& setting,
-                       Config::Layer* layer, bool reverse)
-    : ConfigControl(label, setting.GetLocation(), layer), m_setting(setting), m_reverse(reverse)
+                       Config::Layer* layer, bool reverse, Config::Layer* fallback_layer)
+    : ConfigControl(label, setting.GetLocation(), layer, fallback_layer), m_setting(setting),
+      m_reverse(reverse)
 {
   setChecked(ReadValue(setting) ^ reverse);
 

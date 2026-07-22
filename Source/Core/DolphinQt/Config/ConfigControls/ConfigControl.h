@@ -21,19 +21,21 @@ template <class Derived>
 class ConfigControl : public Derived
 {
 public:
-  ConfigControl(const Config::Location& location, Config::Layer* layer)
-      : m_location(location), m_layer(layer)
+  ConfigControl(const Config::Location& location, Config::Layer* layer,
+                Config::Layer* fallback_layer = nullptr)
+      : m_location(location), m_layer(layer), m_fallback_layer(fallback_layer)
   {
     ConnectConfig();
   }
-  ConfigControl(const QString& label, const Config::Location& location, Config::Layer* layer)
-      : Derived(label), m_location(location), m_layer(layer)
+  ConfigControl(const QString& label, const Config::Location& location, Config::Layer* layer,
+                Config::Layer* fallback_layer = nullptr)
+      : Derived(label), m_location(location), m_layer(layer), m_fallback_layer(fallback_layer)
   {
     ConnectConfig();
   }
   ConfigControl(const Qt::Orientation& orient, const Config::Location& location,
-                Config::Layer* layer)
-      : Derived(orient), m_location(location), m_layer(layer)
+                Config::Layer* layer, Config::Layer* fallback_layer = nullptr)
+      : Derived(orient), m_location(location), m_layer(layer), m_fallback_layer(fallback_layer)
   {
     ConnectConfig();
   }
@@ -76,13 +78,14 @@ protected:
   template <typename T>
   const T ReadValue(const Config::Info<T>& setting) const
   {
-    // For loading game specific settings.  If the game setting doesn't exist, load the current
-    // global setting. There's no way to know what game is being edited, so GlobalGame settings
-    // can't be shown, but otherwise would be good to include.
+    // For loading game-specific settings. If the local setting doesn't exist, use an explicitly
+    // supplied default-game layer when available, then fall back to the global setting.
     if (m_layer != nullptr)
     {
       if (m_layer->Exists(m_location))
         return m_layer->Get(setting);
+      else if (m_fallback_layer != nullptr && m_fallback_layer->Exists(m_location))
+        return m_fallback_layer->Get(setting);
       else
         return Config::GetBase(setting);
     }
@@ -117,4 +120,5 @@ private:
   bool m_updating = false;
   const Config::Location m_location;
   Config::Layer* m_layer;
+  Config::Layer* m_fallback_layer;
 };

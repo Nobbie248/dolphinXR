@@ -14,8 +14,9 @@ ConfigSlider::ConfigSlider(int minimum, int maximum, const Config::Info<int>& se
 }
 
 ConfigSlider::ConfigSlider(int minimum, int maximum, const Config::Info<int>& setting,
-                           Config::Layer* layer, int tick)
-    : ConfigControl(Qt::Horizontal, setting.GetLocation(), layer), m_setting(setting)
+                           Config::Layer* layer, int tick, Config::Layer* fallback_layer)
+    : ConfigControl(Qt::Horizontal, setting.GetLocation(), layer, fallback_layer),
+      m_setting(setting)
 
 {
   setMinimum(minimum);

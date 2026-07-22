@@ -10,9 +10,10 @@
 
 ConfigFloatSlider::ConfigFloatSlider(float minimum, float maximum,
                                      const Config::Info<float>& setting, float step,
-                                     Config::Layer* layer, ScaleMode scale)
-    : ConfigControl(Qt::Horizontal, setting.GetLocation(), layer), m_minimum(minimum),
-      m_maximum(maximum), m_step(step), m_scale(scale), m_setting(setting)
+                                     Config::Layer* layer, ScaleMode scale,
+                                     Config::Layer* fallback_layer)
+    : ConfigControl(Qt::Horizontal, setting.GetLocation(), layer, fallback_layer),
+      m_minimum(minimum), m_maximum(maximum), m_step(step), m_scale(scale), m_setting(setting)
 {
   const float range = maximum - minimum;
   const int steps = std::round(range / step);

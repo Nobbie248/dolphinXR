@@ -20,7 +20,7 @@ class ConfigSlider final : public ConfigControl<ToolTipSlider>
 public:
   ConfigSlider(int minimum, int maximum, const Config::Info<int>& setting, int tick = 0);
   ConfigSlider(int minimum, int maximum, const Config::Info<int>& setting, Config::Layer* layer,
-               int tick = 0);
+               int tick = 0, Config::Layer* fallback_layer = nullptr);
 
   // Generates a slider with tick_values.size() ticks. Each tick corresponds to the integer at that
   // index in the vector.

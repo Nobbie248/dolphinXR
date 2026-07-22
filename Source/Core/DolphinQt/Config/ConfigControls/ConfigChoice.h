@@ -49,9 +49,9 @@ class ConfigChoiceMap final : public ConfigControl<ToolTipComboBox>
 {
 public:
   ConfigChoiceMap(const std::vector<std::pair<QString, T>>& options, const Config::Info<T>& setting,
-                  Config::Layer* layer = nullptr)
-      : ConfigControl<ToolTipComboBox>(setting.GetLocation(), layer), m_setting(setting),
-        m_options(options)
+                  Config::Layer* layer = nullptr, Config::Layer* fallback_layer = nullptr)
+      : ConfigControl<ToolTipComboBox>(setting.GetLocation(), layer, fallback_layer),
+        m_setting(setting), m_options(options)
   {
     for (const auto& [option_text, option_data] : options)
       addItem(option_text);
