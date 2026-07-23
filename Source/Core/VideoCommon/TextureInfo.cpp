@@ -3,6 +3,7 @@
 
 #include "VideoCommon/TextureInfo.h"
 
+#include <charconv>
 #include <span>
 
 #include <fmt/format.h>
@@ -173,6 +174,34 @@ TextureInfo::NameDetails TextureInfo::CalculateTextureName() const
           .texture_name = fmt::format("{:016x}", tex_hash),
           .tlut_name = tlut_size ? fmt::format("_{:016x}", tlut_hash) : "",
           .format_name = fmt::to_string(static_cast<int>(m_texture_format))};
+}
+
+std::optional<u64> TextureInfo::ParseTextureHash(std::string_view name)
+{
+  if (!name.starts_with(format_prefix))
+    return std::nullopt;
+
+  // Generated names are tex1_WxH_<hash>_... or tex1_WxH_m_<hash>_... when mipmaps are enabled.
+  const size_t dimensions_end = name.find('_', format_prefix.size());
+  if (dimensions_end == std::string_view::npos)
+    return std::nullopt;
+
+  size_t hash_start = dimensions_end + 1;
+  if (name.substr(hash_start, 2) == "m_")
+    hash_start += 2;
+
+  constexpr size_t hash_length = 16;
+  if (hash_start + hash_length >= name.size() || name[hash_start + hash_length] != '_')
+    return std::nullopt;
+
+  u64 hash = 0;
+  const char* const first = name.data() + hash_start;
+  const char* const last = first + hash_length;
+  const auto [end, error] = std::from_chars(first, last, hash, 16);
+  if (error != std::errc{} || end != last)
+    return std::nullopt;
+
+  return hash;
 }
 
 TextureInfo::MipLevels TextureInfo::GetMipMapLevels() const

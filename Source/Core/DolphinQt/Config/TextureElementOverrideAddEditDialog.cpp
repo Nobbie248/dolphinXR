@@ -36,6 +36,7 @@
 
 #include "DolphinQt/Config/TextureHashBrowserDialog.h"
 #include "DolphinQt/QtUtils/DolphinFileDialog.h"
+#include "VideoCommon/TextureInfo.h"
 
 namespace
 {
@@ -46,28 +47,6 @@ constexpr int MAX_VISIBLE_TEXTURE_HASH_ROWS = 6;
 constexpr int TEXTURE_HASH_PREVIEW_SIZE = 40;  // Thumbnail square, in pixels.
 constexpr int TEXTURE_HASH_ROW_HEIGHT = TEXTURE_HASH_PREVIEW_SIZE + 6;
 
-// Extract the texture's XXH64 hash from a dumped texture filename such as
-// "tex1_128x128_017fce12e592f4da_14.png". This mirrors ParseXXH64FromTextureName() in
-// TextureCacheBase.cpp, which the override matcher uses on the bound texture, so an imported
-// filename resolves to the exact same hash the game will match against at runtime.
-u64 ParseHashFromDumpFilename(const std::string& filename)
-{
-  // Skip past "tex1_WxH_" to the hash: find the second underscore, then read 16 hex chars.
-  size_t pos = filename.find('_');
-  if (pos == std::string::npos)
-    return 0;
-  pos = filename.find('_', pos + 1);
-  if (pos == std::string::npos || pos + 17 > filename.size())
-    return 0;
-
-  const std::string hex = filename.substr(pos + 1, 16);
-  for (char c : hex)
-  {
-    if (!std::isxdigit(static_cast<unsigned char>(c)))
-      return 0;
-  }
-  return std::strtoull(hex.c_str(), nullptr, 16);
-}
 }  // namespace
 
 using HandlingType = TextureElementManager::HandlingType;
@@ -568,9 +547,9 @@ void TextureElementOverrideAddEditDialog::OnImportTextures()
   for (const QString& path : files)
   {
     const std::string filename = QFileInfo(path).fileName().toStdString();
-    const u64 hash = ParseHashFromDumpFilename(filename);
-    if (hash != 0)
-      imported_hashes.push_back(hash);
+    const auto hash = TextureInfo::ParseTextureHash(filename);
+    if (hash && *hash != 0)
+      imported_hashes.push_back(*hash);
     else
       unparsed_files.append(QFileInfo(path).fileName());
   }
@@ -759,12 +738,12 @@ void TextureElementOverrideAddEditDialog::EnsureDumpIndex()
   const QStringList files = dir.entryList(filters, QDir::Files, QDir::Name);
   for (const QString& filename : files)
   {
-    const u64 hash = ParseHashFromDumpFilename(filename.toStdString());
-    if (hash == 0)
+    const auto hash = TextureInfo::ParseTextureHash(filename.toStdString());
+    if (!hash || *hash == 0)
       continue;
     // entryList is sorted by name, so the base texture ("…_14.png") is seen before its "_mip"/
     // "_arb" variants; emplace keeps that first (base) match.
-    m_dump_hash_to_path.emplace(hash, dir.absoluteFilePath(filename).toStdString());
+    m_dump_hash_to_path.emplace(*hash, dir.absoluteFilePath(filename).toStdString());
   }
 }
 

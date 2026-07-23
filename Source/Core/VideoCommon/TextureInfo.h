@@ -33,6 +33,9 @@ public:
   };
   NameDetails CalculateTextureName() const;
 
+  // Extracts the XXH64 texture-data hash from a tex1 texture name or dump filename.
+  static std::optional<u64> ParseTextureHash(std::string_view name);
+
   bool IsDataValid() const { return m_data_valid; }
 
   const u8* GetData() const { return m_data.data(); }

@@ -1174,31 +1174,6 @@ SamplerState TextureCacheBase::GetSamplerState(u32 index, float custom_tex_scale
   return state;
 }
 
-// Parse the XXH64 texture hash from the texture_info_name string.
-// Format: "tex1_WxH_<16hex>[_<16hex>]_<fmt>" — the first 16-hex field is the XXH64.
-static u64 ParseXXH64FromTextureName(const std::string& name)
-{
-  if (name.size() < 6)  // minimum: "tex1_x"
-    return 0;
-
-  // Find the second underscore (after "tex1_WxH_")
-  size_t pos = name.find('_');
-  if (pos == std::string::npos)
-    return 0;
-  pos = name.find('_', pos + 1);
-  if (pos == std::string::npos || pos + 17 > name.size())
-    return 0;
-
-  // Read 16 hex characters
-  const std::string hex = name.substr(pos + 1, 16);
-  for (char c : hex)
-  {
-    if (!std::isxdigit(static_cast<unsigned char>(c)))
-      return 0;
-  }
-  return std::strtoull(hex.c_str(), nullptr, 16);
-}
-
 u64 TextureCacheBase::GetBoundTextureHash(u32 stage) const
 {
   if (stage >= m_bound_textures.size() || !m_bound_textures[stage])
@@ -1209,9 +1184,8 @@ u64 TextureCacheBase::GetBoundTextureHash(u32 stage) const
   const auto& name = m_bound_textures[stage]->texture_info_name;
   if (!name.empty())
   {
-    const u64 xxh = ParseXXH64FromTextureName(name);
-    if (xxh != 0)
-      return xxh;
+    if (const auto xxh = TextureInfo::ParseTextureHash(name); xxh && *xxh != 0)
+      return *xxh;
   }
   return m_bound_textures[stage]->hash;
 }
