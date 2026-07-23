@@ -6,12 +6,16 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <functional>
 
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QDoubleSpinBox>
+#include <QDragEnterEvent>
+#include <QDragMoveEvent>
+#include <QDropEvent>
 #include <QFileInfo>
 #include <QFormLayout>
 #include <QFrame>
@@ -19,6 +23,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QMimeData>
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -27,6 +32,8 @@
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStringList>
+#include <QTimer>
+#include <QUrl>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -46,6 +53,70 @@ constexpr double UPM_OVERRIDE_STEP = 0.01;
 constexpr int MAX_VISIBLE_TEXTURE_HASH_ROWS = 6;
 constexpr int TEXTURE_HASH_PREVIEW_SIZE = 40;  // Thumbnail square, in pixels.
 constexpr int TEXTURE_HASH_ROW_HEIGHT = TEXTURE_HASH_PREVIEW_SIZE + 6;
+
+bool HasLocalFileUrls(const QMimeData* mime_data)
+{
+  if (!mime_data->hasUrls())
+    return false;
+
+  for (const QUrl& url : mime_data->urls())
+  {
+    if (url.isLocalFile())
+      return true;
+  }
+  return false;
+}
+
+class TextureHashLineEdit final : public QLineEdit
+{
+public:
+  using DropHandler = std::function<void(const QStringList&)>;
+
+  explicit TextureHashLineEdit(DropHandler drop_handler)
+      : m_drop_handler(std::move(drop_handler))
+  {
+    setAcceptDrops(true);
+  }
+
+protected:
+  void dragEnterEvent(QDragEnterEvent* event) override
+  {
+    if (HasLocalFileUrls(event->mimeData()))
+      event->acceptProposedAction();
+    else
+      QLineEdit::dragEnterEvent(event);
+  }
+
+  void dragMoveEvent(QDragMoveEvent* event) override
+  {
+    if (HasLocalFileUrls(event->mimeData()))
+      event->acceptProposedAction();
+    else
+      QLineEdit::dragMoveEvent(event);
+  }
+
+  void dropEvent(QDropEvent* event) override
+  {
+    if (!HasLocalFileUrls(event->mimeData()))
+    {
+      QLineEdit::dropEvent(event);
+      return;
+    }
+
+    QStringList files;
+    for (const QUrl& url : event->mimeData()->urls())
+    {
+      if (url.isLocalFile())
+        files.push_back(url.toLocalFile());
+    }
+
+    m_drop_handler(files);
+    event->acceptProposedAction();
+  }
+
+private:
+  DropHandler m_drop_handler;
+};
 
 }  // namespace
 
@@ -542,6 +613,11 @@ void TextureElementOverrideAddEditDialog::OnImportTextures()
   if (files.isEmpty())
     return;
 
+  ImportTextureFiles(files);
+}
+
+void TextureElementOverrideAddEditDialog::ImportTextureFiles(const QStringList& files)
+{
   std::vector<u64> imported_hashes;
   QStringList unparsed_files;
   for (const QString& path : files)
@@ -648,12 +724,17 @@ void TextureElementOverrideAddEditDialog::SetTextureHashFields(const std::vector
 
 void TextureElementOverrideAddEditDialog::AddTextureHashField(const QString& text)
 {
-  auto* edit = new QLineEdit;
+  auto* edit = new TextureHashLineEdit([this](const QStringList& files) {
+    // SetTextureHashFields can add or remove rows, including the drop target. Wait until Qt has
+    // finished dispatching the drop event before changing the row widgets.
+    QTimer::singleShot(0, this, [this, files] { ImportTextureFiles(files); });
+  });
   edit->setPlaceholderText(tr("Hex hash"));
   edit->setToolTip(
       tr("Texture hash to match.\n"
          "Enter one hash per line; a new line is added automatically.\n"
-         "You can also paste multiple hashes separated by comma, semicolon, or spaces."));
+         "You can paste multiple hashes separated by comma, semicolon, or spaces,\n"
+         "or drop one or more dumped PNG/DDS texture files here."));
   edit->setText(text);
 
   // Thumbnail of the matching dumped texture, shown beside the hash.

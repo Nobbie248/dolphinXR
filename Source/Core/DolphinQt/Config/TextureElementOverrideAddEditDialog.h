@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <QDialog>
+#include <QStringList>
 
 #include "VideoCommon/TextureElementManager.h"
 
@@ -47,6 +48,7 @@ private:
   void SanitizeTextureHashField(QLineEdit* edit);
   void ShowTextureBrowser();
   void OnImportTextures();
+  void ImportTextureFiles(const QStringList& files);
   void EnsureDumpIndex();
   void UpdateTextureHashPreview(QLineEdit* edit, QLabel* preview);
 
