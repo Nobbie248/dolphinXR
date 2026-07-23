@@ -75,5 +75,11 @@ bool ConsumeVRPresentationSourceRegion(const VRFrameRegion& xfb_source,
 std::array<float, 4> CalculateVRPaneRemap(const Viewport& viewport, int x_off, int y_off,
                                           const VRFrameRegion& frame);
 
+// Reference clip W for the perspective Screen Pane 3D transform. Most draws expose their model
+// origin through the current position matrix. Skinned/per-vertex-matrix draws do not, so use the
+// geometric centre of the projection's near/far range as a stable positive fallback.
+float CalculateVRPaneReferenceW(float model_origin_view_z, float projection_z,
+                                float projection_w);
+
 const char* GetVRViewportClassName(VRViewportClass vclass);
 }  // namespace VR

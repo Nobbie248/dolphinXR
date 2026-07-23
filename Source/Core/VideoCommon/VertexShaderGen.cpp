@@ -373,6 +373,11 @@ void GenerateVRMultiviewVSProjection(ShaderCode& out, APIType api_type,
   // together by each vertex's perspective-W ratio so the model retains physical stereo depth.
   out.Write("\tif (" I_STEREOPARAMS ".w > 1.5f)\n\t{{\n");
   out.Write("\t\tfloat pane_game_w = (abs(o.pos.w) > 1.0e-6) ? o.pos.w : 1.0e-6;\n");
+  // The multiview VS sees console-convention depth before the trailing viewport remap. Convert it
+  // now so multipart Screen Pane models retain the game's exact depth ordering (GS mirror above).
+  out.Write("\t\tfloat pane_console_ndc_z = clamp(o.pos.z / pane_game_w, -1.0, 1.0);\n");
+  out.Write("\t\tfloat pane_game_ndc_z = clamp(" I_PIXELCENTERCORRECTION
+            ".w - pane_console_ndc_z * " I_PIXELCENTERCORRECTION ".z, -1.0, 1.0);\n");
   out.Write("\t\tfloat pane_reference_w = max(" I_HEAD_PARAMS ".w, 1.0e-4);\n");
   out.Write("\t\tfloat pane_depth_scale = max(pane_game_w / pane_reference_w, 0.001);\n");
   out.Write("\t\tfloat ndc_x = o.pos.x / pane_game_w;\n");
@@ -391,10 +396,8 @@ void GenerateVRMultiviewVSProjection(ShaderCode& out, APIType api_type,
   out.Write("\t\tfloat clip_x = dot(row0, panePos);\n");
   out.Write("\t\tfloat clip_y = dot(row1, panePos);\n");
   out.Write("\t\tfloat clip_w = -z_eye;\n");
-  out.Write("\t\tfloat clip_z = " I_VR_DEPTH ".x * z_eye + " I_VR_DEPTH ".y;\n");
-  out.Write("\t\to.pos = float4(clip_x, clip_y, clip_z, clip_w);\n");
-  out.Write("\t\to.pos.z = o.pos.w * " I_VR_DEPTH ".w - o.pos.z * " I_VR_DEPTH ".z;\n");
-  out.Write("\t\to.vr_depth = (abs(o.pos.w) > 1e-6) ? o.pos.z / o.pos.w : 0.0;\n");
+  out.Write("\t\to.pos = float4(clip_x, clip_y, pane_game_ndc_z * clip_w, clip_w);\n");
+  out.Write("\t\to.vr_depth = clamp(pane_game_ndc_z, 0.0, 1.0);\n");
   if (!host_config.backend_clip_control)
     out.Write("\t\to.pos.z = o.pos.z * 2.0 - o.pos.w;\n");
   out.Write("\t\to.pos.xy *= sign(" I_VR_PIXELCENTER ".xy * float2(1.0, -1.0));\n");

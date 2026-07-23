@@ -265,6 +265,12 @@ ShaderCode GenerateGeometryShaderCode(APIType api_type, const ShaderHostConfig& 
       out.Write("\tif (" I_STEREOPARAMS ".w > 1.5f)\n");
       out.Write("\t{{\n");
       out.Write("\t\tfloat pane_game_w = (abs(f.pos.w) > 1.0e-6) ? f.pos.w : 1.0e-6;\n");
+      // Preserve the game's post-viewport NDC depth before replacing the clip position. Multipart
+      // models frequently use a different transform matrix per draw (face, moustache, suspension,
+      // wheels). Recomputing depth from each draw's independently anchored VR position makes those
+      // parts intersect even though the game sorted them correctly. Stereo shape comes from the
+      // varying pane clip W below; depth testing should continue to use the game's own value.
+      out.Write("\t\tfloat pane_game_ndc_z = clamp(f.pos.z / pane_game_w, -1.0, 1.0);\n");
       out.Write("\t\tfloat pane_reference_w = max(" I_HEAD_PARAMS ".w, 1.0e-4);\n");
       out.Write("\t\tfloat pane_depth_scale = max(pane_game_w / pane_reference_w, 0.001);\n");
       out.Write("\t\tfloat ndc_x = f.pos.x / pane_game_w;\n");
@@ -283,13 +289,9 @@ ShaderCode GenerateGeometryShaderCode(APIType api_type, const ShaderHostConfig& 
       out.Write("\t\tfloat clip_x = dot(row0, panePos);\n");
       out.Write("\t\tfloat clip_y = dot(row1, panePos);\n");
       out.Write("\t\tfloat clip_w = -z_eye;\n");
-      out.Write("\t\tfloat clip_z = " I_VR_DEPTH ".x * z_eye + " I_VR_DEPTH ".y;\n");
+      out.Write("\t\tf.pos = float4(clip_x, clip_y, pane_game_ndc_z * clip_w, clip_w);\n");
       if (!host_config.fast_depth_calc)
-        out.Write("\t\tf.clipPos = float4(clip_x, clip_y, clip_z, clip_w);\n");
-      out.Write("\t\tf.pos = float4(clip_x, clip_y, clip_z, clip_w);\n");
-      out.Write("\t\tf.pos.z = f.pos.w * " I_VR_DEPTH ".w - f.pos.z * " I_VR_DEPTH ".z;\n");
-      if (!host_config.backend_clip_control)
-        out.Write("\t\tf.pos.z = f.pos.z * 2.0 - f.pos.w;\n");
+        out.Write("\t\tf.clipPos = f.pos;\n");
       out.Write("\t\tf.pos.xy *= sign(" I_VR_PIXELCENTER ".xy * float2(1.0, -1.0));\n");
       out.Write("\t\tf.pos.xy = f.pos.xy - f.pos.w * " I_VR_PIXELCENTER ".xy;\n");
       if (host_config.backend_depth_clamp)

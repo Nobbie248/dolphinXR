@@ -1393,16 +1393,15 @@ void VertexManagerBase::Flush()
             else if (handling == ShaderHunter::HandlingType::ScreenPane)
             {
               const VR::VRFrameRegion frame = VR::GetVRFrameRegion();
-              const float reference_view_z =
-                  vertex_shader_manager.constants.posnormalmatrix[2][3];
               manual_screen_pane =
                   g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
-                  g_ActiveConfig.vr_virtual_screen && frame.valid &&
-                  xfmem.projection.type == ProjectionType::Perspective &&
-                  std::isfinite(reference_view_z) && reference_view_z < -1.0e-4f;
-              geometry_shader_manager.vr_stereo_override =
-                  manual_screen_pane ? GeometryShaderManager::VR_STEREO_SCREEN_PANE_3D : -1.0f;
-              geometry_shader_manager.vr_pane_screen_override = manual_screen_pane;
+                  frame.valid && xfmem.projection.type == ProjectionType::Perspective;
+              if (manual_screen_pane)
+              {
+                geometry_shader_manager.vr_stereo_override =
+                    GeometryShaderManager::VR_STEREO_SCREEN_PANE_3D;
+                geometry_shader_manager.vr_pane_screen_override = true;
+              }
             }
             else if (handling == ShaderHunter::HandlingType::Fullscreen)
             {

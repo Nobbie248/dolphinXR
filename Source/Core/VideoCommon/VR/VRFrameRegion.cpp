@@ -326,6 +326,27 @@ std::array<float, 4> CalculateVRPaneRemap(const Viewport& viewport, int x_off, i
           -(viewport_center_y - frame_center_y) / frame_half_height};
 }
 
+float CalculateVRPaneReferenceW(float model_origin_view_z, float projection_z,
+                                float projection_w)
+{
+  if (std::isfinite(model_origin_view_z) && model_origin_view_z < -1.0e-4f)
+    return -model_origin_view_z;
+
+  if (std::isfinite(projection_z) && std::isfinite(projection_w) && projection_z != 0.0f &&
+      projection_z != 1.0f)
+  {
+    const float far_distance = projection_w / projection_z;
+    const float near_distance = far_distance * projection_z / (projection_z - 1.0f);
+    if (std::isfinite(near_distance) && std::isfinite(far_distance) &&
+        near_distance > 1.0e-4f && far_distance > near_distance)
+    {
+      return std::sqrt(near_distance * far_distance);
+    }
+  }
+
+  return 1.0f;
+}
+
 const char* GetVRViewportClassName(VRViewportClass vclass)
 {
   switch (vclass)

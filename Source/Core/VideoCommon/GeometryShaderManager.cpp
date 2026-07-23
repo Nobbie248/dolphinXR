@@ -464,19 +464,21 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
           // attached to the virtual screen (for example MKDD's 608x348 character band). Unlike
           // the flat Screen route, it retains the model's perspective depth around the screen
           // plane. The shaders normalize each vertex's original clip W by this model-origin W.
-          if (perspective && pane_screen_override && g_ActiveConfig.vr_virtual_screen)
+          if (perspective && pane_screen_override)
           {
             const int pane_x_off = bpmem.scissorOffset.x << 1;
             const int pane_y_off = bpmem.scissorOffset.y << 1;
             const VR::VRFrameRegion frame = VR::GetVRFrameRegion();
             const float reference_view_z =
                 vertex_shader_manager.constants.posnormalmatrix[2][3];
-            if (frame.valid && std::isfinite(reference_view_z) && reference_view_z < -1.0e-4f)
+            if (frame.valid)
             {
               constants.stereoparams[3] = VR_STEREO_SCREEN_PANE_3D;
               constants.vr_pane_remap =
                   VR::CalculateVRPaneRemap(xfmem.viewport, pane_x_off, pane_y_off, frame);
-              constants.head_locked_params[3] = -reference_view_z;
+              constants.head_locked_params[3] = VR::CalculateVRPaneReferenceW(
+                  reference_view_z, xfmem.projection.rawProjection[4],
+                  xfmem.projection.rawProjection[5]);
             }
           }
 
