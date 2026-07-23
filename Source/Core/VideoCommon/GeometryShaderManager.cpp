@@ -242,6 +242,8 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
         constants.head_locked_params = {};
         constants.pixel_center_correction = {};
         constants.vr_pane_remap = {1.0f, 1.0f, 0.0f, 0.0f};
+        const bool pane_screen_override = vr_pane_screen_override;
+        vr_pane_screen_override = false;  // consume
         const float upm_override = vr_units_per_meter_override;
         vr_units_per_meter_override = -1.0f;  // consume
         const float headlocked_projection_scale_x = vr_headlocked_projection_scale_x;
@@ -422,19 +424,8 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
                   frame.valid && vp_class == VR::VRViewportClass::HudElement)
               {
                 constants.stereoparams[3] = -1.0f;  // virtual-screen (Screen) route
-                // ndc_frame = ndc_pane * scale + offset, derived from the game's viewport
-                // transform (screen = orig + extent * ndc) re-expressed in frame NDC
-                // (y up, so the y terms are negated).
-                const float pane_half_w = static_cast<float>(frame.width) * 0.5f;
-                const float pane_half_h = static_cast<float>(frame.height) * 0.5f;
-                const float frame_cx = static_cast<float>(frame.left) + pane_half_w;
-                const float frame_cy = static_cast<float>(frame.top) + pane_half_h;
-                const float vp_cx = xfmem.viewport.xOrig - static_cast<float>(pane_x_off);
-                const float vp_cy = xfmem.viewport.yOrig - static_cast<float>(pane_y_off);
-                constants.vr_pane_remap[0] = xfmem.viewport.wd / pane_half_w;
-                constants.vr_pane_remap[1] = -xfmem.viewport.ht / pane_half_h;
-                constants.vr_pane_remap[2] = (vp_cx - frame_cx) / pane_half_w;
-                constants.vr_pane_remap[3] = -(vp_cy - frame_cy) / pane_half_h;
+                constants.vr_pane_remap =
+                    VR::CalculateVRPaneRemap(xfmem.viewport, pane_x_off, pane_y_off, frame);
               }
               else if (g_ActiveConfig.vr_detect_render_targets &&
                        (vp_class == VR::VRViewportClass::RenderToTexture ||
@@ -465,6 +456,27 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
               {
                 constants.stereoparams[3] = 0.0f;
               }
+            }
+          }
+
+          // Explicit Screen Pane is intentionally independent of the broad classifier. It is
+          // for game-specific full-width or otherwise unusual perspective panes which must stay
+          // attached to the virtual screen (for example MKDD's 608x348 character band). Unlike
+          // the flat Screen route, it retains the model's perspective depth around the screen
+          // plane. The shaders normalize each vertex's original clip W by this model-origin W.
+          if (perspective && pane_screen_override && g_ActiveConfig.vr_virtual_screen)
+          {
+            const int pane_x_off = bpmem.scissorOffset.x << 1;
+            const int pane_y_off = bpmem.scissorOffset.y << 1;
+            const VR::VRFrameRegion frame = VR::GetVRFrameRegion();
+            const float reference_view_z =
+                vertex_shader_manager.constants.posnormalmatrix[2][3];
+            if (frame.valid && std::isfinite(reference_view_z) && reference_view_z < -1.0e-4f)
+            {
+              constants.stereoparams[3] = VR_STEREO_SCREEN_PANE_3D;
+              constants.vr_pane_remap =
+                  VR::CalculateVRPaneRemap(xfmem.viewport, pane_x_off, pane_y_off, frame);
+              constants.head_locked_params[3] = -reference_view_z;
             }
           }
 

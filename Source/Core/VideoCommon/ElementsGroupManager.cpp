@@ -349,6 +349,7 @@ size_t ComputeRuntimeElementKey(const ShaderHunter::RuntimeElementSignature& sig
 const char* GetHandlingName(ElementsGroupManager::HandlingType handling)
 {
   return handling == ElementsGroupManager::HandlingType::Screen         ? "screen" :
+         handling == ElementsGroupManager::HandlingType::ScreenPane     ? "screen_pane" :
          handling == ElementsGroupManager::HandlingType::Fullscreen     ? "fullscreen" :
          handling == ElementsGroupManager::HandlingType::FullscreenMono ? "fullscreen_mono" :
          handling == ElementsGroupManager::HandlingType::HeadLocked     ? "headlocked" :
@@ -747,6 +748,7 @@ LoadElementGroupOverridesFromINIFile(const std::string& path)
     }
     else if (key == "handling")
       current.handling = value == "screen"          ? HandlingType::Screen :
+                         value == "screen_pane"     ? HandlingType::ScreenPane :
                          value == "fullscreen"      ? HandlingType::Fullscreen :
                          value == "fullscreen_mono" ? HandlingType::FullscreenMono :
                          value == "headlocked"      ? HandlingType::HeadLocked :

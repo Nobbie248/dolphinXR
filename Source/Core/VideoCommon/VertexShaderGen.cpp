@@ -369,7 +369,40 @@ void GenerateVRMultiviewVSProjection(ShaderCode& out, APIType api_type,
   out.Write("\tuint eye = gl_ViewIndex;\n");
   out.Write("\tbool right_eye = eye != 0u;\n");
 
-  out.Write("\tif (" I_STEREOPARAMS ".w > 0.5f)\n\t{{\n");
+  // World-fixed perspective pane. Keep the original screen-space silhouette, but scale X/Y/Z
+  // together by each vertex's perspective-W ratio so the model retains physical stereo depth.
+  out.Write("\tif (" I_STEREOPARAMS ".w > 1.5f)\n\t{{\n");
+  out.Write("\t\tfloat pane_game_w = (abs(o.pos.w) > 1.0e-6) ? o.pos.w : 1.0e-6;\n");
+  out.Write("\t\tfloat pane_reference_w = max(" I_HEAD_PARAMS ".w, 1.0e-4);\n");
+  out.Write("\t\tfloat pane_depth_scale = max(pane_game_w / pane_reference_w, 0.001);\n");
+  out.Write("\t\tfloat ndc_x = o.pos.x / pane_game_w;\n");
+  out.Write("\t\tfloat ndc_y = o.pos.y / pane_game_w;\n");
+  out.Write("\t\tndc_x = ndc_x * " I_VR_PANE_REMAP ".x + " I_VR_PANE_REMAP ".z;\n");
+  out.Write("\t\tndc_y = ndc_y * " I_VR_PANE_REMAP ".y + " I_VR_PANE_REMAP ".w;\n");
+  out.Write("\t\tfloat4 panePos = float4(\n");
+  out.Write("\t\t\tndc_x * " I_VR_SCREEN ".x * pane_depth_scale,\n");
+  out.Write("\t\t\tndc_y * " I_VR_SCREEN ".y * pane_depth_scale,\n");
+  out.Write("\t\t\t-" I_VR_SCREEN ".z * pane_depth_scale,\n");
+  out.Write("\t\t\t1.0);\n");
+  out.Write("\t\tfloat4 row0 = right_eye ? " I_EYE_PROJ "[2] : " I_EYE_PROJ "[0];\n");
+  out.Write("\t\tfloat4 row1 = right_eye ? " I_EYE_PROJ "[3] : " I_EYE_PROJ "[1];\n");
+  out.Write("\t\tfloat4 zrow = right_eye ? " I_VR_EYE_Z "[1] : " I_VR_EYE_Z "[0];\n");
+  out.Write("\t\tfloat z_eye = dot(zrow, panePos);\n");
+  out.Write("\t\tfloat clip_x = dot(row0, panePos);\n");
+  out.Write("\t\tfloat clip_y = dot(row1, panePos);\n");
+  out.Write("\t\tfloat clip_w = -z_eye;\n");
+  out.Write("\t\tfloat clip_z = " I_VR_DEPTH ".x * z_eye + " I_VR_DEPTH ".y;\n");
+  out.Write("\t\to.pos = float4(clip_x, clip_y, clip_z, clip_w);\n");
+  out.Write("\t\to.pos.z = o.pos.w * " I_VR_DEPTH ".w - o.pos.z * " I_VR_DEPTH ".z;\n");
+  out.Write("\t\to.vr_depth = (abs(o.pos.w) > 1e-6) ? o.pos.z / o.pos.w : 0.0;\n");
+  if (!host_config.backend_clip_control)
+    out.Write("\t\to.pos.z = o.pos.z * 2.0 - o.pos.w;\n");
+  out.Write("\t\to.pos.xy *= sign(" I_VR_PIXELCENTER ".xy * float2(1.0, -1.0));\n");
+  out.Write("\t\to.pos.xy = o.pos.xy - o.pos.w * " I_VR_PIXELCENTER ".xy;\n");
+  out.Write("\t\tvr_pos_replaced = true;\n");
+  out.Write("\t}}\n");
+
+  out.Write("\telse if (" I_STEREOPARAMS ".w > 0.5f)\n\t{{\n");
   out.Write("\t\tfloat4 row0 = right_eye ? " I_EYE_PROJ "[2] : " I_EYE_PROJ "[0];\n");
   out.Write("\t\tfloat4 row1 = right_eye ? " I_EYE_PROJ "[3] : " I_EYE_PROJ "[1];\n");
   out.Write("\t\tfloat4 zrow = right_eye ? " I_VR_EYE_Z "[1] : " I_VR_EYE_Z "[0];\n");

@@ -4,9 +4,11 @@
 #include "VideoCommon/VR/VRFrameRegion.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 #include "Common/Logging/Log.h"
+#include "VideoCommon/VideoCommon.h"
 #include "VideoCommon/XFMemory.h"
 
 namespace VR
@@ -17,6 +19,22 @@ namespace
 VRFrameRegion s_pending{};
 // Previous completed frame's display region — what consumers read.
 VRFrameRegion s_current{};
+
+struct SceneRegionSample
+{
+  VRFrameRegion region{};
+  u32 draw_count = 0;
+};
+
+// A game can change viewport several times in one frame (world, weapon, HUD, effect
+// buffers). Counting actual draws makes the world viewport win without relying on shader
+// hashes or game-specific dimensions.
+constexpr size_t MAX_SCENE_REGION_SAMPLES = 8;
+std::array<SceneRegionSample, MAX_SCENE_REGION_SAMPLES> s_scene_region_samples{};
+size_t s_scene_region_sample_count = 0;
+
+VRFrameRegion s_last_presentation_source{};
+VRFrameRegion s_last_presentation_xfb{};
 
 bool SameRegion(const VRFrameRegion& a, const VRFrameRegion& b)
 {
@@ -67,6 +85,10 @@ void ResetVRFrameRegion()
 {
   s_pending = VRFrameRegion{};
   s_current = VRFrameRegion{};
+  s_scene_region_samples = {};
+  s_scene_region_sample_count = 0;
+  s_last_presentation_source = VRFrameRegion{};
+  s_last_presentation_xfb = VRFrameRegion{};
 }
 
 // Port of Hydra's SetViewportType (VertexShaderManager.cpp), measured against the XFB
@@ -172,6 +194,136 @@ VRViewportClass ClassifyVRViewport(const Viewport& v, int x_off, int y_off)
   }
 
   return VRViewportClass::HudElement;
+}
+
+void ObserveVRPerspectiveViewport(const Viewport& v, int x_off, int y_off)
+{
+  const VRViewportClass vclass = ClassifyVRViewport(v, x_off, y_off);
+  if (vclass != VRViewportClass::MainScene && vclass != VRViewportClass::Letterboxed)
+    return;
+
+  const float half_width = std::fabs(v.wd);
+  const float half_height = std::fabs(v.ht);
+  const int left = static_cast<int>(std::lround(v.xOrig - half_width)) - x_off;
+  const int top = static_cast<int>(std::lround(v.yOrig - half_height)) - y_off;
+  const int right = static_cast<int>(std::lround(v.xOrig + half_width)) - x_off;
+  const int bottom = static_cast<int>(std::lround(v.yOrig + half_height)) - y_off;
+
+  VRFrameRegion region{std::clamp(left, 0, static_cast<int>(EFB_WIDTH)),
+                       std::clamp(top, 0, static_cast<int>(EFB_HEIGHT)), 0, 0, true};
+  const int clamped_right = std::clamp(right, 0, static_cast<int>(EFB_WIDTH));
+  const int clamped_bottom = std::clamp(bottom, 0, static_cast<int>(EFB_HEIGHT));
+  region.width = clamped_right - region.left;
+  region.height = clamped_bottom - region.top;
+
+  // Before the first XFB region has latched, ClassifyVRViewport deliberately returns
+  // MainScene for everything. Retain only plausible full-width display draws here.
+  if (region.width < static_cast<int>(EFB_WIDTH) * 9 / 10 || region.height <= 0)
+    return;
+
+  for (size_t i = 0; i < s_scene_region_sample_count; ++i)
+  {
+    if (SameRegion(s_scene_region_samples[i].region, region))
+    {
+      ++s_scene_region_samples[i].draw_count;
+      return;
+    }
+  }
+
+  if (s_scene_region_sample_count < s_scene_region_samples.size())
+    s_scene_region_samples[s_scene_region_sample_count++] = SceneRegionSample{region, 1};
+}
+
+bool ConsumeVRPresentationSourceRegion(const VRFrameRegion& xfb_source,
+                                       VRFrameRegion* presentation_source)
+{
+  if (!presentation_source)
+    return false;
+
+  const SceneRegionSample* best = nullptr;
+  for (size_t i = 0; i < s_scene_region_sample_count; ++i)
+  {
+    const SceneRegionSample& sample = s_scene_region_samples[i];
+    const int max_horizontal_error = std::max(2, xfb_source.width / 10);
+    const int height_delta = std::abs(sample.region.height - xfb_source.height);
+    const int min_contract_delta = std::max(8, xfb_source.height / 20);
+    const int max_contract_delta = std::max(min_contract_delta, xfb_source.height / 10);
+    const bool same_horizontal_extent =
+        std::abs(sample.region.left - xfb_source.left) <= max_horizontal_error &&
+        std::abs(sample.region.width - xfb_source.width) <= max_horizontal_error;
+    const bool top_edge_aligned = std::abs(sample.region.top - xfb_source.top) <= 2;
+    const bool plausible_contract_height =
+        height_delta <= 2 ||
+        (height_delta >= min_contract_delta && height_delta <= max_contract_delta);
+
+    // This correction is for a close raster-contract mismatch (448 vs 480), not an
+    // arbitrary letterboxed or animated full-width viewport. In particular, MKDD's
+    // character-select viewport is 608x348 at y=100 and must not move the composed screen.
+    if (!same_horizontal_extent || !top_edge_aligned || !plausible_contract_height)
+      continue;
+
+    if (!best || sample.draw_count > best->draw_count ||
+        (sample.draw_count == best->draw_count && sample.region.height > best->region.height))
+    {
+      best = &sample;
+    }
+  }
+
+  const VRFrameRegion best_region = best ? best->region : VRFrameRegion{};
+  s_scene_region_samples = {};
+  s_scene_region_sample_count = 0;
+
+  if (!best_region.valid)
+    return false;
+
+  const int height_delta = std::abs(best_region.height - xfb_source.height);
+  const int min_contract_delta = std::max(8, xfb_source.height / 20);
+  const int max_contract_delta = std::max(min_contract_delta, xfb_source.height / 10);
+  if (height_delta < min_contract_delta || height_delta > max_contract_delta)
+    return false;
+
+  // Preserve the game's requested horizontal copy exactly. The observed viewport is
+  // used only to repair the vertical scene/display contract (Trilogy 448->480, Golf
+  // 480->448), avoiding unrelated aspect or split-screen changes.
+  *presentation_source = xfb_source;
+  presentation_source->top = best_region.top;
+  presentation_source->height = best_region.height;
+  presentation_source->valid = true;
+
+  if (SameRegion(*presentation_source, xfb_source))
+    return false;
+
+  if (!SameRegion(*presentation_source, s_last_presentation_source) ||
+      !SameRegion(xfb_source, s_last_presentation_xfb))
+  {
+    INFO_LOG_FMT(VIDEO,
+                 "VR_FRAME: presentation samples EFB {}x{} at ({},{}) into XFB {}x{} at ({},{})",
+                 presentation_source->width, presentation_source->height,
+                 presentation_source->left, presentation_source->top, xfb_source.width,
+                 xfb_source.height, xfb_source.left, xfb_source.top);
+    s_last_presentation_source = *presentation_source;
+    s_last_presentation_xfb = xfb_source;
+  }
+
+  return true;
+}
+
+std::array<float, 4> CalculateVRPaneRemap(const Viewport& viewport, int x_off, int y_off,
+                                          const VRFrameRegion& frame)
+{
+  if (!frame.valid || frame.width <= 0 || frame.height <= 0)
+    return {1.0f, 1.0f, 0.0f, 0.0f};
+
+  const float frame_half_width = static_cast<float>(frame.width) * 0.5f;
+  const float frame_half_height = static_cast<float>(frame.height) * 0.5f;
+  const float frame_center_x = static_cast<float>(frame.left) + frame_half_width;
+  const float frame_center_y = static_cast<float>(frame.top) + frame_half_height;
+  const float viewport_center_x = viewport.xOrig - static_cast<float>(x_off);
+  const float viewport_center_y = viewport.yOrig - static_cast<float>(y_off);
+
+  return {viewport.wd / frame_half_width, -viewport.ht / frame_half_height,
+          (viewport_center_x - frame_center_x) / frame_half_width,
+          -(viewport_center_y - frame_center_y) / frame_half_height};
 }
 
 const char* GetVRViewportClassName(VRViewportClass vclass)

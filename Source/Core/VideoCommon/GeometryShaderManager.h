@@ -18,6 +18,10 @@ enum class PrimitiveType : u32;
 class GeometryShaderManager
 {
 public:
+  // Special OpenXR stereo route for a perspective element anchored to a virtual-screen pane.
+  // Values above 1.5 select the world-fixed 3D pane branch in the generated VR shaders.
+  static constexpr float VR_STEREO_SCREEN_PANE_3D = 2.0f;
+
   void Init();
   void Dirty();
   void DoState(PointerWrap& p);
@@ -38,8 +42,13 @@ public:
 
   // Per-draw VR stereo mode override (set before RenderDrawCall, consumed in SetConstants).
   // NaN = no override; -3.0 = force headlocked perspective HUD; -2.0 = force headlocked screen;
-  // -1.0 = force screen; 0.0 = force fullscreen; 1.0 = force perspective.
+  // -1.0 = force screen; 0.0 = force fullscreen; 1.0 = force perspective;
+  // VR_STEREO_SCREEN_PANE_3D = force a world-fixed perspective pane.
   float vr_stereo_override = std::numeric_limits<float>::quiet_NaN();
+
+  // Apply the original perspective viewport as a pane-to-frame NDC remap for one explicit
+  // Screen Pane draw. The matching full-frame GPU viewport is installed by VertexManagerBase.
+  bool vr_pane_screen_override = false;
 
   // Per-draw element depth override from shader overrides (-1 = use global setting).
   float vr_element_depth_override = -1.0f;

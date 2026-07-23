@@ -430,9 +430,9 @@ VRPane::VRPane(QWidget* parent) : QWidget(parent)
   m_frame_size_from_xfb =
       new ConfigBool(tr("Frame Size from XFB Copy"), Config::GFX_VR_FRAME_SIZE_FROM_XFB);
   m_frame_size_from_xfb->setToolTip(
-      tr("Measure the displayed frame from the EFB-to-XFB copy instead of full-screen clears.\n"
-         "Fixes gameplay distortion with Remove Cinematic Bars in Mario Galaxy / Mario Golf\n"
-         "while keeping the Metroid Prime Trilogy black-bar fix. Turn off for the legacy\n"
+      tr("Match the composed scene to the EFB-to-XFB display copy without changing the game's\n"
+         "EFB viewport. This preserves Metroid Prime Trilogy blur/visor effects and corrects\n"
+         "Mario Golf's 480-line scene to 448-line display mismatch. Turn off for the legacy\n"
          "clear-based behavior."));
   m_panes_on_screen =
       new ConfigBool(tr("Small 3D Viewports on Screen"), Config::GFX_VR_PANES_ON_SCREEN);

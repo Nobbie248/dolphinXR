@@ -300,7 +300,8 @@ public:
                                  const MathUtil::Rectangle<int>& srcRect, bool isIntensity,
                                  bool scaleByHalf, float y_scale, float gamma, bool clamp_top,
                                  bool clamp_bottom,
-                                 const CopyFilterCoefficients::Values& filter_coefficients);
+                                 const CopyFilterCoefficients::Values& filter_coefficients,
+                                 const MathUtil::Rectangle<int>* vram_source_rect = nullptr);
 
   void ScaleTextureCacheEntryTo(RcTcacheEntry& entry, u32 new_width, u32 new_height);
 

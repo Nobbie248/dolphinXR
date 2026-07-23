@@ -47,7 +47,10 @@ public:
     CameraAnchor = 8,
     // VR controller anchor: the element is repositioned to a VR controller's location
     // (e.g. a sword on the right hand). Translation only; orientation stays game-driven.
-    ControllerAnchor = 9
+    ControllerAnchor = 9,
+    // World-fixed virtual-screen routing for a perspective draw which occupies a deliberate
+    // sub-region. Unlike Screen, this preserves both the pane's position and its model depth.
+    ScreenPane = 10
   };
 
   // CameraAnchor handling: how much of the anchor element's orientation the camera follows.

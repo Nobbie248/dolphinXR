@@ -22,6 +22,7 @@
 #include "Core/System.h"
 
 #include "VideoCommon/AbstractGfx.h"
+#include "VideoCommon/BPFunctions.h"
 #include "VideoCommon/BPMemory.h"
 #include "VideoCommon/BoundingBox.h"
 #include "VideoCommon/DataReader.h"
@@ -1055,6 +1056,30 @@ void VertexManagerBase::Flush()
       return;
     }
 
+    // Record actual perspective draws, rather than viewport state changes, so the dominant
+    // composed-scene extent can drive the final VR XFB presentation resample. This never
+    // changes the EFB viewport seen by the game or by EFB effect readbacks.
+    if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR && g_ActiveConfig.vr_remove_bars &&
+        g_ActiveConfig.vr_frame_size_from_xfb &&
+        xfmem.projection.type == ProjectionType::Perspective)
+    {
+      const int scissor_width =
+          static_cast<int>(bpmem.scissorBR.x) - static_cast<int>(bpmem.scissorTL.x) + 1;
+      const int scissor_height =
+          static_cast<int>(bpmem.scissorBR.y) - static_cast<int>(bpmem.scissorTL.y) + 1;
+      const int viewport_width =
+          static_cast<int>(std::lround(2.0f * std::fabs(xfmem.viewport.wd)));
+      const int viewport_height =
+          static_cast<int>(std::lround(2.0f * std::fabs(xfmem.viewport.ht)));
+      const bool scissor_describes_scene = scissor_width >= viewport_width * 9 / 10 &&
+                                            scissor_height >= viewport_height / 2;
+      if (scissor_describes_scene)
+      {
+        VR::ObserveVRPerspectiveViewport(xfmem.viewport, bpmem.scissorOffset.x << 1,
+                                         bpmem.scissorOffset.y << 1);
+      }
+    }
+
     // Texture loading can cause palettes to be applied (-> uniforms -> draws).
     // Palette application does not use vertices, only a full-screen quad, so this is okay.
     // Same with GPU texture decoding, which uses compute shaders.
@@ -1065,6 +1090,7 @@ void VertexManagerBase::Flush()
       UpdatePipelineConfig();
       UpdatePipelineObject();
       bool shader_hunter_force_pink = false;
+      bool manual_screen_pane = false;
       if (m_current_pipeline_object)
       {
         // Shader Hunter: register shader hashes and check for skip.
@@ -1363,6 +1389,20 @@ void VertexManagerBase::Flush()
               geometry_shader_manager.vr_stereo_override = -1.0f;
               if (element_depth >= 0.0f)
                 geometry_shader_manager.vr_element_depth_override = element_depth;
+            }
+            else if (handling == ShaderHunter::HandlingType::ScreenPane)
+            {
+              const VR::VRFrameRegion frame = VR::GetVRFrameRegion();
+              const float reference_view_z =
+                  vertex_shader_manager.constants.posnormalmatrix[2][3];
+              manual_screen_pane =
+                  g_ActiveConfig.stereo_mode == StereoMode::OpenXR &&
+                  g_ActiveConfig.vr_virtual_screen && frame.valid &&
+                  xfmem.projection.type == ProjectionType::Perspective &&
+                  std::isfinite(reference_view_z) && reference_view_z < -1.0e-4f;
+              geometry_shader_manager.vr_stereo_override =
+                  manual_screen_pane ? GeometryShaderManager::VR_STEREO_SCREEN_PANE_3D : -1.0f;
+              geometry_shader_manager.vr_pane_screen_override = manual_screen_pane;
             }
             else if (handling == ShaderHunter::HandlingType::Fullscreen)
             {
@@ -1766,9 +1806,18 @@ void VertexManagerBase::Flush()
               pipeline_object = custom_pipeline;
             }
           }
+          const bool pane_raster_overridden =
+              manual_screen_pane &&
+              BPFunctions::SetVRPaneScreenViewport(g_framebuffer_manager.get());
           RenderDrawCall(pixel_shader_manager, geometry_shader_manager,
                          custom_pixel_shader_contents, custom_pixel_shader_uniforms,
                          m_current_primitive_type, pipeline_object);
+          if (pane_raster_overridden)
+          {
+            BPFunctions::SetScissorAndViewport(g_framebuffer_manager.get(), bpmem.scissorTL,
+                                               bpmem.scissorBR, bpmem.scissorOffset,
+                                               xfmem.viewport);
+          }
           m_force_pink_ps = false;
         }
       }

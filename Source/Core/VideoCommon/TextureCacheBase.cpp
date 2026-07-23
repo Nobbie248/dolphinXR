@@ -2333,7 +2333,8 @@ void TextureCacheBase::CopyRenderTargetToTexture(
     u32 dstAddr, EFBCopyFormat dstFormat, u32 width, u32 height, u32 dstStride, bool is_depth_copy,
     const MathUtil::Rectangle<int>& srcRect, bool isIntensity, bool scaleByHalf, float y_scale,
     float gamma, bool clamp_top, bool clamp_bottom,
-    const CopyFilterCoefficients::Values& filter_coefficients)
+    const CopyFilterCoefficients::Values& filter_coefficients,
+    const MathUtil::Rectangle<int>* vram_source_rect)
 {
   // Emulation methods:
   //
@@ -2502,6 +2503,11 @@ void TextureCacheBase::CopyRenderTargetToTexture(
   const bool linear_filter =
       !is_depth_copy &&
       (scaleByHalf || g_framebuffer_manager->GetEFBScale() != 1 || y_scale > 1.0f);
+  const MathUtil::Rectangle<int>& vram_src_rect =
+      vram_source_rect ? *vram_source_rect : srcRect;
+  const bool vram_linear_filter =
+      linear_filter || (vram_source_rect && (vram_src_rect.GetWidth() != srcRect.GetWidth() ||
+                                             vram_src_rect.GetHeight() != srcRect.GetHeight()));
 
   RcTcacheEntry entry;
   if (copy_to_vram)
@@ -2548,8 +2554,8 @@ void TextureCacheBase::CopyRenderTargetToTexture(
       }
       else
       {
-        CopyEFBToCacheEntry(entry, is_depth_copy, srcRect, scaleByHalf, linear_filter, dstFormat,
-                            isIntensity, gamma, clamp_top, clamp_bottom,
+        CopyEFBToCacheEntry(entry, is_depth_copy, vram_src_rect, scaleByHalf, vram_linear_filter,
+                            dstFormat, isIntensity, gamma, clamp_top, clamp_bottom,
                             GetVRAMCopyFilterCoefficients(filter_coefficients));
       }
 

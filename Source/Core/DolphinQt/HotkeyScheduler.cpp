@@ -684,6 +684,8 @@ void HotkeyScheduler::Run()
           return "Skip";
         case ShaderHunter::HandlingType::Screen:
           return "Screen";
+        case ShaderHunter::HandlingType::ScreenPane:
+          return "Screen Pane";
         case ShaderHunter::HandlingType::HeadLocked:
           return "Head Locked";
         case ShaderHunter::HandlingType::Fullscreen:
@@ -756,6 +758,9 @@ void HotkeyScheduler::Run()
           shader_hotkey_handling = ShaderHunter::HandlingType::Screen;
           break;
         case ShaderHunter::HandlingType::Screen:
+          shader_hotkey_handling = ShaderHunter::HandlingType::HeadLocked;
+          break;
+        case ShaderHunter::HandlingType::ScreenPane:
           shader_hotkey_handling = ShaderHunter::HandlingType::HeadLocked;
           break;
         case ShaderHunter::HandlingType::HeadLocked:

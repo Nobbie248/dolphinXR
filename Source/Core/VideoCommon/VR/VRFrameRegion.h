@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <array>
+
 struct Viewport;
 
 namespace VR
@@ -55,6 +57,23 @@ void ResetVRFrameRegion();
 // Returns MainScene when the frame region is unknown so all callers fall back to
 // current behavior.
 VRViewportClass ClassifyVRViewport(const Viewport& viewport, int x_off, int y_off);
+
+// Record a real perspective draw which can describe the composed scene's EFB extent.
+// At the XFB-copy boundary the most frequently drawn full-width region is used as the
+// presentation source. This deliberately records the game's unmodified viewport: EFB
+// effects continue to see the exact layout the game rendered.
+void ObserveVRPerspectiveViewport(const Viewport& viewport, int x_off, int y_off);
+
+// Select and consume the scene extent accumulated since the previous XFB copy. Returns
+// true only when the VR presentation copy should sample a different vertical EFB region
+// from the game's XFB copy. The caller must still use xfb_source for the emulated RAM copy.
+bool ConsumeVRPresentationSourceRegion(const VRFrameRegion& xfb_source,
+                                       VRFrameRegion* presentation_source);
+
+// Convert a pane-local NDC position to the pane's position in the full displayed frame.
+// Used by both automatic small-pane routing and the explicit Screen Pane override.
+std::array<float, 4> CalculateVRPaneRemap(const Viewport& viewport, int x_off, int y_off,
+                                          const VRFrameRegion& frame);
 
 const char* GetVRViewportClassName(VRViewportClass vclass);
 }  // namespace VR

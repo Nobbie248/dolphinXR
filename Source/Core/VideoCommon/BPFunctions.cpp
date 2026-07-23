@@ -224,35 +224,36 @@ void SetScissorAndViewport(FramebufferManager* frame_buffer_manager, ScissorPos 
     }
     else if (g_ActiveConfig.vr_remove_bars && g_ActiveConfig.vr_frame_size_from_xfb)
     {
-      // XFB-copy path: the displayed frame region comes from the EFB->XFB copy rect, so
-      // expansion only ever targets lines that really reach the TV. Only the main scene
-      // (full-width, top-left-anchored viewport) is touched; panes, split-screen and
-      // render-to-texture passes are excluded by the classifier.
+      // Preserve the game's viewport so EFB readbacks (Trilogy blur and visors) keep
+      // their exact pixel contract. Scissor-only cinematic bars can safely be opened
+      // to the original viewport. Viewport/display height mismatches are repaired later
+      // while making the VRAM XFB presentation copy.
       if (frame.valid && (vp_class == VR::VRViewportClass::MainScene ||
                           vp_class == VR::VRViewportClass::Letterboxed))
       {
         const int efb_top = static_cast<int>(scissor_top_left.y) - y_off;
         const int efb_bot = static_cast<int>(scissor_bottom_right.y) - y_off;
-        const int frame_top = frame.top;
-        const int frame_bot = frame.top + frame.height - 1;
-        const float vp_min_y = viewport.yOrig - std::fabs(viewport.ht) - y_off;
-        const float vp_max_y = viewport.yOrig + std::fabs(viewport.ht) - y_off;
+        const int viewport_top = static_cast<int>(
+            std::lround(viewport.yOrig - std::fabs(viewport.ht) - y_off));
+        const int viewport_bot = static_cast<int>(
+                                     std::lround(viewport.yOrig + std::fabs(viewport.ht) - y_off)) -
+                                 1;
+        const int viewport_width = static_cast<int>(std::lround(2.0f * std::fabs(viewport.wd)));
+        const int viewport_height = viewport_bot - viewport_top + 1;
+        const int scissor_width = static_cast<int>(scissor_bottom_right.x) -
+                                  static_cast<int>(scissor_top_left.x) + 1;
+        const int scissor_height = efb_bot - efb_top + 1;
+        const bool plausible_bar_scissor =
+            scissor_width >= viewport_width * 9 / 10 &&
+            scissor_height >= viewport_height / 2;
 
-        const bool scissor_trims = efb_top > frame_top || efb_bot < frame_bot;
-        const bool viewport_short = vp_min_y > static_cast<float>(frame_top) + 0.5f ||
-                                    vp_max_y < static_cast<float>(frame_bot) + 0.5f;
-
-        if (scissor_trims || viewport_short)
+        // A small scissor inside a full-size viewport is a deliberate sub-window, not
+        // cinematic bars. Expanding it makes preview/model geometry escape its pane.
+        if (plausible_bar_scissor && (efb_top > viewport_top || efb_bot < viewport_bot))
         {
-          scissor_top_left.y = static_cast<u32>(y_off + frame_top);
-          scissor_bottom_right.y = static_cast<u32>(y_off + frame_bot);
-
-          // Map NDC [-1,+1] onto the full frame region (Trilogy: top stays at 0, the
-          // bottom extends from 448 to 480 — no horizon shift, no vertical stretch).
-          const float new_half = static_cast<float>(frame.height) * 0.5f;
-          const float sign = (viewport.ht < 0) ? -1.0f : 1.0f;
-          viewport.yOrig = static_cast<float>(y_off + frame_top) + new_half;
-          viewport.ht = sign * new_half;
+          scissor_top_left.y = static_cast<u32>(y_off + std::max(viewport_top, 0));
+          scissor_bottom_right.y = static_cast<u32>(
+              y_off + std::min(viewport_bot, static_cast<int>(EFB_HEIGHT) - 1));
         }
       }
     }
@@ -443,6 +444,31 @@ void SetScissorAndViewport(FramebufferManager* frame_buffer_manager, ScissorPos 
                                                                  .viewport_height = height,
                                                                  .viewport_near_depth = near_depth,
                                                                  .viewport_far_depth = far_depth});
+}
+
+bool SetVRPaneScreenViewport(FramebufferManager* frame_buffer_manager)
+{
+  const VR::VRFrameRegion frame = VR::GetVRFrameRegion();
+  if (!frame.valid || frame.width <= 0 || frame.height <= 0)
+    return false;
+
+  const int x_off = bpmem.scissorOffset.x << 1;
+  const int y_off = bpmem.scissorOffset.y << 1;
+  ScissorPos scissor_top_left = bpmem.scissorTL;
+  ScissorPos scissor_bottom_right = bpmem.scissorBR;
+  scissor_top_left.x = static_cast<u32>(x_off + frame.left);
+  scissor_top_left.y = static_cast<u32>(y_off + frame.top);
+  scissor_bottom_right.x = static_cast<u32>(x_off + frame.left + frame.width - 1);
+  scissor_bottom_right.y = static_cast<u32>(y_off + frame.top + frame.height - 1);
+
+  Viewport viewport = xfmem.viewport;
+  viewport.xOrig = static_cast<float>(x_off + frame.left) + frame.width * 0.5f;
+  viewport.yOrig = static_cast<float>(y_off + frame.top) + frame.height * 0.5f;
+  viewport.wd = frame.width * 0.5f;
+  viewport.ht = -frame.height * 0.5f;
+  SetScissorAndViewport(frame_buffer_manager, scissor_top_left, scissor_bottom_right,
+                        bpmem.scissorOffset, viewport);
+  return true;
 }
 
 void SetDepthMode()

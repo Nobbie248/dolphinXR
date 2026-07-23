@@ -164,6 +164,9 @@ void SetGenerationMode();
 void SetScissorAndViewport(FramebufferManager* frame_buffer_manager, ScissorPos scissor_top_left,
                            ScissorPos scissor_bottom_right, ScissorOffset scissor_offset,
                            Viewport viewport);
+// Temporarily install the full displayed-frame raster state for a manually screen-routed
+// perspective pane. Returns false when no XFB frame region is available yet.
+bool SetVRPaneScreenViewport(FramebufferManager* frame_buffer_manager);
 void SetDepthMode();
 void SetBlendMode();
 

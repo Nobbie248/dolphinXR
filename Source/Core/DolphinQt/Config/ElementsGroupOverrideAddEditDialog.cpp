@@ -223,6 +223,8 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
                             static_cast<int>(ElementsGroupManager::HandlingType::Skip));
   m_handling_combo->addItem(tr("Screen"),
                             static_cast<int>(ElementsGroupManager::HandlingType::Screen));
+  m_handling_combo->addItem(tr("Screen Pane (3D)"),
+                            static_cast<int>(ElementsGroupManager::HandlingType::ScreenPane));
   m_handling_combo->addItem(tr("Fullscreen"),
                             static_cast<int>(ElementsGroupManager::HandlingType::Fullscreen));
   m_handling_combo->addItem(tr("Fullscreen Mono"),

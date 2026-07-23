@@ -257,7 +257,51 @@ ShaderCode GenerateGeometryShaderCode(APIType api_type, const ShaderHostConfig& 
       // cvr_eye_z gives eye-space depth for correct perspective divide and depth:
       //   z_eye = dot(cvr_eye_z[eye], viewPos)
       //   f.pos.w = -z_eye,  f.pos.z = P[2][2]*z_eye + P[2][3]
-      out.Write("\tif (" I_STEREOPARAMS ".w > 0.5f)\n");
+      // World-fixed perspective pane: preserve the game's perspective shape and depth while
+      // attaching it to its original sub-region on the virtual screen. Dividing the original
+      // clip W by the model-origin W gives a per-vertex depth ratio. Scaling screen X/Y and Z by
+      // that same ratio keeps the game's projected silhouette unchanged at the neutral view, but
+      // gives the model real binocular parallax and physical depth instead of flattening it.
+      out.Write("\tif (" I_STEREOPARAMS ".w > 1.5f)\n");
+      out.Write("\t{{\n");
+      out.Write("\t\tfloat pane_game_w = (abs(f.pos.w) > 1.0e-6) ? f.pos.w : 1.0e-6;\n");
+      out.Write("\t\tfloat pane_reference_w = max(" I_HEAD_PARAMS ".w, 1.0e-4);\n");
+      out.Write("\t\tfloat pane_depth_scale = max(pane_game_w / pane_reference_w, 0.001);\n");
+      out.Write("\t\tfloat ndc_x = f.pos.x / pane_game_w;\n");
+      out.Write("\t\tfloat ndc_y = f.pos.y / pane_game_w;\n");
+      out.Write("\t\tndc_x = ndc_x * " I_VR_PANE_REMAP ".x + " I_VR_PANE_REMAP ".z;\n");
+      out.Write("\t\tndc_y = ndc_y * " I_VR_PANE_REMAP ".y + " I_VR_PANE_REMAP ".w;\n");
+      out.Write("\t\tfloat4 panePos = float4(\n");
+      out.Write("\t\t\tndc_x * " I_VR_SCREEN ".x * pane_depth_scale,\n");
+      out.Write("\t\t\tndc_y * " I_VR_SCREEN ".y * pane_depth_scale,\n");
+      out.Write("\t\t\t-" I_VR_SCREEN ".z * pane_depth_scale,\n");
+      out.Write("\t\t\t1.0);\n");
+      out.Write("\t\tfloat4 row0 = " I_EYE_PROJ "[eye * 2 + 0];\n");
+      out.Write("\t\tfloat4 row1 = " I_EYE_PROJ "[eye * 2 + 1];\n");
+      out.Write("\t\tfloat4 zrow = " I_VR_EYE_Z "[eye];\n");
+      out.Write("\t\tfloat z_eye = dot(zrow, panePos);\n");
+      out.Write("\t\tfloat clip_x = dot(row0, panePos);\n");
+      out.Write("\t\tfloat clip_y = dot(row1, panePos);\n");
+      out.Write("\t\tfloat clip_w = -z_eye;\n");
+      out.Write("\t\tfloat clip_z = " I_VR_DEPTH ".x * z_eye + " I_VR_DEPTH ".y;\n");
+      if (!host_config.fast_depth_calc)
+        out.Write("\t\tf.clipPos = float4(clip_x, clip_y, clip_z, clip_w);\n");
+      out.Write("\t\tf.pos = float4(clip_x, clip_y, clip_z, clip_w);\n");
+      out.Write("\t\tf.pos.z = f.pos.w * " I_VR_DEPTH ".w - f.pos.z * " I_VR_DEPTH ".z;\n");
+      if (!host_config.backend_clip_control)
+        out.Write("\t\tf.pos.z = f.pos.z * 2.0 - f.pos.w;\n");
+      out.Write("\t\tf.pos.xy *= sign(" I_VR_PIXELCENTER ".xy * float2(1.0, -1.0));\n");
+      out.Write("\t\tf.pos.xy = f.pos.xy - f.pos.w * " I_VR_PIXELCENTER ".xy;\n");
+      if (host_config.backend_depth_clamp)
+      {
+        if (api_type == APIType::Vulkan || api_type == APIType::OpenGL)
+          out.Write("\t\tf.clipDist0 = 1.0;\n\t\tf.clipDist1 = 1.0;\n");
+        else
+          out.Write("\t\tf.clipDist0 = f.pos.z + f.pos.w;\n\t\tf.clipDist1 = -f.pos.z;\n");
+      }
+      out.Write("\t}}\n");
+
+      out.Write("\telse if (" I_STEREOPARAMS ".w > 0.5f)\n");
       out.Write("\t{{\n");
       out.Write("\t\tfloat4 row0 = " I_EYE_PROJ "[eye * 2 + 0];\n");
       out.Write("\t\tfloat4 row1 = " I_EYE_PROJ "[eye * 2 + 1];\n");

@@ -343,15 +343,32 @@ static void BPWritten(PixelShaderManager& pixel_shader_manager, XFStateManager& 
 
       // VR: the XFB copy source rect IS the displayed frame region (what the TV scans out).
       // Latch it for the cinematic-bar fix and the viewport classifier.
+      MathUtil::Rectangle<int> vr_presentation_src_rect{};
+      const MathUtil::Rectangle<int>* vram_source_rect = nullptr;
       if (g_ActiveConfig.stereo_mode == StereoMode::OpenXR)
       {
+        if (g_ActiveConfig.vr_remove_bars && g_ActiveConfig.vr_frame_size_from_xfb)
+        {
+          const VR::VRFrameRegion xfb_source{srcRect.left, srcRect.top,
+                                             static_cast<int>(copy_width),
+                                             static_cast<int>(copy_height), true};
+          VR::VRFrameRegion presentation_source{};
+          if (VR::ConsumeVRPresentationSourceRegion(xfb_source, &presentation_source))
+          {
+            vr_presentation_src_rect = {
+                presentation_source.left, presentation_source.top,
+                presentation_source.left + presentation_source.width,
+                presentation_source.top + presentation_source.height};
+            vram_source_rect = &vr_presentation_src_rect;
+          }
+        }
         VR::NotifyVRXFBCopyRegion(srcRect.left, srcRect.top, srcRect.right, srcRect.bottom);
       }
 
       g_texture_cache->CopyRenderTargetToTexture(
           destAddr, EFBCopyFormat::XFB, copy_width, height, destStride, is_depth_copy, srcRect,
           false, false, yScale, s_gammaLUT[PE_copy.gamma], bpmem.triggerEFBCopy.clamp_top,
-          bpmem.triggerEFBCopy.clamp_bottom, bpmem.copyfilter.GetCoefficients());
+          bpmem.triggerEFBCopy.clamp_bottom, bpmem.copyfilter.GetCoefficients(), vram_source_rect);
 
       auto& system = Core::System::GetInstance();
 
