@@ -223,7 +223,7 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
                             static_cast<int>(ElementsGroupManager::HandlingType::Skip));
   m_handling_combo->addItem(tr("Screen"),
                             static_cast<int>(ElementsGroupManager::HandlingType::Screen));
-  m_handling_combo->addItem(tr("Screen Pane (3D)"),
+  m_handling_combo->addItem(tr("Screen Pane"),
                             static_cast<int>(ElementsGroupManager::HandlingType::ScreenPane));
   m_handling_combo->addItem(tr("Fullscreen"),
                             static_cast<int>(ElementsGroupManager::HandlingType::Fullscreen));
@@ -243,6 +243,23 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
   m_handling_combo->addItem(
       tr("Controller Anchor"),
       static_cast<int>(ElementsGroupManager::HandlingType::ControllerAnchor));
+
+  m_screen_pane_depth_label = new QLabel(tr("Screen Pane Depth:"));
+  m_screen_pane_depth_combo = new QComboBox;
+  m_screen_pane_depth_combo->addItem(
+      tr("Original Game Depth"),
+      static_cast<int>(ElementsGroupManager::ScreenPaneDepthMode::Game));
+  m_screen_pane_depth_combo->addItem(
+      tr("Physical VR Depth"),
+      static_cast<int>(ElementsGroupManager::ScreenPaneDepthMode::VR));
+  m_screen_pane_depth_combo->addItem(
+      tr("Flat"), static_cast<int>(ElementsGroupManager::ScreenPaneDepthMode::Flat));
+  m_screen_pane_depth_combo->setToolTip(
+      tr("Original Game Depth preserves the game's depth-buffer ordering between separate draws.\n"
+         "Physical VR Depth keeps one shared Z anchor for the complete matched element, preserving\n"
+         "its multipart depth composition while X/Y remain fixed to the original screen pane.\n"
+         "Flat uses the world-fixed 2D screen plane at the pane's original X/Y position, with\n"
+         "zero visual thickness while retaining game depth for stable ordering."));
 
   m_element_depth_label = new QLabel(tr("Element Depth:"));
   m_element_depth_spin = new QDoubleSpinBox;
@@ -469,6 +486,7 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
   form->addRow(m_profile_label, m_profile_combo);
   form->addRow(m_profile_layers_label, m_profile_layers_list);
   form->addRow(tr("Handling:"), m_handling_combo);
+  form->addRow(m_screen_pane_depth_label, m_screen_pane_depth_combo);
   form->addRow(m_element_depth_label, m_element_depth_spin);
   form->addRow(m_units_per_meter_label, m_units_per_meter_spin);
   form->addRow(m_passthrough_opacity_label, m_passthrough_opacity_spin);
@@ -577,6 +595,12 @@ ElementsGroupOverrideAddEditDialog::ElementsGroupOverrideAddEditDialog(
       if (handling_idx >= 0)
         m_handling_combo->setCurrentIndex(handling_idx);
     }
+    {
+      const int depth_idx =
+          m_screen_pane_depth_combo->findData(static_cast<int>(edit_override->screen_pane_depth));
+      if (depth_idx >= 0)
+        m_screen_pane_depth_combo->setCurrentIndex(depth_idx);
+    }
     m_element_depth_spin->setValue(edit_override->element_depth);
     if (edit_override->units_per_meter > 0.0f)
       m_units_per_meter_spin->setValue(edit_override->units_per_meter);
@@ -666,6 +690,8 @@ ElementsGroupManager::ElementGroupOverride ElementsGroupOverrideAddEditDialog::G
       m_match_kind_combo->currentData().toInt());
   result.handling = static_cast<ElementsGroupManager::HandlingType>(
       m_handling_combo->currentData().toInt());
+  result.screen_pane_depth = static_cast<ElementsGroupManager::ScreenPaneDepthMode>(
+      m_screen_pane_depth_combo->currentData().toInt());
   result.runtime_element = m_runtime_element;
   result.profile_id = static_cast<MetroidElementProfile>(m_profile_combo->currentData().toInt());
   result.profile_layers = CollectProfileLayers();
@@ -864,6 +890,8 @@ void ElementsGroupOverrideAddEditDialog::RefreshHandlingUi()
       m_handling_combo->currentData().toInt());
   const bool show_element_depth = (handling == ElementsGroupManager::HandlingType::Screen ||
                                    handling == ElementsGroupManager::HandlingType::HeadLocked);
+  const bool show_screen_pane_depth =
+      handling == ElementsGroupManager::HandlingType::ScreenPane;
   const bool show_units_per_meter =
       (handling == ElementsGroupManager::HandlingType::UnitsPerMeter);
   const bool show_passthrough = (handling == ElementsGroupManager::HandlingType::Passthrough);
@@ -875,6 +903,8 @@ void ElementsGroupOverrideAddEditDialog::RefreshHandlingUi()
 
   m_element_depth_label->setVisible(show_element_depth);
   m_element_depth_spin->setVisible(show_element_depth);
+  m_screen_pane_depth_label->setVisible(show_screen_pane_depth);
+  m_screen_pane_depth_combo->setVisible(show_screen_pane_depth);
   m_units_per_meter_label->setVisible(show_units_per_meter);
   m_units_per_meter_spin->setVisible(show_units_per_meter);
   m_passthrough_opacity_label->setVisible(show_passthrough);

@@ -257,19 +257,16 @@ ShaderCode GenerateGeometryShaderCode(APIType api_type, const ShaderHostConfig& 
       // cvr_eye_z gives eye-space depth for correct perspective divide and depth:
       //   z_eye = dot(cvr_eye_z[eye], viewPos)
       //   f.pos.w = -z_eye,  f.pos.z = P[2][2]*z_eye + P[2][3]
-      // World-fixed perspective pane: preserve the game's perspective shape and depth while
-      // attaching it to its original sub-region on the virtual screen. Dividing the original
-      // clip W by the model-origin W gives a per-vertex depth ratio. Scaling screen X/Y and Z by
-      // that same ratio keeps the game's projected silhouette unchanged at the neutral view, but
-      // gives the model real binocular parallax and physical depth instead of flattening it.
+      // World-fixed perspective pane: attach perspective content to its original sub-region on the
+      // virtual screen. Scale screen X/Y and Z by the original clip-W ratio, preserving the
+      // neutral-view silhouette while providing binocular depth. Flat Screen Pane draws use the
+      // separate world-fixed 2D screen branch below.
       out.Write("\tif (" I_STEREOPARAMS ".w > 1.5f)\n");
       out.Write("\t{{\n");
       out.Write("\t\tfloat pane_game_w = (abs(f.pos.w) > 1.0e-6) ? f.pos.w : 1.0e-6;\n");
-      // Preserve the game's post-viewport NDC depth before replacing the clip position. Multipart
-      // models frequently use a different transform matrix per draw (face, moustache, suspension,
-      // wheels). Recomputing depth from each draw's independently anchored VR position makes those
-      // parts intersect even though the game sorted them correctly. Stereo shape comes from the
-      // varying pane clip W below; depth testing should continue to use the game's own value.
+      // Capture the game's post-viewport NDC depth before replacing the clip position. Screen Pane
+      // can either reattach this value (stable ordering for multipart models) or use the physical
+      // depth of the reprojected pane geometry (correct depth from oblique VR viewpoints).
       out.Write("\t\tfloat pane_game_ndc_z = clamp(f.pos.z / pane_game_w, -1.0, 1.0);\n");
       out.Write("\t\tfloat pane_reference_w = max(" I_HEAD_PARAMS ".w, 1.0e-4);\n");
       out.Write("\t\tfloat pane_depth_scale = max(pane_game_w / pane_reference_w, 0.001);\n");
@@ -289,9 +286,23 @@ ShaderCode GenerateGeometryShaderCode(APIType api_type, const ShaderHostConfig& 
       out.Write("\t\tfloat clip_x = dot(row0, panePos);\n");
       out.Write("\t\tfloat clip_y = dot(row1, panePos);\n");
       out.Write("\t\tfloat clip_w = -z_eye;\n");
-      out.Write("\t\tf.pos = float4(clip_x, clip_y, pane_game_ndc_z * clip_w, clip_w);\n");
+      out.Write("\t\tif (" I_STEREOPARAMS ".w > 2.5f && " I_STEREOPARAMS
+                ".w < 3.5f)\n");
+      out.Write("\t\t{{\n");
+      out.Write("\t\t\tfloat clip_z = " I_VR_DEPTH ".x * z_eye + " I_VR_DEPTH ".y;\n");
       if (!host_config.fast_depth_calc)
-        out.Write("\t\tf.clipPos = f.pos;\n");
+        out.Write("\t\t\tf.clipPos = float4(clip_x, clip_y, clip_z, clip_w);\n");
+      out.Write("\t\t\tf.pos = float4(clip_x, clip_y, clip_z, clip_w);\n");
+      out.Write("\t\t\tf.pos.z = f.pos.w * " I_VR_DEPTH ".w - f.pos.z * " I_VR_DEPTH ".z;\n");
+      if (!host_config.backend_clip_control)
+        out.Write("\t\t\tf.pos.z = f.pos.z * 2.0 - f.pos.w;\n");
+      out.Write("\t\t}}\n");
+      out.Write("\t\telse\n");
+      out.Write("\t\t{{\n");
+      out.Write("\t\t\tf.pos = float4(clip_x, clip_y, pane_game_ndc_z * clip_w, clip_w);\n");
+      if (!host_config.fast_depth_calc)
+        out.Write("\t\t\tf.clipPos = f.pos;\n");
+      out.Write("\t\t}}\n");
       out.Write("\t\tf.pos.xy *= sign(" I_VR_PIXELCENTER ".xy * float2(1.0, -1.0));\n");
       out.Write("\t\tf.pos.xy = f.pos.xy - f.pos.w * " I_VR_PIXELCENTER ".xy;\n");
       if (host_config.backend_depth_clamp)

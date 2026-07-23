@@ -22,6 +22,11 @@ namespace DX12
 {
 static bool UsesDynamicVertexLoader(const AbstractPipeline* pipeline)
 {
+  // Vertex buffers can be installed before the first graphics pipeline is bound. Treat that
+  // transient state as non-dynamic; ApplyState will revisit the SRV binding once a pipeline exists.
+  if (!pipeline)
+    return false;
+
   const AbstractPipelineUsage usage = static_cast<const DXPipeline*>(pipeline)->GetUsage();
   return (g_backend_info.bSupportsDynamicVertexLoader && usage == AbstractPipelineUsage::GXUber) ||
          (g_ActiveConfig.UseVSForLinePointExpand() && usage != AbstractPipelineUsage::Utility);

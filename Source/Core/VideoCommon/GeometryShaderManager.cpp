@@ -184,6 +184,9 @@ void GeometryShaderManager::Init()
   m_vr_hud_stable_reference_context = 0;
   m_vr_hud_frame_anchor_candidate_valid = false;
   m_vr_hud_frame_anchor_candidate_context = 0;
+  m_vr_pane_frame_reference_w.clear();
+  vr_pane_group_override = 0;
+  vr_flat_screen_pane_override = false;
 
   // Init any initial constants which aren't zero when bpmem is zero.
   SetViewportChanged();
@@ -244,6 +247,10 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
         constants.vr_pane_remap = {1.0f, 1.0f, 0.0f, 0.0f};
         const bool pane_screen_override = vr_pane_screen_override;
         vr_pane_screen_override = false;  // consume
+        const bool flat_screen_pane_override = vr_flat_screen_pane_override;
+        vr_flat_screen_pane_override = false;  // consume
+        const u64 pane_group_override = vr_pane_group_override;
+        vr_pane_group_override = 0;  // consume
         const float upm_override = vr_units_per_meter_override;
         vr_units_per_meter_override = -1.0f;  // consume
         const float headlocked_projection_scale_x = vr_headlocked_projection_scale_x;
@@ -476,9 +483,20 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
               constants.stereoparams[3] = VR_STEREO_SCREEN_PANE_3D;
               constants.vr_pane_remap =
                   VR::CalculateVRPaneRemap(xfmem.viewport, pane_x_off, pane_y_off, frame);
-              constants.head_locked_params[3] = VR::CalculateVRPaneReferenceW(
+              const float draw_reference_w = VR::CalculateVRPaneReferenceW(
                   reference_view_z, xfmem.projection.rawProjection[4],
                   xfmem.projection.rawProjection[5]);
+              if (pane_group_override != 0)
+              {
+                const auto it =
+                    m_vr_pane_frame_reference_w.try_emplace(pane_group_override, draw_reference_w)
+                        .first;
+                constants.head_locked_params[3] = it->second;
+              }
+              else
+              {
+                constants.head_locked_params[3] = draw_reference_w;
+              }
             }
           }
 
@@ -606,7 +624,8 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
           vr_element_depth_override = -1.0f;  // consume
           // Gives a 2D layer (HUD/menu) real 3D depth: ortho-Z elements spread across this
           // many game units of world-space thickness (Hydra "HudThickness").  0 = flat.
-          constants.depth_params[2] = upm * g_ActiveConfig.vr_hud_thickness;
+          constants.depth_params[2] =
+              flat_screen_pane_override ? 0.0f : upm * g_ActiveConfig.vr_hud_thickness;
           if (perspective_hud)
             constants.depth_params[3] = constants.depth_params[3] > 0.0f ?
                                             constants.depth_params[3] :
@@ -695,6 +714,11 @@ void GeometryShaderManager::InvalidateVRHeadPose()
   m_vr_hud_shared_reference_valid = false;
 }
 
+void GeometryShaderManager::OnEndFrame()
+{
+  m_vr_pane_frame_reference_w.clear();
+}
+
 void GeometryShaderManager::SetLinePtWidthChanged()
 {
   constants.lineptparams[2] = bpmem.lineptwidth.linesize / 6.f;
@@ -727,5 +751,9 @@ void GeometryShaderManager::DoState(PointerWrap& p)
     // Fixup the current state from global GPU state
     // NOTE: This requires that all GPU memory has been loaded already.
     Dirty();
+    vr_pane_screen_override = false;
+    vr_flat_screen_pane_override = false;
+    vr_pane_group_override = 0;
+    m_vr_pane_frame_reference_w.clear();
   }
 }

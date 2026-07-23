@@ -1091,6 +1091,8 @@ void VertexManagerBase::Flush()
       UpdatePipelineObject();
       bool shader_hunter_force_pink = false;
       bool manual_screen_pane = false;
+      auto screen_pane_depth = ElementsGroupManager::ScreenPaneDepthMode::Game;
+      u64 screen_pane_group = 0;
       if (m_current_pipeline_object)
       {
         // Shader Hunter: register shader hashes and check for skip.
@@ -1315,7 +1317,12 @@ void VertexManagerBase::Flush()
               handling = elements.GetOverrideHandling(*element_draw);
             if (handling != ShaderHunter::HandlingType::Skip)
             {
-              if (handling == ShaderHunter::HandlingType::Screen ||
+              if (handling == ShaderHunter::HandlingType::ScreenPane)
+              {
+                screen_pane_depth =
+                    elements.GetOverrideScreenPaneDepth(*element_draw, &screen_pane_group);
+              }
+              else if (handling == ShaderHunter::HandlingType::Screen ||
                   handling == ShaderHunter::HandlingType::HeadLocked)
               {
                 element_depth = elements.GetOverrideElementDepth(*element_draw);
@@ -1398,9 +1405,29 @@ void VertexManagerBase::Flush()
                   frame.valid && xfmem.projection.type == ProjectionType::Perspective;
               if (manual_screen_pane)
               {
-                geometry_shader_manager.vr_stereo_override =
-                    GeometryShaderManager::VR_STEREO_SCREEN_PANE_3D;
+                switch (screen_pane_depth)
+                {
+                case ElementsGroupManager::ScreenPaneDepthMode::VR:
+                  geometry_shader_manager.vr_stereo_override =
+                      GeometryShaderManager::VR_STEREO_SCREEN_PANE_3D_VR_DEPTH;
+                  break;
+                case ElementsGroupManager::ScreenPaneDepthMode::Flat:
+                  // Use the normal world-fixed 2D screen route. The pane remap below keeps the
+                  // original viewport position, while the per-draw flag forces zero visual Z.
+                  geometry_shader_manager.vr_stereo_override = -1.0f;
+                  geometry_shader_manager.vr_flat_screen_pane_override = true;
+                  break;
+                case ElementsGroupManager::ScreenPaneDepthMode::Game:
+                default:
+                  geometry_shader_manager.vr_stereo_override =
+                      GeometryShaderManager::VR_STEREO_SCREEN_PANE_3D;
+                  break;
+                }
                 geometry_shader_manager.vr_pane_screen_override = true;
+                geometry_shader_manager.vr_pane_group_override =
+                    screen_pane_depth == ElementsGroupManager::ScreenPaneDepthMode::VR ?
+                        screen_pane_group :
+                        0;
               }
             }
             else if (handling == ShaderHunter::HandlingType::Fullscreen)
@@ -2178,6 +2205,7 @@ void VertexManagerBase::OnEndFrame()
   hunter.OnFrameEnd();
   CullingCodeFinder::GetInstance().OnFrameEnd();
   ElementsGroupManager::GetInstance().OnFrameEnd();
+  Core::System::GetInstance().GetGeometryShaderManager().OnEndFrame();
   if (VR::g_openxr)
     VR::g_openxr->CommitCameraAnchorFrame();
   TextureElementManager::GetInstance().OnFrameEnd();

@@ -3,7 +3,9 @@
 
 #include "DolphinQt/Config/VRConfigWidget.h"
 
+#include <fstream>
 #include <functional>
+#include <sstream>
 #include <utility>
 
 #include <fmt/format.h>
@@ -45,6 +47,39 @@ constexpr std::string_view LEGACY_VR_SECTION_NAME = "GFX.VR";
 Config::Location GetVRLocation(const std::string& key)
 {
   return {Config::System::GFX, "VR", key};
+}
+
+// Common::IniFile cannot round-trip the repeated `$Name` records used by the custom VR override
+// sections. Rewriting a per-game VR setting through IniFile therefore strips the names and merges
+// the override bodies. Replace only the two VR settings sections as text and preserve every other
+// section byte-for-byte.
+std::string ReadFileWithoutVRSettingsSections(const std::string& path)
+{
+  std::ifstream file(path);
+  if (!file.is_open())
+    return {};
+
+  std::ostringstream out;
+  bool skipping = false;
+  std::string line;
+  while (std::getline(file, line))
+  {
+    std::string trimmed = line;
+    if (!trimmed.empty() && trimmed.back() == '\r')
+      trimmed.pop_back();
+
+    if (trimmed == "[Graphics.VR]" || trimmed == "[GFX.VR]")
+    {
+      skipping = true;
+      continue;
+    }
+    if (skipping && !trimmed.empty() && trimmed.front() == '[')
+      skipping = false;
+
+    if (!skipping)
+      out << line << '\n';
+  }
+  return out.str();
 }
 
 class VRGameConfigLayerLoader final : public Config::ConfigLayerLoader
@@ -98,35 +133,45 @@ public:
       return;
 
     const std::string path = GetSavePath();
-    Common::IniFile ini;
-    ini.Load(path);
+    std::string base = ReadFileWithoutVRSettingsSections(path);
+    while (!base.empty() &&
+           (base.back() == '\n' || base.back() == '\r' || base.back() == ' '))
+    {
+      base.pop_back();
+    }
+    if (!base.empty())
+      base += '\n';
 
-    // Always use the modern section name. All legacy values were loaded into the layer above.
-    ini.DeleteSection(LEGACY_VR_SECTION_NAME);
-    Common::IniFile::Section* section = ini.GetOrCreateSection(VR_SECTION_NAME);
+    std::ostringstream out;
+    out << base;
+    bool wrote_header = false;
 
     for (const auto& [location, value] : layer->GetLayerMap())
     {
-      if (location.system != Config::System::GFX || location.section != "VR")
+      if (location.system != Config::System::GFX || location.section != "VR" || !value ||
+          location.key == "ARMode" || location.key == "AutoVBIFromHMD")
+      {
         continue;
+      }
 
-      if (value)
-        section->Set(location.key, *value);
-      else
-        section->Delete(location.key);
+      if (!wrote_header)
+      {
+        out << '[' << VR_SECTION_NAME << "]\n";
+        wrote_header = true;
+      }
+      out << location.key << " = " << *value << '\n';
     }
 
-    // These aliases are migrated by Load and should not remain as competing values.
-    section->Delete("ARMode");
-    section->Delete("AutoVBIFromHMD");
-
-    if (section->GetValues().empty() && !section->HasLines())
-      ini.DeleteSection(VR_SECTION_NAME);
-
     File::CreateFullPath(path);
-    ini.Save(path);
-    if (File::GetSize(path) == 0)
+    const std::string contents = out.str();
+    if (contents.empty())
+    {
       File::Delete(path, File::IfAbsentBehavior::NoConsoleWarning);
+      return;
+    }
+
+    std::ofstream file(path, std::ios::trunc);
+    file << contents;
   }
 
 private:

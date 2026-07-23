@@ -7,6 +7,7 @@
 #include <cmath>
 #include <limits>
 #include <string>
+#include <unordered_map>
 
 #include "Common/CommonTypes.h"
 #include "VideoCommon/ConstantManager.h"
@@ -21,6 +22,9 @@ public:
   // Special OpenXR stereo route for a perspective element anchored to a virtual-screen pane.
   // Values above 1.5 select the world-fixed 3D pane branch in the generated VR shaders.
   static constexpr float VR_STEREO_SCREEN_PANE_3D = 2.0f;
+  // Same pane projection, but preserve the element's shared Z composition and write its physically
+  // projected VR depth instead of reusing the game's original depth buffer values.
+  static constexpr float VR_STEREO_SCREEN_PANE_3D_VR_DEPTH = 3.0f;
 
   void Init();
   void Dirty();
@@ -31,6 +35,7 @@ public:
   void SetProjectionChanged();
   void SetLinePtWidthChanged();
   void SetTexCoordChanged(u8 texmapid);
+  void OnEndFrame();
 
   // VR head-pose cache: marks the cached eye projection as stale so the next
   // SetConstants() call re-fetches it from OpenXR.  Called from BPStructs at the
@@ -44,11 +49,20 @@ public:
   // NaN = no override; -3.0 = force headlocked perspective HUD; -2.0 = force headlocked screen;
   // -1.0 = force screen; 0.0 = force fullscreen; 1.0 = force perspective;
   // VR_STEREO_SCREEN_PANE_3D = force a world-fixed perspective pane.
+  // VR_STEREO_SCREEN_PANE_3D_VR_DEPTH = same, with physically projected depth.
   float vr_stereo_override = std::numeric_limits<float>::quiet_NaN();
 
   // Apply the original perspective viewport as a pane-to-frame NDC remap for one explicit
   // Screen Pane draw. The matching full-frame GPU viewport is installed by VertexManagerBase.
   bool vr_pane_screen_override = false;
+
+  // Route one Screen Pane draw through the world-fixed 2D screen path with zero visual thickness.
+  // The pane remap above still preserves its original X/Y placement.
+  bool vr_flat_screen_pane_override = false;
+
+  // Nonzero only for a Physical VR Depth Screen Pane draw. Draws belonging to the same element
+  // override share one reference W for the frame, preserving their original relative Z positions.
+  u64 vr_pane_group_override = 0;
 
   // Per-draw element depth override from shader overrides (-1 = use global setting).
   float vr_element_depth_override = -1.0f;
@@ -100,4 +114,9 @@ private:
   float m_vr_hud_frame_anchor_candidate_z = 0.0f;
   bool m_vr_hud_frame_anchor_candidate_valid = false;
   int m_vr_hud_frame_anchor_candidate_context = 0;
+
+  // First valid model-origin W latched for each Physical VR Depth Screen Pane override this frame.
+  // Using one reference across its separate draw calls preserves multipart Z composition while
+  // the shader's pane remap keeps the original neutral-view X/Y screen positions.
+  std::unordered_map<u64, float> m_vr_pane_frame_reference_w;
 };

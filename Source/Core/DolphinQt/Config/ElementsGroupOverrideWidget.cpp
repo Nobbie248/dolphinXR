@@ -121,6 +121,14 @@ void ElementsGroupOverrideWidget::UpdateList()
                                                  entry.handling == ShaderHunter::HandlingType::CameraAnchor ? "camera_anchor" :
                                                  entry.handling == ShaderHunter::HandlingType::ControllerAnchor ? "controller_anchor" :
                                                                                                              "skip"));
+    if (entry.handling == ShaderHunter::HandlingType::ScreenPane)
+    {
+      label += entry.screen_pane_depth == ElementsGroupManager::ScreenPaneDepthMode::VR ?
+                   QStringLiteral(" depth:vr") :
+               entry.screen_pane_depth == ElementsGroupManager::ScreenPaneDepthMode::Flat ?
+                   QStringLiteral(" depth:flat") :
+                   QStringLiteral(" depth:game");
+    }
     if (entry.match_kind == ElementsGroupManager::MatchKind::ProfileLayer)
     {
       label += QStringLiteral(" profile:%1")

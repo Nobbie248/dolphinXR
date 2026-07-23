@@ -37,6 +37,13 @@ public:
     ProfileLayer = 1,
   };
 
+  enum class ScreenPaneDepthMode
+  {
+    Game = 0,
+    VR = 1,
+    Flat = 2,
+  };
+
   struct DrawRecord
   {
     int draw_index = -1;
@@ -101,6 +108,9 @@ public:
     std::vector<MetroidElementLayer> profile_layers;
     float element_depth = -1.0f;
     float units_per_meter = -1.0f;
+    // ScreenPane handling: preserve the game's depth buffer values by default, or use the
+    // physically projected VR depth of the re-anchored pane geometry with shared Z composition.
+    ScreenPaneDepthMode screen_pane_depth = ScreenPaneDepthMode::Game;
     float passthrough_opacity = 0.0f;  // Passthrough handling: element opacity (0 = fully camera)
     // CameraAnchor handling: camera-space offset from the anchor element's origin (meters,
     // right/up/forward, converted with units-per-meter and mapped to view-space axes at capture
@@ -222,6 +232,8 @@ public:
   void RegisterFlagsForDraw(const DrawRecord& draw);
   bool ShouldSkipByOverride(const DrawRecord& draw) const;
   HandlingType GetOverrideHandling(const DrawRecord& draw) const;
+  ScreenPaneDepthMode GetOverrideScreenPaneDepth(const DrawRecord& draw,
+                                                 u64* out_group_id = nullptr) const;
   float GetOverrideElementDepth(const DrawRecord& draw) const;
   float GetOverrideUnitsPerMeter(const DrawRecord& draw) const;
   // Returns the opacity for a Passthrough override (0 = fully see-through to the camera).
